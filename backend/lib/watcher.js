@@ -7,8 +7,9 @@
 const chokidar = require('chokidar');
 const path = require('path');
 const fs = require('fs');
-const pdf = require('pdf-parse');
 const { checkSubject } = require('./registries');
+const { indexDocument, deleteDocumentIndex } = require('./rag');
+const { extractTextFromFile, isImageFile, IMAGE_EXTENSIONS } = require('./ocr');
 
 // Robust Ollama module import supporting both CommonJS and ESM default exports
 const ollamaLib = require('ollama');
@@ -50,7 +51,8 @@ watcher.on('add', async (filePath) => {
     if (path.basename(filePath) === '.inbox.json') return;
     
     const ext = path.extname(filePath).toLowerCase();
-    if (ext === '.pdf' || ext === '.txt' || ext === '.html') {
+    const supportedExts = ['.pdf', '.txt', '.html', ...IMAGE_EXTENSIONS];
+    if (supportedExts.includes(ext)) {
         console.log(`📥 Detekován nový dokument: ${path.basename(filePath)}`);
         
         // Skip if already parsed and present in .inbox.json
@@ -95,14 +97,19 @@ async function processDocument(filePath) {
     console.log(`⚙️ Analyzuji dokument ${fileName}...`);
     
     let text = "";
-    const ext = path.extname(filePath).toLowerCase();
+    let wasOcr = false;
     
-    if (ext === '.pdf') {
-        const dataBuffer = fs.readFileSync(filePath);
-        const parsedPdf = await pdf(dataBuffer);
-        text = parsedPdf.text;
-    } else {
-        text = fs.readFileSync(filePath, 'utf-8');
+    // === Inteligentní extrakce textu (digitální PDF / naskenované PDF / obrázek / TXT) ===
+    try {
+        const result = await extractTextFromFile(filePath);
+        text = result.text || '';
+        wasOcr = result.ocr || false;
+        
+        if (wasOcr) {
+            console.log(`🔍 OCR: Soubor ${fileName} byl zpracován přes OCR engine.`);
+        }
+    } catch (extractErr) {
+        console.error(`❌ Chyba extrakce textu z ${fileName}:`, extractErr.message);
     }
     
     if (!text || !text.trim()) {
@@ -165,10 +172,21 @@ async function processDocument(filePath) {
         inInsolvency: registryData ? registryData.inInsolvency : false,
         insolvencyCase: registryData ? registryData.insolvencyCase : null,
         verifiedSeat: registryData ? registryData.seat : null,
+        wasOcr: wasOcr,
         processedAt: new Date().toISOString()
     };
     saveInbox(inbox);
     console.log(`✅ Dokument ${fileName} byl úspěšně analyzován a uložen do lokálního indexu.`);
+    
+    // Automatically trigger insolvency check in background to ensure alerts are up-to-date
+    checkAllInsolvencies().catch(err => console.error("⚠️ Background ISIR verification error:", err.message));
+    
+    // Trigger local RAG vector indexing in background
+    try {
+        await indexDocument(fileName, text);
+    } catch (e) {
+        console.error(`❌ RAG: Selhala vektorová indexace pro soubor ${fileName}:`, e.message);
+    }
 }
 
 // Regular Expression extractor for Czech legal documents
@@ -271,4 +289,69 @@ ${text.substring(0, 3000)}`;
     return null;
 }
 
-module.exports = { WATCH_DIR, loadInbox, saveInbox, processDocument, setWatcherState };
+// Hlídač insolvencí (ISIR Watcher) - Runs active insolvency check on all monitored IČOs
+async function checkAllInsolvencies() {
+    console.log("🚨 Hlídač insolvencí: Spouštím periodickou kontrolu sledovaných subjektů...");
+    const inbox = loadInbox();
+    if (!inbox.files) return { checkedCount: 0, newAlertsCount: 0 };
+    if (!inbox.alerts) inbox.alerts = [];
+    
+    const files = Object.values(inbox.files);
+    let checkedCount = 0;
+    let newAlertsCount = 0;
+    
+    // Concurrently verify unique IČOs
+    const uniqueIcos = [...new Set(files.map(f => f.ico).filter(Boolean))];
+    
+    for (const ico of uniqueIcos) {
+        checkedCount++;
+        try {
+            const result = await checkSubject(ico);
+            if (result && !result.error) {
+                // If insolvency is found
+                if (result.inInsolvency) {
+                    // Check if an active alert already exists for this ICO
+                    const alreadyAlerted = inbox.alerts.some(a => a.ico === ico && a.status === 'active');
+                    
+                    if (!alreadyAlerted) {
+                        // Find files corresponding to this ICO to cite as context
+                        const citedFiles = files.filter(f => f.ico === ico).map(f => f.fileName);
+                        
+                        const newAlert = {
+                            id: 'alert_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+                            ico: ico,
+                            name: result.name,
+                            caseNumber: result.insolvencyCase,
+                            insolvencyStatus: result.insolvencyStatus,
+                            citedFiles: citedFiles,
+                            detectedAt: new Date().toISOString(),
+                            status: 'active'
+                        };
+                        
+                        inbox.alerts.push(newAlert);
+                        newAlertsCount++;
+                        console.log(`🚨 Hlídač insolvencí: DETEKOVÁN ÚPADEK u subjektu ${result.name} (IČO: ${ico})! Spis: ${result.insolvencyCase}`);
+                    }
+                    
+                    // Update insolvency status in all matching files in the inbox
+                    for (const fileName in inbox.files) {
+                        if (inbox.files[fileName].ico === ico) {
+                            inbox.files[fileName].inInsolvency = true;
+                            inbox.files[fileName].insolvencyCase = result.insolvencyCase;
+                        }
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn(`⚠️ Hlídač insolvencí: Selhala kontrola IČO ${ico}:`, e.message);
+        }
+    }
+    
+    if (newAlertsCount > 0) {
+        saveInbox(inbox);
+    }
+    
+    return { checkedCount, newAlertsCount };
+}
+
+module.exports = { WATCH_DIR, loadInbox, saveInbox, processDocument, setWatcherState, checkAllInsolvencies };

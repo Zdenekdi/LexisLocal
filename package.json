@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node backend/server.js",
     "dev": "nodemon backend/server.js",
-    "watcher": "node backend/lib/watcher.js"
+    "watcher": "node backend/lib/watcher.js",
+    "setup": "node setup.js"
   },
   "keywords": [
     "legaltech",
@@ -18,12 +19,15 @@
   "author": "Zdenek Dias",
   "license": "Proprietary",
   "dependencies": {
+    "canvas": "^3.2.3",
     "chokidar": "^3.6.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "ollama": "^0.5.0",
-    "pdf-parse": "^1.1.1"
+    "pdf-parse": "^1.1.1",
+    "pdfjs-dist": "^5.7.284",
+    "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.0"

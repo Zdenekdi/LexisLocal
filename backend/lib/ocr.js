@@ -1,0 +1,214 @@
+/**
+ * LexisLocal OCR Engine
+ * Zpracovává naskenované dokumenty (PNG, JPG, TIFF) a skeny v PDF
+ * pomocí Tesseract.js (pure JS, žádné systémové závislosti).
+ * 
+ * Podporované formáty:
+ *   - Obrázky: PNG, JPG, JPEG, TIFF, BMP, WEBP
+ *   - Skenované PDF: pokud pdf-parse vrátí méně než MIN_PDF_TEXT_LENGTH znaků
+ *     (heuristika pro detekci naskenovaného PDF bez digitálního textu)
+ */
+
+const fs = require('fs');
+const path = require('path');
+
+// Minimum characters expected from a digital PDF before we consider it scanned
+const MIN_PDF_TEXT_LENGTH = 80;
+
+// Supported image extensions
+const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.tiff', '.tif', '.bmp', '.webp'];
+
+/**
+ * Check if a file extension is an image we can OCR directly
+ */
+function isImageFile(filePath) {
+    const ext = path.extname(filePath).toLowerCase();
+    return IMAGE_EXTENSIONS.includes(ext);
+}
+
+/**
+ * Run Tesseract OCR on an image file path or buffer.
+ * Uses tesseract.js which is pure JS and requires no system installation.
+ * Language: Czech + English ('ces+eng') for best results with legal documents.
+ */
+async function runTesseractOCR(imagePathOrBuffer) {
+    try {
+        const { createWorker } = require('tesseract.js');
+        
+        const worker = await createWorker('ces+eng', 1, {
+            logger: m => {
+                if (m.status === 'recognizing text') {
+                    process.stdout.write(`\r🔍 OCR: ${Math.round(m.progress * 100)}%`);
+                }
+            }
+        });
+        
+        const { data: { text } } = await worker.recognize(imagePathOrBuffer);
+        await worker.terminate();
+        
+        process.stdout.write('\n');
+        return text.trim();
+    } catch (err) {
+        console.error('❌ OCR: Tesseract.js selhal:', err.message);
+        return '';
+    }
+}
+
+/**
+ * Convert a single PDF page to a PNG buffer using pdfjs-dist.
+ * Returns an array of image buffers (one per page), up to maxPages.
+ */
+async function pdfToImageBuffers(pdfBuffer, maxPages = 10) {
+    try {
+        const pdfjs = require('pdfjs-dist/legacy/build/pdf.js');
+        
+        // Disable worker (use sync/legacy mode in Node.js)
+        pdfjs.GlobalWorkerOptions.workerSrc = '';
+        
+        const loadingTask = pdfjs.getDocument({ data: new Uint8Array(pdfBuffer) });
+        const pdfDoc = await loadingTask.promise;
+        
+        const numPages = Math.min(pdfDoc.numPages, maxPages);
+        const { createCanvas } = require('canvas');
+        
+        const pageBuffers = [];
+        
+        for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+            console.log(`📄 OCR: Renderuji stránku ${pageNum}/${numPages}...`);
+            
+            const page = await pdfDoc.getPage(pageNum);
+            const viewport = page.getViewport({ scale: 2.0 }); // 2x scale = better OCR accuracy
+            
+            const canvas = createCanvas(viewport.width, viewport.height);
+            const ctx = canvas.getContext('2d');
+            
+            await page.render({
+                canvasContext: ctx,
+                viewport: viewport
+            }).promise;
+            
+            const buffer = canvas.toBuffer('image/png');
+            pageBuffers.push(buffer);
+        }
+        
+        return pageBuffers;
+    } catch (err) {
+        console.error('❌ OCR: PDF-to-image konverze selhala:', err.message);
+        return [];
+    }
+}
+
+/**
+ * PRIMARY API: Extract text from a scanned/image PDF using OCR pipeline.
+ * Steps: PDF buffer → page images (pdfjs-dist + canvas) → Tesseract OCR
+ */
+async function ocrScannedPdf(pdfBuffer) {
+    console.log('🔬 OCR: Zahajuji OCR pipeline pro naskenované PDF...');
+    
+    const pageImages = await pdfToImageBuffers(pdfBuffer, 15); // Max 15 pages
+    
+    if (pageImages.length === 0) {
+        console.warn('⚠️ OCR: Nepodařilo se vyrenderovat žádnou stránku PDF.');
+        return '';
+    }
+    
+    let fullText = '';
+    
+    for (let i = 0; i < pageImages.length; i++) {
+        console.log(`🔍 OCR: Rozpoznávám text na stránce ${i + 1}/${pageImages.length}...`);
+        const pageText = await runTesseractOCR(pageImages[i]);
+        if (pageText) {
+            fullText += `\n\n--- Strana ${i + 1} ---\n${pageText}`;
+        }
+    }
+    
+    return fullText.trim();
+}
+
+/**
+ * PRIMARY API: Extract text from an image file using Tesseract OCR.
+ */
+async function ocrImageFile(filePath) {
+    console.log(`🔬 OCR: Zahajuji OCR pro obrázek: ${path.basename(filePath)}`);
+    return await runTesseractOCR(filePath);
+}
+
+/**
+ * DETECTOR: Returns true if the extracted PDF text is too short to be a digital PDF
+ * (i.e., it's likely a scanned document with no embedded text layer).
+ */
+function isScannedPdf(extractedText) {
+    const cleanText = (extractedText || '').replace(/\s+/g, '').trim();
+    return cleanText.length < MIN_PDF_TEXT_LENGTH;
+}
+
+/**
+ * MAIN ENTRY: Intelligently extract text from any file:
+ *   - TXT/HTML: reads directly
+ *   - Digital PDF: uses pdf-parse
+ *   - Scanned PDF: falls back to OCR pipeline
+ *   - Image (PNG/JPG/etc.): runs Tesseract OCR directly
+ *
+ * Returns: { text: string, ocr: boolean, pages?: number }
+ */
+async function extractTextFromFile(filePath) {
+    const ext = path.extname(filePath).toLowerCase();
+    
+    // === Plain text files ===
+    if (ext === '.txt' || ext === '.html') {
+        const text = fs.readFileSync(filePath, 'utf-8');
+        return { text, ocr: false };
+    }
+    
+    // === Image files: direct OCR ===
+    if (isImageFile(filePath)) {
+        const text = await ocrImageFile(filePath);
+        return { text, ocr: true };
+    }
+    
+    // === PDF: try digital first, fall back to OCR ===
+    if (ext === '.pdf') {
+        const pdfParse = require('pdf-parse');
+        const dataBuffer = fs.readFileSync(filePath);
+        
+        try {
+            const parsedPdf = await pdfParse(dataBuffer);
+            const digitalText = parsedPdf.text || '';
+            
+            if (!isScannedPdf(digitalText)) {
+                // ✅ Digital PDF – text extracted normally
+                console.log(`✅ PDF: Digitální text úspěšně přečten (${digitalText.length} znaků).`);
+                return { text: digitalText, ocr: false };
+            }
+            
+            // 🔬 Scanned PDF detected – run OCR
+            console.log(`🔬 OCR: Detekováno naskenované PDF (pouze ${digitalText.length} znaků), spouštím OCR pipeline...`);
+            const ocrText = await ocrScannedPdf(dataBuffer);
+            
+            if (ocrText) {
+                console.log(`✅ OCR: Úspěšně extrahováno ${ocrText.length} znaků z naskenovaného PDF.`);
+                return { text: ocrText, ocr: true };
+            }
+            
+            // OCR also failed - return whatever we have
+            console.warn('⚠️ OCR: Ani OCR neposkytl text. Vracím prázdný řetězec.');
+            return { text: '', ocr: true };
+            
+        } catch (pdfErr) {
+            console.warn(`⚠️ PDF-parse selhal: ${pdfErr.message}. Zkouším OCR pipeline...`);
+            const ocrText = await ocrScannedPdf(fs.readFileSync(filePath));
+            return { text: ocrText, ocr: true };
+        }
+    }
+    
+    return { text: '', ocr: false };
+}
+
+module.exports = {
+    extractTextFromFile,
+    ocrImageFile,
+    ocrScannedPdf,
+    isScannedPdf,
+    isImageFile,
+    IMAGE_EXTENSIONS
+};

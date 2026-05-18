@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LexisLocal Hub — Právní AI pod kontrolou</title>
+    <!-- Premium Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body class="dark-theme">
+    <!-- Sidebar mobile backdrop -->
+    <div class="sidebar-backdrop" id="sidebar-backdrop" onclick="window.appInstance.toggleMobileSidebar(false)"></div>
+
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="sidebar-brand">
+                <div class="brand-logo">⚖️</div>
+                <div class="brand-text">
+                    <h1>LexisLocal</h1>
+                    <span>SECURITY HUB</span>
+                </div>
+            </div>
+            <nav class="sidebar-nav">
+                <button class="nav-btn active" data-tab="overview">
+                    <span class="icon">🏠</span> Přehled
+                </button>
+                <button class="nav-btn" data-tab="inbox">
+                    <span class="icon">📥</span> Doručené Spisy
+                    <span class="badge" id="inbox-badge" style="display: none;">0</span>
+                </button>
+                <button class="nav-btn" data-tab="registries">
+                    <span class="icon">🔍</span> Lustrační centrum
+                </button>
+                <button class="nav-btn" data-tab="models">
+                    <span class="icon">🤖</span> Správce Modelů
+                </button>
+                <button class="nav-btn" data-tab="chat">
+                    <span class="icon">💬</span> Chat Swarmu
+                </button>
+                <button class="nav-btn" data-tab="manual">
+                    <span class="icon">📖</span> Návod & Agenti
+                </button>
+            </nav>
+            <div class="sidebar-footer">
+                <div class="status-indicator online">
+                    <span class="pulse"></span> Server aktivní (Port 4000)
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="main-header">
+                <div style="display: flex; align-items: center; gap: 15px;">
+                    <!-- Mobile Hamburger Toggle -->
+                    <button class="hamburger-btn" id="mobile-hamburger" onclick="window.appInstance.toggleMobileSidebar(true)">
+                        ☰
+                    </button>
+                    <div class="header-title">
+                        <h2 id="page-title">Řídicí panel</h2>
+                        <p id="page-subtitle">Rychlý přehled lokálního AI ekosystému a stavu služeb.</p>
+                    </div>
+                </div>
+                <div class="header-actions">
+                    <button class="btn btn-primary" id="btn-upload-file">
+                        📥 Nahrát spis
+                    </button>
+                    <input type="file" id="file-uploader" style="display: none;" accept=".pdf,.txt" />
+                    
+                    <button class="btn btn-secondary" id="btn-parse-test" title="Generuje náhodný demo spis pro vyzkoušení offline">
+                        🧪 Generovat demo
+                    </button>
+                    <div class="system-time" id="system-time">09:00:00</div>
+                </div>
+            </header>
+
+            <!-- Tab Container -->
+            <div class="tab-container">
+                
+                <!-- TAB: OVERVIEW -->
+                <section class="tab-pane active" id="tab-overview">
+                    <!-- Insolvency Alerts Banner (Flashing red warning, populated via JS) -->
+                    <div id="insolvency-alerts-container" style="display: none; margin-bottom: 25px;"></div>
+
+                    <div class="stats-grid">
+                        <div class="stat-card glass">
+                            <div class="stat-header">
+                                <h3>Lokální AI Status</h3>
+                                <span class="stat-icon">🛡️</span>
+                            </div>
+                            <div class="stat-body">
+                                <div class="status-badge secure">100% SOUKROMÍ</div>
+                                <p>Veškerá data jsou šifrována a zpracovávána lokálně na tomto počítači.</p>
+                                <button class="btn btn-secondary" onclick="window.appInstance.runManualInsolvencyCheck()" style="margin-top: 12px; font-size: 0.8rem; padding: 6px 12px; width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; background: rgba(255,255,255,0.05); border: 1px solid var(--border-glass);">
+                                    <span>🔄</span> Spustit prověrku insolvencí
+                                </button>
+                            </div>
+                        </div>
+                        <div class="stat-card glass">
+                            <div class="stat-header">
+                                <h3>Sledovaná složka</h3>
+                                <span class="stat-icon">👀</span>
+                            </div>
+                            <div class="stat-body">
+                                <code id="watch-dir-path">~/Desktop/LexisSpisy</code>
+                                <p class="subtext">Chokidar monitoruje nové PDF a textové dokumenty.</p>
+                            </div>
+                        </div>
+                        <div class="stat-card glass">
+                            <div class="stat-header">
+                                <h3>Aktivní modely</h3>
+                                <span class="stat-icon">⚙️</span>
+                            </div>
+                            <div class="stat-body">
+                                <div class="large-number" id="models-count">0</div>
+                                <p class="subtext">lokálně stažených LLM modelů v Ollama.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- SÉMANTICKÉ VYHLEDÁVÁNÍ -->
+                    <div class="search-section glass">
+                        <div class="search-section-header">
+                            <div class="title-with-badge">
+                                <h3>🔍 Lokální Sémantické Vyhledávání v Archivu</h3>
+                                <span class="rag-status-badge" id="rag-status-badge">Index: 0 pasáží</span>
+                            </div>
+                            <button class="btn btn-secondary btn-xs" id="btn-reindex-all" title="Kompletně přegenerovat všechny vektorové indexy">
+                                🔄 Přegenerovat indexy
+                            </button>
+                        </div>
+                        <p class="section-desc">Hledejte v přirozeném jazyce (např. <i>"lhůta k vyjádření u sporu o nájemné"</i>). AI prohledá význam celého obsahu Vašich spisů.</p>
+                        
+                        <div class="semantic-search-box">
+                            <input type="text" id="semantic-search-input" placeholder="Zadejte, co hledáte (např. nárok na náhradu škody, insolvence)..." />
+                            <button class="btn btn-primary" id="btn-semantic-search">Vyhledat významově</button>
+                        </div>
+
+                        <!-- Vyhledávací loader -->
+                        <div class="search-loader" id="semantic-search-loader" style="display: none;">
+                            <div class="spinner"></div>
+                            <span>AI srovnává sémantické embeddingy Vašich spisů...</span>
+                        </div>
+
+                        <!-- Výsledky sémantického vyhledávání -->
+                        <div class="search-results-container" id="semantic-search-results" style="display: none;">
+                            <!-- Dynamically loaded search-result-cards -->
+                        </div>
+                    </div>
+
+                    <h3 class="section-title">🤖 Tým specializovaných AI agentů (Swarm)</h3>
+                    <div class="agents-grid" id="agents-list">
+                        <!-- Loaded dynamically -->
+                    </div>
+                </section>
+
+                <!-- TAB: INBOX -->
+                <section class="tab-pane" id="tab-inbox">
+                    <div class="inbox-filter-bar">
+                        <div class="filter-group">
+                            <button class="filter-btn active" data-filter="all">Všechny spisy</button>
+                            <button class="filter-btn" data-filter="unread">Nové podání</button>
+                            <button class="filter-btn" data-filter="read">Zpracované</button>
+                        </div>
+                        <span class="inbox-count" id="inbox-count-text">Načítám spisy...</span>
+                    </div>
+
+                    <div class="inbox-list" id="inbox-container">
+                        <!-- Loaded dynamically -->
+                        <div class="empty-state">
+                            <div class="empty-icon">📁</div>
+                            <h3>Žájné spisy v doručené poště</h3>
+                            <p>Vložte PDF nebo textový spis do složky na Vaší ploše a LexisLocal jej okamžitě zanalyzuje.</p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- TAB: REGISTRIES -->
+                <section class="tab-pane" id="tab-registries">
+                    <div class="search-section glass">
+                        <div class="search-header">
+                            <h2>🔍 Lustrační centrum LexisLocal</h2>
+                            <p class="subtext">Okamžité prověření firem a podnikatelů podle IČO napříč veřejnými a komerčními rejstříky.</p>
+                        </div>
+                        <div class="search-bar" style="display: flex; gap: 10px; margin-top: 15px; width: 100%;">
+                            <input type="text" id="registry-search-input" placeholder="Zadejte osmimístné IČO subjektu..." style="flex: 1;" />
+                            <button class="btn btn-primary" id="btn-registry-search">Prověřit subjekt</button>
+                        </div>
+                    </div>
+
+                    <!-- Loader -->
+                    <div class="search-loader" id="registry-search-loader" style="display: none; justify-content: center; align-items: center; flex-direction: column; margin: 40px 0; gap: 15px; color: var(--text-muted);">
+                        <div class="spinner"></div>
+                        <span style="font-size: 0.95rem;">AI se dotazuje státních, exekučních a insolvenčních registrů...</span>
+                    </div>
+
+                    <!-- Results Panel -->
+                    <div id="registry-search-results" style="display: none; flex-direction: column; gap: 20px; margin-top: 25px;">
+                        <!-- Rendered via JS -->
+                    </div>
+                </section>
+
+                <!-- TAB: MODELS -->
+                <section class="tab-pane" id="tab-models">
+                    <div class="model-pull-box glass">
+                        <h3>📥 Stáhnout nový model z knihovny Ollama</h3>
+                        <p>Zadejte název oficiálního modelu (např. <code>llama3</code>, <code>mistral</code>, <code>gemma</code>, <code>phi3</code>) a klikněte na Stáhnout.</p>
+                        <div class="search-bar">
+                            <input type="text" id="model-input" placeholder="Zadejte název modelu (např. llama3:8b)" />
+                            <button class="btn btn-primary" id="btn-pull-model">Stáhnout model</button>
+                        </div>
+                        <div class="progress-container" id="pull-progress-container" style="display: none;">
+                            <div class="progress-bar-wrapper">
+                                <div class="progress-bar-fill" id="pull-progress-bar"></div>
+                            </div>
+                            <span class="progress-status" id="pull-progress-status">Stahuji model...</span>
+                        </div>
+                    </div>
+
+                    <h3 class="section-title">💻 Stažené lokální modely na tomto počítači</h3>
+                    <div class="models-grid" id="models-list">
+                        <!-- Dynamic list -->
+                    </div>
+                </section>
+
+                <!-- TAB: CHAT PLAYGROUND -->
+                <section class="tab-pane" id="tab-chat">
+                    <div class="chat-wrapper glass">
+                        <!-- Chat Sidebar Config -->
+                        <div class="chat-config-bar">
+                            <div class="config-item">
+                                <label for="chat-agent-select">Aktivní AI Agent:</label>
+                                <select id="chat-agent-select" class="glass-select">
+                                    <option value="resersnik">📚 Rešeršník</option>
+                                    <option value="stylista">✍️ Stylista</option>
+                                    <option value="kontrolor">⚖️ Kontrolor</option>
+                                    <option value="sekretarka">⏰ Sekretářka</option>
+                                    <option value="spisovatel">📝 Spisovatel</option>
+                                </select>
+                            </div>
+                            <div class="config-item">
+                                <label for="chat-model-select">LLM Model:</label>
+                                <select id="chat-model-select" class="glass-select">
+                                    <!-- Dynamic options -->
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Chat Output Area -->
+                        <div class="chat-output" id="chat-output">
+                            <div class="chat-message agent">
+                                <div class="message-avatar">🤖</div>
+                                <div class="message-content">
+                                    <p>Vítejte v testovacím playgroundu lokálního AI Swarmu! Vyberte si agenta a model, napište dotaz a stiskněte odeslat. Všechna data zůstávají v bezpečí Vašeho počítače.</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Chat Input Area -->
+                        <div class="chat-input-bar">
+                            <textarea id="chat-textarea" placeholder="Zeptejte se vybraného agenta (stiskněte Enter pro odeslání)..." rows="1"></textarea>
+                            <button class="btn btn-primary" id="btn-chat-send">Odeslat 🚀</button>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- TAB: MANUAL -->
+                <section class="tab-pane" id="tab-manual">
+                    <div class="glass manual-card">
+                        <h3>📖 Manuál na zprovoznění lokální AI (Ollama & apfel)</h3>
+                        <p>Tento průvodce Vám pomůže nastavit a plně ovládnout 100% offline umělou inteligenci přímo v LexisEditoru a LexisLocal Swarmu.</p>
+                        
+                        <div class="manual-section">
+                            <h4>🦙 Krok 1: Instalace lokálního AI motoru (Ollama)</h4>
+                            <p>Ollama slouží jako lokální AI motor, který na Vašem počítači spouští velké jazykové modely (LLM).</p>
+                            <ol>
+                                <li>Stáhněte a nainstalujte Ollamu pro Váš systém z oficiálního webu: <a href="https://ollama.com" target="_blank" style="color:var(--accent-blue); text-decoration:none;">ollama.com</a>.</li>
+                                <li>Spusťte Ollamu (ikonka lamy se zobrazí v systémové liště).</li>
+                                <li>Otevřete macOS Terminál a stáhněte si doporučený model Llama 3 příkazem:
+                                    <pre><code>ollama run llama3</code></pre>
+                                </li>
+                            </ol>
+                        </div>
+                        
+                        <div class="manual-section">
+                            <h4>🤖 Krok 2: Jak fungují a jak nastavit agenty ve Swarmu?</h4>
+                            <p>LexisLocal obsahuje specializovaný tým AI botů (Swarm), které mají v backendu přesně definované role a instrukce.</p>
+                            <table class="manual-table">
+                                <thead>
+                                    <tr>
+                                        <th>Agent</th>
+                                        <th>Hlavní Funkce</th>
+                                        <th>Jak se dotazovat (Ukázkový prompt)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td><strong>📚 Rešeršník</strong></td>
+                                        <td>Vyhledávání zákonů, judikátů a analýza rizik.</td>
+                                        <td><em>"Analyzuj odpovědnost za vady u kupní smlouvy na auto."</em></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>✍️ Stylista</strong></td>
+                                        <td>Přepis do vytříbené advokátní češtiny a sjednocení stylu.</td>
+                                        <td><em>"Přepiš tuto výzvu k zaplacení, aby působila přísněji a uctivě."</em></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>⚖️ Kontrolor</strong></td>
+                                        <td>Hledání slabých míst, protimluvů a rizikových smluvních doložek.</td>
+                                        <td><em>"Zkontroluj tuto doložku o smluvní pokutě z pohledu dobrých mravů."</em></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>⏰ Sekretářka</strong></td>
+                                        <td>Extrakce úkolů, příprava e-mailů a plánování lhůt.</td>
+                                        <td><em>"Vytvoř ze spisu seznam úkolů s konkrétními termíny."</em></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>📝 Spisovatel</strong></td>
+                                        <td>Tvorba, strukturování a úprava celých žalob, smluv či odvolání podle zadání.</td>
+                                        <td><em>"Napiš žalobu na zaplacení dlužné částky 50 000 Kč s příslušenstvím."</em></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="manual-section">
+                            <h4>🛠️ Krok 3: Konfigurace instrukcí agentů (Pro vývojáře)</h4>
+                            <p>Instrukce a chování jednotlivých agentů (tzv. System Prompts) můžete snadno měnit a upravovat přímo v kódu backendu:</p>
+                            <ul>
+                                <li>Otevřete soubor <code>backend/server.js</code>.</li>
+                                <li>Najděte objekt <code>const AGENTS = { ... }</code> (kolem řádku 25).</li>
+                                <li>Zde můžete u každého agenta přepsat jeho <code>systemPrompt</code> podle Vašich vlastních specifických potřeb a tónu!</li>
+                            </ul>
+                        </div>
+
+                        <div class="manual-section">
+                            <h4>🔒 Krok 4: Vzdálený přístup mimo kancelář a Zabezpečení</h4>
+                            <p>Pro bezpečný přístup k Vašemu AI hubu z domova, soudu či cest doporučujeme:</p>
+                            <ol>
+                                <li><strong>Tailscale VPN (Doporučeno):</strong> Nainstalujte si Tailscale na Váš macOS server a na Váš iPad/MacBook. Vytvoříte si tak šifrovanou privátní síť, ve které bude Váš hub dostupný odkudkoliv bez vystavení portu do internetu.</li>
+                                <li><strong>Zabezpečení API Tokenem:</strong> Vytvořte v kořenové složce backendu soubor <code>.env</code> a vložte do něj řádek:
+                                    <pre><code>API_TOKEN=VaseTajnéBezpečnostníHeslo</code></pre>
+                                    Tím okamžitě uzamknete všechny API endpointy. Vložte Váš nakonfigurovaný klíč níže pro trvalou autorizaci ve Vašem prohlížeči:
+                                </li>
+                            </ol>
+                            <div class="search-bar" style="margin-top: 15px; max-width: 500px;">
+                                <input type="password" id="api-token-input" placeholder="Zadejte Váš API bezpečnostní klíč..." style="padding: 10px 14px; width: 300px;">
+                                <button class="btn btn-primary" id="btn-save-token">Uložit klíč 🔒</button>
+                            </div>
+                            <span id="token-status-text" style="font-size: 0.75rem; margin-top: 5px; color: var(--accent-green); display: none;">✓ Bezpečnostní klíč byl uložen do paměti prohlížeče.</span>
+                        </div>
+                    </div>
+                </section>
+
+            </div>
+        </main>
+    </div>
+
+    <!-- Sleek Document Viewer Modal -->
+    <div id="spis-modal" class="modal-backdrop" style="display: none;">
+        <div class="modal-container glass">
+            <div class="modal-header">
+                <h3 id="modal-spis-title">📄 Název spisu</h3>
+                <button class="btn-close" onclick="window.appInstance.closeSpisModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="modal-toolbar" style="display: flex; gap: 10px;">
+                    <button class="btn btn-secondary" onclick="window.appInstance.sendSpisToChat()" style="display: flex; align-items: center; gap: 8px;">
+                        <span>🤖</span> Poslat k analýze do Chatu
+                    </button>
+                    <button class="btn btn-primary" onclick="window.appInstance.sendSpisToLexisEditor()" style="display: flex; align-items: center; gap: 8px; background: var(--accent-blue);">
+                        <span>✍️</span> Odeslat do LexisEditoru
+                    </button>
+                </div>
+                <div class="modal-content-scroll">
+                    <pre id="modal-spis-text">Načítám obsah spisu...</pre>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Core App Logic -->
+    <script src="app.js"></script>
+</body>
+</html>
