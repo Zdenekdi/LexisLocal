@@ -1,0 +1,31 @@
+{
+  "name": "lexis-local",
+  "version": "1.0.0",
+  "description": "Privacy-focused, local-first AI Legal Ecosystem for Modern Law Firms",
+  "main": "backend/server.js",
+  "scripts": {
+    "start": "node backend/server.js",
+    "dev": "nodemon backend/server.js",
+    "watcher": "node backend/lib/watcher.js"
+  },
+  "keywords": [
+    "legaltech",
+    "local-first",
+    "ai-agent",
+    "ollama",
+    "rag"
+  ],
+  "author": "Zdenek Dias",
+  "license": "Proprietary",
+  "dependencies": {
+    "chokidar": "^3.6.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "ollama": "^0.5.0",
+    "pdf-parse": "^1.1.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  }
+}
