@@ -1,12 +1,16 @@
 /**
  * LexisLocal Backend Server & AI Orchestrator
  * Connects the desktop interface / Office add-ins to the local LLM (Ollama)
- * and coordinates the Special Agent Swarm with customizable model selections.
+ * and coordinates the Special Agent Swarm with customizable model selections,
+ * plus manages the local PDF inbox.
  */
 
 const express = require('express');
 const cors = require('cors');
-const { WATCH_DIR } = require('./lib/watcher');
+const path = require('path');
+const fs = require('fs');
+const { WATCH_DIR, loadInbox, saveInbox, processDocument } = require('./lib/watcher');
+const { checkSubject } = require('./lib/registries');
 
 // Robust Ollama module import supporting both CommonJS and ESM default exports
 const ollamaLib = require('ollama');
@@ -45,7 +49,7 @@ app.get('/api/status', (req, res) => {
     res.json({
         status: "online",
         project: "LexisLocal AI Ecosystem",
-        version: "1.1.0",
+        version: "1.2.0",
         watcherDir: WATCH_DIR,
         activeAgents: Object.keys(AGENTS)
     });
@@ -138,6 +142,83 @@ app.post('/api/agent/:agentId', async (req, res) => {
             response: fallbackResponse,
             timestamp: new Date().toISOString()
         });
+    }
+});
+
+// GET /api/inbox - Retrieve unread parsed documents
+app.get('/api/inbox', (req, res) => {
+    try {
+        const inbox = loadInbox();
+        const unreadFiles = Object.values(inbox.files).filter(f => f.status === 'unread');
+        res.json({
+            inbox: unreadFiles
+        });
+    } catch (err) {
+        res.status(500).json({ error: `Chyba při načítání doručené pošty: ${err.message}` });
+    }
+});
+
+// POST /api/inbox/mark-read - Mark parsed document as read
+app.post('/api/inbox/mark-read', (req, res) => {
+    const { fileName } = req.body;
+    if (!fileName) {
+        return res.status(400).json({ error: "Název souboru je povinný." });
+    }
+    
+    try {
+        const inbox = loadInbox();
+        if (inbox.files[fileName]) {
+            inbox.files[fileName].status = 'read';
+            saveInbox(inbox);
+            res.json({ success: true, message: `Soubor ${fileName} byl označen za vyřízený.` });
+        } else {
+            res.status(404).json({ error: "Soubor nebyl nalezen." });
+        }
+    } catch (err) {
+        res.status(500).json({ error: `Chyba: ${err.message}` });
+    }
+});
+
+// POST /api/inbox/parse-test - Generate mock legal document for sanity and user testing
+app.post('/api/inbox/parse-test', async (req, res) => {
+    try {
+        const testFilePath = path.join(WATCH_DIR, 'testovaci_soudni_spis.txt');
+        const sampleContent = `OKRESNÍ SOUD V BRNĚ
+Polní 994/39, 608 00 Brno
+
+spisová značka: 23 C 120/2026-14
+
+Žalobce: Jan Novák, nar. 1. 1. 1980, bytem Veselá 12, Brno
+Žalovaný: PRIMA s.r.o., IČO: 12345678, se sídlem Nádražní 5, Brno
+
+USNESENÍ
+
+Soud vyzývá žalovaného, aby se ve lhůtě 15 dnů od doručení tohoto usnesení písemně vyjádřil k podané žalobě. Pokud se bez vážného důvodu nevyjádříte, má se za to, že nárok žalobce uznáváte.`;
+        
+        fs.writeFileSync(testFilePath, sampleContent, 'utf-8');
+        await processDocument(testFilePath);
+        
+        res.json({ success: true, message: "Testovací dokument byl úspěšně vygenerován a naimportován do schránky." });
+    } catch (err) {
+        res.status(500).json({ error: `Chyba při generování testovacího spisu: ${err.message}` });
+    }
+});
+
+// GET /api/registry/check - Check subject against ARES and ISIR public registries
+app.get('/api/registry/check', async (req, res) => {
+    const { ico } = req.query;
+    if (!ico) {
+        return res.status(400).json({ error: "IČO je povinný parametr." });
+    }
+    
+    try {
+        const result = await checkSubject(ico);
+        if (result.error) {
+            return res.status(400).json({ error: result.error });
+        }
+        res.json(result);
+    } catch (err) {
+        res.status(500).json({ error: `Chyba při lustraci subjektu: ${err.message}` });
     }
 });
 
