@@ -231,6 +231,22 @@
                 <!-- TAB: CHAT PLAYGROUND -->
                 <section class="tab-pane" id="tab-chat">
                     <div class="chat-wrapper glass">
+                        <!-- Swarm Playbook Presets -->
+                        <div class="chat-playbook-bar" style="display: flex; align-items: center; gap: 10px; padding: 12px 20px; background: rgba(255,255,255,0.02); border-bottom: 1px solid var(--border-glass); overflow-x: auto;">
+                            <span style="font-size: 0.78rem; font-weight: 800; color: var(--accent-blue); letter-spacing: 0.5px; text-transform: uppercase; white-space: nowrap; display: flex; align-items: center; gap: 4px;">
+                                👥 AI Scénáře:
+                            </span>
+                            <button class="btn btn-secondary playbook-btn" onclick="window.appInstance.applyPlaybook('due-diligence')" style="font-size: 0.74rem; padding: 4px 10px; border-radius: 6px; white-space: nowrap; background: rgba(59,130,246,0.1); border-color: rgba(59,130,246,0.2); color: #60a5fa;">
+                                🔍 Prověrka smlouvy (Due Diligence)
+                            </button>
+                            <button class="btn btn-secondary playbook-btn" onclick="window.appInstance.applyPlaybook('litigation')" style="font-size: 0.74rem; padding: 4px 10px; border-radius: 6px; white-space: nowrap; background: rgba(16,185,129,0.1); border-color: rgba(16,185,129,0.2); color: #34d399;">
+                                ⚖️ Žalobní argumentace (Litigation)
+                            </button>
+                            <button class="btn btn-secondary playbook-btn" onclick="window.appInstance.applyPlaybook('explainer')" style="font-size: 0.74rem; padding: 4px 10px; border-radius: 6px; white-space: nowrap; background: rgba(139,92,246,0.1); border-color: rgba(139,92,246,0.2); color: #a78bfa;">
+                                📝 Pro laika (Client Explainer)
+                            </button>
+                        </div>
+
                         <!-- Chat Sidebar Config -->
                         <div class="chat-config-bar" style="display: flex; gap: 15px; flex-wrap: wrap; align-items: flex-end; padding: 15px 20px; border-bottom: 1px solid var(--border-glass);">
                             <div class="config-item">

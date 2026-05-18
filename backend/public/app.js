@@ -467,6 +467,9 @@ class LexisLocalApp {
                         <span>${warningEmoji} Lhůta: ${closestFile.deadlineDays} dnů</span>
                     </div>
                     <span class="subtext">Termín: ${new Date(closestFile.deadlineDate).toLocaleDateString('cs-CZ')}</span>
+                    <button class="btn btn-secondary" onclick="window.appInstance.downloadIcsFile('${caseNum.replace(/'/g, "\\'")}', '${groupPlaintiff.replace(/'/g, "\\'")}', '${groupDefendant.replace(/'/g, "\\'")}', '${closestFile.deadlineDate}')" style="margin-top: 10px; width: 100%; font-size: 0.72rem; padding: 5px 8px; display: flex; align-items: center; justify-content: center; gap: 4px;">
+                        📅 Do kalendáře (.ics)
+                    </button>
                 `;
             } else {
                 deadlineHtml = `<span class="subtext text-muted">Bez lhůty</span>`;
@@ -554,6 +557,51 @@ class LexisLocalApp {
             }
         } catch (e) {
             alert("Chyba při označování za vyřízené: " + e.message);
+        }
+    }
+
+    downloadIcsFile(caseNumber, plaintiff, defendant, deadlineDate) {
+        try {
+            const uid = 'lexis_' + Date.now() + '@lexislocal.lan';
+            const now = new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+            
+            // Format YYYY-MM-DD to YYYYMMDD
+            const dateStr = deadlineDate.replace(/-/g, '');
+            
+            const icsContent = [
+                'BEGIN:VCALENDAR',
+                'VERSION:2.0',
+                'PRODID:-//LexisLocal AI//Legal Workstation//CS',
+                'BEGIN:VEVENT',
+                `UID:${uid}`,
+                `DTSTAMP:${now}`,
+                `DTSTART;VALUE=DATE:${dateStr}`,
+                `DTEND;VALUE=DATE:${dateStr}`,
+                `SUMMARY:⚖️ Lhůta sp. zn. ${caseNumber}`,
+                `DESCRIPTION:Lhůta k vyjádření zjištěná systémem LexisLocal.\\n\\nSpis: ${caseNumber}\\nŽalobce: ${plaintiff}\\nŽalovaný: ${defendant}`,
+                'STATUS:CONFIRMED',
+                'SEQUENCE:0',
+                'BEGIN:VALARM',
+                'TRIGGER:-PT9H', // Notification at 9:00 AM on the day of the event
+                'ACTION:DISPLAY',
+                'DESCRIPTION:Reminder',
+                'END:VALARM',
+                'END:VEVENT',
+                'END:VCALENDAR'
+            ].join('\r\n');
+            
+            const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `lhuta_${caseNumber.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '')}.ics`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            alert(`📅 Lhůta pro spis ${caseNumber} byla úspěšně vyexportována!\n\nSoubor .ics se stáhl do Vašeho počítače. Poklepáním na něj ho ihned přidáte do svého Outlooku nebo systémového Kalendáře.`);
+        } catch (e) {
+            console.error("Chyba při stahování kalendáře:", e);
+            alert("❌ Nepodařilo se vygenerovat kalendář: " + e.message);
         }
     }
 
@@ -1444,6 +1492,57 @@ Generováno systémem LexisLocal. 100% soukromé a šifrované.`;
             }
         } catch (err) {
             alert("❌ Nepodařilo se skrýt upozornění: " + err.message);
+        }
+    }
+
+    applyPlaybook(type) {
+        const toggle = document.getElementById('toggle-swarm-debate');
+        const agent1 = document.getElementById('chat-agent-select');
+        const agent2 = document.getElementById('chat-agent-2-select');
+        const textarea = document.getElementById('chat-textarea');
+        const config2 = document.getElementById('config-agent-2-container');
+        
+        if (!agent1 || !agent2 || !textarea) return;
+        
+        // Ensure Swarm Debate toggle is checked
+        if (toggle) {
+            toggle.checked = true;
+            if (config2) config2.style.display = 'block';
+        }
+        
+        let promptText = "";
+        
+        if (type === 'due-diligence') {
+            agent1.value = "spisovatel";
+            agent2.value = "kontrolor";
+            promptText = `[Sem vložte text smlouvy nebo doložky k analýze]\n\nUdělejte detailní právní audit této smlouvy. Agent 1 (Spisovatel) navrhne optimalizované znění, Agent 2 (Kontrolor) vyhledá skrytá rizika a slabiny pro našeho klienta.`;
+        } else if (type === 'litigation') {
+            agent1.value = "resersnik";
+            agent2.value = "kontrolor";
+            promptText = `[Sem popište spor nebo vložte žalobu protistrany]\n\nNavrhněte strategii obhajoby/žalobní argumentace. Agent 1 (Rešeršník) vyhledá relevantní argumenty a judikaturu ze spisu, Agent 2 (Oponent) zpochybní naše tvrzení a ukáže, jak bude reagovat protistrana.`;
+        } else if (type === 'explainer') {
+            agent1.value = "sekretarka";
+            agent2.value = "stylista";
+            promptText = `[Sem vložte složité právní vyjádření, rozsudek nebo smlouvu]\n\nPřeveďte tento složitý text do řeči srozumitelné pro laického klienta. Agent 1 (Sekretářka) vysvětlí hlavní podstatu bez právního žargonu, Agent 2 (Stylista) z toho zformuluje přehledný e-mail s odrážkami.`;
+        }
+        
+        textarea.value = promptText;
+        textarea.style.height = 'auto';
+        textarea.style.height = (textarea.scrollHeight + 10) + 'px'; // auto resize height with padding buffer
+        textarea.focus();
+        
+        // Temporarily highlight the playbook bar buttons
+        document.querySelectorAll('.playbook-btn').forEach(btn => {
+            btn.style.opacity = '0.6';
+        });
+        const activeBtn = document.querySelector(`.playbook-btn[onclick*="${type}"]`);
+        if (activeBtn) {
+            activeBtn.style.opacity = '1';
+            activeBtn.style.boxShadow = '0 0 10px rgba(255,255,255,0.15)';
+            setTimeout(() => {
+                activeBtn.style.boxShadow = 'none';
+                document.querySelectorAll('.playbook-btn').forEach(btn => btn.style.opacity = '1');
+            }, 1000);
         }
     }
 

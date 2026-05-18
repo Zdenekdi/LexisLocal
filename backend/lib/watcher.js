@@ -51,7 +51,7 @@ watcher.on('add', async (filePath) => {
     if (path.basename(filePath) === '.inbox.json') return;
     
     const ext = path.extname(filePath).toLowerCase();
-    const supportedExts = ['.pdf', '.txt', '.html', ...IMAGE_EXTENSIONS];
+    const supportedExts = ['.pdf', '.txt', '.html', '.docx', ...IMAGE_EXTENSIONS];
     if (supportedExts.includes(ext)) {
         console.log(`📥 Detekován nový dokument: ${path.basename(filePath)}`);
         

@@ -19,6 +19,43 @@ const MIN_PDF_TEXT_LENGTH = 80;
 const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.tiff', '.tif', '.bmp', '.webp'];
 
 /**
+ * Extract clean plaintext from a Word .docx document using native Mac unzip and XML matching.
+ * Requires no external NPM zip libraries, works out of the box and is extremely fast!
+ */
+function extractTextFromDocx(filePath) {
+    try {
+        const { execSync } = require('child_process');
+        // Run native unzip -p to print word/document.xml directly to stdout
+        const documentXml = execSync(`unzip -p "${filePath}" word/document.xml`, { 
+            encoding: 'utf-8', 
+            maxBuffer: 50 * 1024 * 1024, // 50MB buffer safety
+            stdio: ['pipe', 'pipe', 'ignore'] // ignore stderr to prevent warnings
+        });
+        
+        // Find all paragraph blocks
+        const paragraphMatches = documentXml.match(/<w:p[^>]*>([\s\S]*?)<\/w:p>/g) || [];
+        
+        const paragraphs = paragraphMatches.map(p => {
+            // For each paragraph, find all text runs
+            const textMatches = p.match(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g) || [];
+            // Merge text runs and strip XML tags (un-escape XML entities if any)
+            return textMatches
+                .map(m => m.replace(/<[^>]+>/g, ''))
+                .join('')
+                .replace(/&amp;/g, '&')
+                .replace(/&lt;/g, '<')
+                .replace(/&gt;/g, '>')
+                .replace(/&quot;/g, '"')
+                .replace(/&apos;/g, "'");
+        });
+        
+        return paragraphs.join('\n\n').trim();
+    } catch (err) {
+        throw new Error(`Chyba při parsování Word XML: ${err.message}`);
+    }
+}
+
+/**
  * Check if a file extension is an image we can OCR directly
  */
 function isImageFile(filePath) {
@@ -160,6 +197,17 @@ async function extractTextFromFile(filePath) {
         return { text, ocr: false };
     }
     
+    // === Word .docx files (using native unzip + XML parsing) ===
+    if (ext === '.docx') {
+        try {
+            const text = extractTextFromDocx(filePath);
+            return { text, ocr: false };
+        } catch (err) {
+            console.error(`❌ Word: Selhala extrakce z .docx souboru ${path.basename(filePath)}:`, err.message);
+            return { text: '', ocr: false };
+        }
+    }
+
     // === Image files: direct OCR ===
     if (isImageFile(filePath)) {
         const text = await ocrImageFile(filePath);
