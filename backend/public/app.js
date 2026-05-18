@@ -183,6 +183,28 @@ class LexisLocalApp {
                 }
             });
         }
+
+        // Refresh Audit Log Action
+        const refreshAuditBtn = document.getElementById('btn-refresh-audit');
+        if (refreshAuditBtn) {
+            refreshAuditBtn.addEventListener('click', () => this.loadAuditLogs());
+        }
+
+        // Clear Audit Log Action
+        const clearAuditBtn = document.getElementById('btn-clear-audit');
+        if (clearAuditBtn) {
+            clearAuditBtn.addEventListener('click', () => {
+                if (confirm("Opravdu chcete vymazat celou historii auditních logů? Všechny provozní statistiky budou vynulovány.")) {
+                    this.clearAuditLogs();
+                }
+            });
+        }
+
+        // Search Audit Log Input
+        const auditSearchInput = document.getElementById('audit-search-input');
+        if (auditSearchInput) {
+            auditSearchInput.addEventListener('input', () => this.filterAuditLogs());
+        }
     }
 
     startClock() {
@@ -234,6 +256,10 @@ class LexisLocalApp {
             manual: {
                 title: "Nápověda & Nastavení",
                 sub: "Kompletní návod na konfiguraci lokální AI a chování swarmu."
+            },
+            audit: {
+                title: "Auditní logy & Provoz",
+                sub: "Historie zpracování dat, OCR úkonů a klientského vytížení AI."
             }
         };
 
@@ -247,6 +273,8 @@ class LexisLocalApp {
             this.loadModels();
         } else if (tabName === 'inbox') {
             this.loadInbox();
+        } else if (tabName === 'audit') {
+            this.loadAuditLogs();
         }
 
         // Auto close mobile drawer on tab switch
@@ -1577,6 +1605,170 @@ Generováno systémem LexisLocal. 100% soukromé a šifrované.`;
                 btn.disabled = false;
             }
         }
+    }
+
+    async loadAuditLogs() {
+        try {
+            const res = await fetch(`${this.apiBase}/audit/logs`, {
+                headers: this.getHeaders()
+            });
+            const data = await res.json();
+            
+            if (data.success) {
+                this.auditLogs = data.logs || [];
+                this.renderAuditLogs(this.auditLogs);
+                this.updateAuditStats(this.auditLogs);
+            } else {
+                console.error("❌ Nepodařilo se načíst auditní logy:", data.error);
+            }
+        } catch (err) {
+            console.error("❌ Chyba sítě při načítání auditních logů:", err.message);
+        }
+    }
+
+    updateAuditStats(logs) {
+        const totalEl = document.getElementById('audit-stat-total');
+        const ocrEl = document.getElementById('audit-stat-ocr');
+        const aiEl = document.getElementById('audit-stat-ai');
+        const durationEl = document.getElementById('audit-stat-duration');
+
+        if (!totalEl) return;
+
+        const totalCount = logs.length;
+        const ocrCount = logs.filter(l => {
+            const op = l.operation.toLowerCase();
+            return op.includes('ocr') || op.includes('dokument');
+        }).length;
+        const aiCount = logs.filter(l => {
+            const op = l.operation.toLowerCase();
+            return op.includes('ai') || op.includes('swarm');
+        }).length;
+        
+        const totalDurationMs = logs.reduce((sum, l) => {
+            return sum + (l.details && l.details.durationMs ? l.details.durationMs : 0);
+        }, 0);
+        const totalDurationS = (totalDurationMs / 1000).toFixed(1);
+
+        totalEl.textContent = totalCount;
+        ocrEl.textContent = ocrCount;
+        aiEl.textContent = aiCount;
+        durationEl.textContent = `${totalDurationS}s`;
+    }
+
+    renderAuditLogs(logs) {
+        const tbody = document.getElementById('audit-log-table-body');
+        if (!tbody) return;
+
+        if (logs.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="5" style="text-align: center; padding: 30px; opacity: 0.6;">Zatím nebyly zaznamenány žádné provozní úkony.</td>
+                </tr>
+            `;
+            return;
+        }
+
+        tbody.innerHTML = logs.map(log => {
+            const date = new Date(log.timestamp);
+            const formattedDate = date.toLocaleString('cs-CZ', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+
+            // Premium colored badges for operations
+            let badgeClass = 'badge-system';
+            if (log.operation.includes('OCR')) badgeClass = 'badge-ocr';
+            else if (log.operation.includes('AI') || log.operation.includes('Swarm')) badgeClass = 'badge-ai';
+            else if (log.operation.includes('Dokument') || log.operation.includes('soubor') || log.operation.includes('FileWatcher')) badgeClass = 'badge-watcher';
+
+            // Custom details parsing
+            let detailsHtml = '';
+            if (log.details) {
+                if (log.details.durationMs !== undefined) {
+                    detailsHtml += `<span style="color: #fb7185; font-weight: 500;">⚡ ${log.details.durationMs}ms</span>`;
+                }
+                if (log.details.charactersCount !== undefined) {
+                    detailsHtml += detailsHtml ? ' | ' : '';
+                    detailsHtml += `<span style="opacity:0.8;">📄 ${log.details.charactersCount} zn.</span>`;
+                }
+                if (log.details.model) {
+                    detailsHtml += detailsHtml ? ' | ' : '';
+                    detailsHtml += `<span style="color: var(--accent-blue);">🤖 ${log.details.model}</span>`;
+                }
+                if (log.details.successCount !== undefined) {
+                    detailsHtml += detailsHtml ? ' | ' : '';
+                    detailsHtml += `<span style="color: var(--accent-green);">✓ ${log.details.successCount} spisy</span>`;
+                }
+            }
+            if (!detailsHtml) detailsHtml = '<span style="opacity: 0.5;">—</span>';
+
+            return `
+                <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.05); hover: background-color: rgba(255,255,255,0.01);">
+                    <td style="padding: 12px; font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; opacity: 0.9;">${formattedDate}</td>
+                    <td style="padding: 12px;"><span style="font-weight: 500; opacity: 0.8;">${log.user}</span></td>
+                    <td style="padding: 12px;"><span class="audit-badge ${badgeClass}">${log.operation}</span></td>
+                    <td style="padding: 12px; font-weight: 500;">${log.target}</td>
+                    <td style="padding: 12px; font-size: 0.85rem;">${detailsHtml}</td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    async clearAuditLogs() {
+        try {
+            const res = await fetch(`${this.apiBase}/audit/clear`, {
+                method: 'POST',
+                headers: this.getHeaders()
+            });
+            const data = await res.json();
+            
+            if (data.success) {
+                this.auditLogs = [];
+                this.renderAuditLogs([]);
+                this.updateAuditStats([]);
+                alert("✓ Provozní auditní logy byly kompletně vymazány.");
+            } else {
+                alert("❌ Chyba při mazání logů: " + data.error);
+            }
+        } catch (err) {
+            alert("❌ Chyba sítě při mazání logů: " + err.message);
+        }
+    }
+
+    filterAuditLogs() {
+        const queryInput = document.getElementById('audit-search-input');
+        if (!queryInput) return;
+
+        const query = queryInput.value.toLowerCase().trim();
+        if (!query) {
+            this.renderAuditLogs(this.auditLogs);
+            return;
+        }
+
+        const filtered = this.auditLogs.filter(log => {
+            const timeStr = new Date(log.timestamp).toLocaleString('cs-CZ').toLowerCase();
+            const userStr = log.user.toLowerCase();
+            const opStr = log.operation.toLowerCase();
+            const targetStr = log.target.toLowerCase();
+            
+            // Render details into string for searching
+            let detailsStr = '';
+            if (log.details) {
+                detailsStr = JSON.stringify(log.details).toLowerCase();
+            }
+
+            return timeStr.includes(query) || 
+                   userStr.includes(query) || 
+                   opStr.includes(query) || 
+                   targetStr.includes(query) ||
+                   detailsStr.includes(query);
+        });
+
+        this.renderAuditLogs(filtered);
     }
 }
 

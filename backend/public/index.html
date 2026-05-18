@@ -41,6 +41,9 @@
                 <button class="nav-btn" data-tab="chat">
                     <span class="icon">💬</span> Chat Swarmu
                 </button>
+                <button class="nav-btn" data-tab="audit">
+                    <span class="icon">📜</span> Auditní logy
+                </button>
                 <button class="nav-btn" data-tab="manual">
                     <span class="icon">📖</span> Návod & Agenti
                 </button>
@@ -388,6 +391,69 @@
                                 <button class="btn btn-primary" id="btn-save-token">Uložit klíč 🔒</button>
                             </div>
                             <span id="token-status-text" style="font-size: 0.75rem; margin-top: 5px; color: var(--accent-green); display: none;">✓ Bezpečnostní klíč byl uložen do paměti prohlížeče.</span>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- TAB: AUDIT LOG -->
+                <section class="tab-pane" id="tab-audit">
+                    <div class="glass manual-card">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px;">
+                            <div>
+                                <h3>📜 Auditní logy & Provozní historie</h3>
+                                <p style="margin-top: 5px; opacity: 0.8;">Chronologický přehled úkonů AI, OCR a RAG vyhledávání pro kontrolu práce a klientskou fakturaci.</p>
+                            </div>
+                            <div style="display: flex; gap: 10px;">
+                                <button class="btn btn-secondary" id="btn-refresh-audit" style="display: flex; align-items: center; gap: 8px;">
+                                    <span>🔄</span> Obnovit logy
+                                </button>
+                                <button class="btn btn-danger" id="btn-clear-audit" style="display: flex; align-items: center; gap: 8px; background: rgba(220, 53, 69, 0.2); border-color: rgba(220, 53, 69, 0.4); color: #ff6b6b;">
+                                    <span>🗑️</span> Vymazat logy
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="search-bar" style="margin-bottom: 20px;">
+                            <input type="text" id="audit-search-input" placeholder="Vyhledat v logu (např. 'Zpracování OCR', název spisu...)" style="width: 100%; max-width: none;">
+                        </div>
+                        
+                        <div class="audit-stats-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; margin-bottom: 25px;">
+                            <div class="glass" style="padding: 15px; border-radius: 12px; text-align: center; background: rgba(255, 255, 255, 0.02);">
+                                <span style="font-size: 0.85rem; opacity: 0.7; display: block; margin-bottom: 5px;">Celkem úkonů</span>
+                                <strong id="audit-stat-total" style="font-size: 1.8rem; font-family: 'Outfit', sans-serif; color: var(--accent-blue);">0</strong>
+                            </div>
+                            <div class="glass" style="padding: 15px; border-radius: 12px; text-align: center; background: rgba(255, 255, 255, 0.02);">
+                                <span style="font-size: 0.85rem; opacity: 0.7; display: block; margin-bottom: 5px;">OCR převody</span>
+                                <strong id="audit-stat-ocr" style="font-size: 1.8rem; font-family: 'Outfit', sans-serif; color: var(--accent-green);">0</strong>
+                            </div>
+                            <div class="glass" style="padding: 15px; border-radius: 12px; text-align: center; background: rgba(255, 255, 255, 0.02);">
+                                <span style="font-size: 0.85rem; opacity: 0.7; display: block; margin-bottom: 5px;">AI Dotazy</span>
+                                <strong id="audit-stat-ai" style="font-size: 1.8rem; font-family: 'Outfit', sans-serif; color: #a855f7;">0</strong>
+                            </div>
+                            <div class="glass" style="padding: 15px; border-radius: 12px; text-align: center; background: rgba(255, 255, 255, 0.02);">
+                                <span style="font-size: 0.85rem; opacity: 0.7; display: block; margin-bottom: 5px;">Celková doba AI (s)</span>
+                                <strong id="audit-stat-duration" style="font-size: 1.8rem; font-family: 'Outfit', sans-serif; color: #fb7185;">0s</strong>
+                            </div>
+                        </div>
+
+                        <div class="audit-log-container" style="overflow-x: auto; max-height: 500px; border-radius: 12px;">
+                            <table class="manual-table" style="width: 100%; border-collapse: collapse; min-width: 800px;">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 160px; text-align: left; padding: 12px;">Čas úkonu</th>
+                                        <th style="width: 120px; text-align: left; padding: 12px;">Uživatel</th>
+                                        <th style="width: 180px; text-align: left; padding: 12px;">Operace / Úkon</th>
+                                        <th style="text-align: left; padding: 12px;">Název spisu / Cíl</th>
+                                        <th style="width: 250px; text-align: left; padding: 12px;">Detaily (Doba / Výkon)</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="audit-log-table-body">
+                                    <!-- Dynamic rows -->
+                                    <tr>
+                                        <td colspan="5" style="text-align: center; padding: 30px; opacity: 0.6;">Zatím nebyly zaznamenány žádné úkony.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 </section>

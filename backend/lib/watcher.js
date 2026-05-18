@@ -10,6 +10,7 @@ const fs = require('fs');
 const { checkSubject } = require('./registries');
 const { indexDocument, deleteDocumentIndex } = require('./rag');
 const { extractTextFromFile, isImageFile, IMAGE_EXTENSIONS } = require('./ocr');
+const { logEvent } = require('./audit');
 
 // Robust Ollama module import supporting both CommonJS and ESM default exports
 const ollamaLib = require('ollama');
@@ -177,6 +178,12 @@ async function processDocument(filePath) {
     };
     saveInbox(inbox);
     console.log(`✅ Dokument ${fileName} byl úspěšně analyzován a uložen do lokálního indexu.`);
+    
+    logEvent('FileWatcher', wasOcr ? 'Zpracování OCR' : 'Zpracování dokumentu', fileName, {
+        caseNumber: metadata.caseNumber || 'Nezjištěna',
+        deadlineDays: metadata.deadlineDays || 0,
+        charactersCount: text.length
+    });
     
     // Automatically trigger insolvency check in background to ensure alerts are up-to-date
     checkAllInsolvencies().catch(err => console.error("⚠️ Background ISIR verification error:", err.message));

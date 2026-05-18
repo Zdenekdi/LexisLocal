@@ -7,6 +7,7 @@ const fs = require('fs');
 const { WATCH_DIR, loadInbox, saveInbox, processDocument, setWatcherState, checkAllInsolvencies } = require('./lib/watcher');
 const { checkSubject } = require('./lib/registries');
 const { indexDocument, deleteDocumentIndex, searchSimilar, loadIndex } = require('./lib/rag');
+const { logEvent } = require('./lib/audit');
 
 // Robust Ollama module import supporting both CommonJS and ESM default exports
 const ollamaLib = require('ollama');
@@ -23,14 +24,19 @@ app.use(express.static(path.join(__dirname, 'public')));
 // Secure API Token Middleware
 const API_TOKEN = process.env.API_TOKEN;
 const authenticate = (req, res, next) => {
-    // Allow static files in the public directory without auth
-    if (req.path === '/' || req.path === '/index.html' || req.path.endsWith('.css') || req.path.endsWith('.js') || req.path.endsWith('.ico')) {
+    // Allow static files in the public directory and OPTIONS preflight requests without auth
+    if (req.method === 'OPTIONS' || req.path === '/' || req.path === '/index.html' || req.path.endsWith('.css') || req.path.endsWith('.js') || req.path.endsWith('.ico')) {
         return next();
     }
     
     // Only enforce auth if API_TOKEN is set in environment
     if (API_TOKEN) {
-        const token = req.headers['x-api-token'] || req.query.token;
+        const authHeader = req.headers['authorization'];
+        let token = req.headers['x-api-token'] || req.query.token;
+        if (authHeader && authHeader.startsWith('Bearer ')) {
+            token = authHeader.substring(7);
+        }
+        
         if (token !== API_TOKEN) {
             console.warn(`🔒 Nepovolený přístup k API: ${req.method} ${req.path}`);
             return res.status(401).json({ error: "Přístup odepřen: Neplatný nebo chybějící API token." });
@@ -127,6 +133,7 @@ app.post('/api/models/pull', async (req, res) => {
 app.post('/api/agent/:agentId', async (req, res) => {
     const { agentId } = req.params;
     const { prompt, context, model } = req.body;
+    const startTime = Date.now();
     
     const agent = AGENTS[agentId];
     if (!agent) {
@@ -176,6 +183,14 @@ app.post('/api/agent/:agentId', async (req, res) => {
             }
         });
         
+        logEvent('LexisEditor', `AI Agent (${agent.name})`, 'Generování textu', {
+            model: selectedModel,
+            promptLength: prompt.length,
+            contextLength: context ? context.length : 0,
+            responseLength: response.message.content.length,
+            durationMs: Date.now() - startTime
+        });
+
         res.json({
             agent: agent.name,
             model: selectedModel,
@@ -183,22 +198,31 @@ app.post('/api/agent/:agentId', async (req, res) => {
             timestamp: new Date().toISOString()
         });
         
-    } catch (err) {
+     } catch (err) {
         console.warn(`⚠️ Selhalo spojení s Ollama (${err.message}). Používám robustní lokální simulovaný fallback.`);
         const fallbackResponse = generateAgentFallback(agentId, prompt);
         
+        logEvent('LexisEditor', `AI Agent Fallback (${agent.name})`, 'Generování textu (Fallback)', {
+            model: `${selectedModel} (Simulovaný)`,
+            promptLength: prompt.length,
+            contextLength: context ? context.length : 0,
+            responseLength: fallbackResponse.length,
+            durationMs: Date.now() - startTime
+        });
+
         res.json({
             agent: agent.name,
             model: `${selectedModel} (Simulovaný)`,
             response: fallbackResponse,
             timestamp: new Date().toISOString()
         });
-    }
+     }
 });
 
 // AI Swarm Debate - Coordinate two agents interacting over the same task
 app.post('/api/agent-swarm/debate', async (req, res) => {
     const { prompt, agentId1, agentId2, context, model } = req.body;
+    const startTime = Date.now();
     
     const agent1 = AGENTS[agentId1];
     const agent2 = AGENTS[agentId2];
@@ -284,6 +308,17 @@ app.post('/api/agent-swarm/debate', async (req, res) => {
         
         const answer2 = response2.message.content;
         
+        logEvent('LexisEditor', 'Swarm Debata', `Duel: ${agent1.name} vs. ${agent2.name}`, {
+            model: selectedModel,
+            agent1: agent1.name,
+            agent2: agent2.name,
+            promptLength: prompt.length,
+            contextLength: context ? context.length : 0,
+            response1Length: answer1.length,
+            response2Length: answer2.length,
+            durationMs: Date.now() - startTime
+        });
+
         res.json({
             success: true,
             model: selectedModel,
@@ -298,6 +333,17 @@ app.post('/api/agent-swarm/debate', async (req, res) => {
         const answer1 = generateAgentFallback(agentId1, prompt);
         const answer2 = `[Oponentní posudek od agenta ${agent2.name} na návrh od ${agent1.name}]:\n\nAnalyzoval jsem předchozí vypracování. Návrh je strukturovaný správně, avšak doporučuji doplnit výslovnou doložku o volbě práva a smluvní pokutě ve výši 0.05 % denně za prodlení, aby byly zájmy našeho klienta chráněny neprůstřelně.\n\nZde je revidovaný odstavec:\n"V případě prodlení kupujícího s úhradou kupní ceny se sjednává smluvní pokuta ve výši 0.05 % z dlužné částky za každý den prodlení."`;
         
+        logEvent('LexisEditor', 'Swarm Debata Fallback', `Duel Fallback: ${agent1.name} vs. ${agent2.name}`, {
+            model: `${selectedModel} (Simulovaný Swarm)`,
+            agent1: agent1.name,
+            agent2: agent2.name,
+            promptLength: prompt.length,
+            contextLength: context ? context.length : 0,
+            response1Length: answer1.length,
+            response2Length: answer2.length,
+            durationMs: Date.now() - startTime
+        });
+
         res.json({
             success: true,
             model: `${selectedModel} (Simulovaný Swarm)`,
@@ -748,12 +794,44 @@ app.post('/api/rag/reindex-all', async (req, res) => {
                 }
             }
         }
+        logEvent('LexisLocal Dashboard', 'Re-indexace spisy', 'Všechny spisy', {
+            successCount
+        });
+
         res.json({
             success: true,
             message: `Re-indexace dokončena. Úspěšně přegenerováno ${successCount} z ${files.length} souborů.`
         });
     } catch (err) {
         res.status(500).json({ error: `Chyba při re-indexaci: ${err.message}` });
+    }
+});
+
+// GET /api/audit/logs - Retrieve audit trail log events
+app.get('/api/audit/logs', (req, res) => {
+    const { loadAuditLogs } = require('./lib/audit');
+    try {
+        const logs = loadAuditLogs();
+        res.json({ success: true, logs: logs.reverse() }); // return newest first
+    } catch (err) {
+        res.status(500).json({ error: `Nelze načíst auditní logy: ${err.message}` });
+    }
+});
+
+// POST /api/audit/clear - Clear all audit trail log events
+app.post('/api/audit/clear', (req, res) => {
+    const fs = require('fs');
+    const path = require('path');
+    try {
+        const WATCH_DIR = process.env.WATCH_DIR || path.join(require('os').homedir(), 'Desktop', 'LexisSpisy');
+        const AUDIT_LOG_FILE = path.join(WATCH_DIR, '.audit_log.json');
+        if (fs.existsSync(AUDIT_LOG_FILE)) {
+            fs.writeFileSync(AUDIT_LOG_FILE, JSON.stringify([], null, 2), 'utf-8');
+        }
+        logEvent('LexisLocal Dashboard', 'Pročištění logů', 'Audit Trail', { cleared: true });
+        res.json({ success: true, message: "Auditní logy byly vyčištěny." });
+    } catch (err) {
+        res.status(500).json({ error: `Nelze vyčistit logy: ${err.message}` });
     }
 });
 
@@ -765,6 +843,31 @@ app.post('/api/watcher/toggle', (req, res) => {
     res.json({ success: true, active: isActive });
 });
 
-app.listen(PORT, () => {
-    console.log(`🚀 LexisLocal AI backend běží na http://localhost:${PORT}`);
-});
+const USE_HTTPS = process.env.USE_HTTPS === 'true';
+const SSL_KEY_PATH = process.env.SSL_KEY_PATH || 'key.pem';
+const SSL_CERT_PATH = process.env.SSL_CERT_PATH || 'cert.pem';
+
+if (USE_HTTPS && fs.existsSync(SSL_KEY_PATH) && fs.existsSync(SSL_CERT_PATH)) {
+    try {
+        const https = require('https');
+        const sslOptions = {
+            key: fs.readFileSync(SSL_KEY_PATH),
+            cert: fs.readFileSync(SSL_CERT_PATH)
+        };
+        https.createServer(sslOptions, app).listen(PORT, () => {
+            console.log(`🚀🔒 LexisLocal AI ZABEZPEČENÝ backend (HTTPS) běží na https://localhost:${PORT}`);
+        });
+    } catch (httpsErr) {
+        console.error("❌ Nepodařilo se spustit HTTPS server, padám zpět na HTTP:", httpsErr.message);
+        app.listen(PORT, () => {
+            console.log(`🚀 LexisLocal AI backend běží na http://localhost:${PORT}`);
+        });
+    }
+} else {
+    if (USE_HTTPS) {
+        console.warn(`⚠️ V konfiguraci je vyžadováno HTTPS, ale chybí soubory certifikátu (${SSL_KEY_PATH} / ${SSL_CERT_PATH}). Spouštím na HTTP.`);
+    }
+    app.listen(PORT, () => {
+        console.log(`🚀 LexisLocal AI backend běží na http://localhost:${PORT}`);
+    });
+}
