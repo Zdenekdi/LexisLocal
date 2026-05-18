@@ -28,7 +28,13 @@ function fetchUrl(url, options = {}) {
                 if (res.statusCode >= 200 && res.statusCode < 300) {
                     resolve(data);
                 } else {
-                    reject(new Error(`HTTP ${res.statusCode}: ${data}`));
+                    let errMsg = data.trim();
+                    if (errMsg.includes('<!DOCTYPE') || errMsg.includes('<html') || errMsg.includes('<HTML')) {
+                        errMsg = `[HTML/XML chybová stránka - délka ${errMsg.length} znaků]`;
+                    } else if (errMsg.length > 150) {
+                        errMsg = errMsg.substring(0, 150) + '...';
+                    }
+                    reject(new Error(`HTTP ${res.statusCode}: ${errMsg}`));
                 }
             });
         });
@@ -119,7 +125,7 @@ async function checkIsir(ico) {
         return { inInsolvency: false };
     } catch (e) {
         console.warn(`⚠️ Chyba ISIR pro IČO ${ico}:`, e.message);
-        return { inInsolvency: false };
+        return { inInsolvency: false, error: e.message };
     }
 }
 
@@ -142,11 +148,11 @@ async function checkSubject(ico) {
     
     return {
         ico: cleanIco,
-        name: ares ? ares.name : "Subjekt nenalezen v ARES",
+        name: ares ? ares.name : "ARES nedostupný / Selhal dotaz",
         seat: ares ? ares.seat : "Adresa nezjištěna",
         inInsolvency: isir.inInsolvency,
         insolvencyCase: isir.caseNumber || null,
-        insolvencyStatus: isir.status || null,
+        insolvencyStatus: isir.error ? `ISIR nedostupný (${isir.error})` : (isir.status || null),
         verifiedAt: new Date().toISOString()
     };
 }
