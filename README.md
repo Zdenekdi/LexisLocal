@@ -39,6 +39,14 @@ LexisLocal nespoléhá na jednoho obecného chatbota. Namísto toho nasazuje spe
 4.  **⏰ Robot "Sekretářka"**: Organizuje spisovou agendu, extrahuje ze spisů úkoly a schůzky a generuje kalendářové doložky (`.ics`) kompatibilní s Outlookem.
 5.  **📝 Robot "Spisovatel"**: Sestavuje precizní a neprůstřelné drafty smluv, žalob a odvolání na základě zadaných parametrů a klientského kontextu.
 
+## ✨ Hlavní Funkcionality (Features)
+
+*   **🔒 Šifrovaná lokální databáze (AES-256)**: Kompletní šifrování spisů, logů a citlivých klientských dat v zero-dependency relačním souborovém subsystému s atomickými zápisy.
+*   **🔍 Detektor střetu zájmů (Conflict Check)**: Sémantická analýza archivu klientských dokumentů pomocí RAG indexů. Automaticky detekuje riziko střetu zájmů s protistranou při onboardingu.
+*   **⚖️ Hlídač judikatury (Template Compliance)**: Porovnávání textů doložek a smluv s precedentními judikáty Nejvyššího soudu (NS) a e-Sbírky. Navrhuje legislativně bezchybné opravy doložek.
+*   **🕒 Time-tracking & AI Timesheety**: Integrace na pozadí s LexisEditorerem, automatická detekce odpracovaného času a generování profesionálních, česky stylizovaných denních výkazů lokální AI.
+*   **📊 Manažerská ziskovost (Profitability & Capacity)**: Nastavení budgetů pro spisy v %, hlídání přefakturace a automatické monitorování zátěže koncipientů na základě aktivních lhůt.
+
 ## 💻 Doporučené hardwarové specifikace
 
 | Parametr | Standardní pracovní stanice | Výkonný server / Mac Studio |
@@ -108,6 +116,14 @@ LexisLocal does not rely on a single generic chatbot. Instead, it deploys a team
 3.  **⚖️ Robot "Kontrolor" (The Adversary)**: Acts as an opponent, stress-testing legal arguments and pointing out logical gaps or contradictions.
 4.  **⏰ Robot "Sekretářka" (The Scheduler)**: Syncs deadlines with MS Outlook and manages internal files.
 5.  **📝 Robot "Spisovatel" (The Writer)**: Drafts precise, structured agreements, briefs, and legal forms from client context.
+
+## ✨ Key Features
+
+*   **🔒 AES-256 Encrypted Local Database**: Full offline encryption of clients, logs, and briefs with zero-dependency atomic transaction files.
+*   **🔍 Conflict of Interest Detector**: Deep semantic matching of onboarding clients and counterparties against historical archives via RAG index.
+*   **⚖️ Supreme Court Compliance Watcher**: Automatic screening of contracts against latest case laws with inline suggested remedies.
+*   **🕒 Activity Time-tracking & AI Timesheets**: Heartbeat listeners connected to LexisEditor with automatic professional daily billings synthesized by local LLM.
+*   **📊 Managerial Profitability & Capacity Allocation**: Real-time margin monitoring, budgets trackers, and team workload indices.
 
 ## 💻 Recommended Hardware Specs
 
