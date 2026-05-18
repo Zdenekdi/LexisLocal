@@ -17,7 +17,13 @@ const DEFAULT_AGENTS = {
         emoji: "📚",
         role: "Vyhledávání v zákonech a judikatuře. Formulace právních argumentů.",
         systemPrompt: "Jsi zkušený český advokátní koncipient zaměřený na rešerše. Tvým úkolem je na základě zadaných právních předpisů a judikátů vypracovat objektivní právní rozbor.",
-        isSystem: true
+        isSystem: true,
+        preferredModel: "llama3",
+        permissions: {
+            read_files: true,
+            query_registries: true,
+            write_desktop: false
+        }
     },
     stylista: {
         id: "stylista",
@@ -25,7 +31,13 @@ const DEFAULT_AGENTS = {
         emoji: "✍️",
         role: "Klonování stylu advokáta. Přepisování textu do elegantní advokátní češtiny.",
         systemPrompt: "Jsi expert na stylistiku a právní psaní. Tvým úkolem je upravit text tak, aby působil nanejvýš profesionálně, autoritativně, přesvědčivě a přirozeně.",
-        isSystem: true
+        isSystem: true,
+        preferredModel: "llama3",
+        permissions: {
+            read_files: false,
+            query_registries: false,
+            write_desktop: false
+        }
     },
     kontrolor: {
         id: "kontrolor",
@@ -33,7 +45,13 @@ const DEFAULT_AGENTS = {
         emoji: "⚖️",
         role: "Detekce rizik, protimluvů a slabých míst v argumentaci.",
         systemPrompt: "Jsi oponentní právní zástupce. Tvým úkolem je kriticky zhodnotit předložený text, najít v něm logické chyby, slabá místa a navrhnout protiargumenty.",
-        isSystem: true
+        isSystem: true,
+        preferredModel: "mistral",
+        permissions: {
+            read_files: true,
+            query_registries: false,
+            write_desktop: false
+        }
     },
     sekretarka: {
         id: "sekretarka",
@@ -41,7 +59,13 @@ const DEFAULT_AGENTS = {
         emoji: "⏰",
         role: "Správa spisové agendy, formátování doložek, extrakce schůzek a úkolů.",
         systemPrompt: "Jsi vysoce organizovaná a profesionální advokátní sekretářka. Tvým úkolem je pomáhat advokátům strukturovat úkoly, shrnout termíny, upravovat tón e-mailové komunikace s klienty a organizovat spisové složky.",
-        isSystem: true
+        isSystem: true,
+        preferredModel: "llama3",
+        permissions: {
+            read_files: false,
+            query_registries: true,
+            write_desktop: true
+        }
     },
     spisovatel: {
         id: "spisovatel",
@@ -49,7 +73,13 @@ const DEFAULT_AGENTS = {
         emoji: "📝",
         role: "Tvorba a úprava právních dokumentů (žaloby, smlouvy, odvolání) na míru.",
         systemPrompt: "Jsi špičkový český advokát a mistr legislativního a kontraktuálního draftování. Tvým úkolem je na základě zadání sestavovat precizní, bezchybné a strukturované právní dokumenty (smlouvy, podání k soudu, odvolání, žaloby) a zapracovávat do nich věcné či stylistické připomínky uživatele s maximálním právním a jazykovým citem.",
-        isSystem: true
+        isSystem: true,
+        preferredModel: "llama3",
+        permissions: {
+            read_files: true,
+            query_registries: false,
+            write_desktop: true
+        }
     }
 };
 
@@ -99,7 +129,13 @@ function saveAgent(agentId, agentData) {
         emoji: agentData.emoji || "🤖",
         role: agentData.role || "Bez popisku",
         systemPrompt: agentData.systemPrompt || "Jsi užitečný AI pomocník.",
-        isSystem: agents[cleanId] ? !!agents[cleanId].isSystem : false
+        isSystem: agents[cleanId] ? !!agents[cleanId].isSystem : false,
+        preferredModel: agentData.preferredModel || "llama3",
+        permissions: agentData.permissions || {
+            read_files: false,
+            query_registries: false,
+            write_desktop: false
+        }
     };
 
     saveAllAgents(agents);

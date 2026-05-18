@@ -44,6 +44,18 @@
                 <button class="nav-btn" data-tab="chat">
                     <span class="icon">💬</span> Chat Swarmu
                 </button>
+                <button class="nav-btn" data-tab="workflow">
+                    <span class="icon">📅</span> Workflow & Lhůty
+                </button>
+                <button class="nav-btn" data-tab="timetracking">
+                    <span class="icon">🕒</span> Time-tracking
+                </button>
+                <button class="nav-btn" data-tab="risks">
+                    <span class="icon">🔍</span> Rizika & Judikatura
+                </button>
+                <button class="nav-btn" data-tab="managerial">
+                    <span class="icon">📊</span> Manažerský Přehled
+                </button>
                 <button class="nav-btn" data-tab="audit">
                     <span class="icon">📜</span> Auditní logy
                 </button>
@@ -519,6 +531,271 @@
                                 </tbody>
                             </table>
                         </div>
+                    </div>
+                </section>
+
+                <!-- TAB: WORKFLOW -->
+                <section class="tab-pane" id="tab-workflow">
+                    <div style="display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 25px;">
+                        <!-- Deadlines / Calendar alerts -->
+                        <div class="glass" style="padding: 25px; border-radius: 16px; border: 1px solid var(--border-glass);">
+                            <h3 style="margin-top: 0; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; font-family: 'Outfit', sans-serif;">
+                                <span>📅</span> Aktivní procesní lhůty a úkoly
+                            </h3>
+                            <div id="workflow-alerts-list" style="display: flex; flex-direction: column; gap: 15px;">
+                                <!-- Populate via JS -->
+                                <div style="text-align: center; padding: 40px; opacity: 0.6;">Načítám procesní úkoly...</div>
+                            </div>
+                        </div>
+
+                        <!-- Workflow Rules -->
+                        <div class="glass" style="padding: 25px; border-radius: 16px; border: 1px solid var(--border-glass); height: fit-content;">
+                            <h3 style="margin-top: 0; margin-bottom: 15px; display: flex; align-items: center; gap: 10px; font-family: 'Outfit', sans-serif;">
+                                <span>⚡</span> Automatické recepty (Pravidla)
+                            </h3>
+                            <p style="font-size: 0.85rem; opacity: 0.7; margin-bottom: 20px;">Systém na pozadí provádí definované akce při výskytu událostí.</p>
+                            
+                            <div id="workflow-rules-list" style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 25px;">
+                                <!-- Populate via JS -->
+                            </div>
+
+                            <hr style="border: 0; border-top: 1px solid var(--border-glass); margin-bottom: 20px;" />
+
+                            <h4 style="margin-top: 0; margin-bottom: 15px; font-family: 'Outfit', sans-serif;">➕ Nové pravidlo workflow</h4>
+                            <form id="workflow-rule-form" style="display: flex; flex-direction: column; gap: 12px;" onsubmit="window.appInstance.saveWorkflowRule(event)">
+                                <div>
+                                    <label style="font-size: 0.8rem; opacity: 0.8; display: block; margin-bottom: 5px;">Název pravidla</label>
+                                    <input type="text" id="wf-rule-name" placeholder="Např. Hlídání lhůty odvolání" required style="width: 100%; padding: 8px 12px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 8px; color: white; outline: none;" />
+                                </div>
+                                <div>
+                                    <label style="font-size: 0.8rem; opacity: 0.8; display: block; margin-bottom: 5px;">Událost (Trigger)</label>
+                                    <select id="wf-rule-trigger" style="width: 100%; padding: 8px 12px; background: #0f172a; border: 1px solid var(--border-glass); border-radius: 8px; color: white; outline: none;">
+                                        <option value="document_saved">Uložení/Editace dokumentu</option>
+                                        <option value="isds_received">Přijetí datové zprávy (ISDS)</option>
+                                    </select>
+                                </div>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                                    <div>
+                                        <label style="font-size: 0.8rem; opacity: 0.8; display: block; margin-bottom: 5px;">Klíčové pole</label>
+                                        <input type="text" id="wf-rule-field" placeholder="Např. documentName" required style="width: 100%; padding: 8px 12px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 8px; color: white; outline: none;" />
+                                    </div>
+                                    <div>
+                                        <label style="font-size: 0.8rem; opacity: 0.8; display: block; margin-bottom: 5px;">Obsahuje hodnotu</label>
+                                        <input type="text" id="wf-rule-value" placeholder="Např. rozsudek" required style="width: 100%; padding: 8px 12px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 8px; color: white; outline: none;" />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label style="font-size: 0.8rem; opacity: 0.8; display: block; margin-bottom: 5px;">Vyvolaná akce (Úkol)</label>
+                                    <input type="text" id="wf-rule-action" placeholder="Např. Připravit odvolání do 15 dnů" required style="width: 100%; padding: 8px 12px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 8px; color: white; outline: none;" />
+                                </div>
+                                <button type="submit" class="btn btn-primary" style="margin-top: 5px;">Uložit recept 💾</button>
+                            </form>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- TAB: TIME-TRACKING -->
+                <section class="tab-pane" id="tab-timetracking">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 25px; margin-bottom: 25px;">
+                        <!-- Time Stats Today -->
+                        <div class="glass" style="padding: 25px; border-radius: 16px; border: 1px solid var(--border-glass);">
+                            <h3 style="margin-top: 0; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; font-family: 'Outfit', sans-serif;">
+                                <span>🕒</span> Dnešní aktivita a odpracovaný čas
+                            </h3>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 25px;">
+                                <div class="glass" style="padding: 20px; border-radius: 12px; text-align: center; background: rgba(255,255,255,0.01);">
+                                    <span style="font-size: 0.8rem; opacity: 0.7; display: block; margin-bottom: 5px;">Odpracovaný čas celkem</span>
+                                    <strong id="time-stat-total" style="font-size: 2.2rem; font-family: 'Outfit', sans-serif; color: var(--accent-gold);">0.0 hod</strong>
+                                </div>
+                                <div class="glass" style="padding: 20px; border-radius: 12px; text-align: center; background: rgba(255,255,255,0.01);">
+                                    <span style="font-size: 0.8rem; opacity: 0.7; display: block; margin-bottom: 5px;">Záznamů o změnách</span>
+                                    <strong id="time-stat-count" style="font-size: 2.2rem; font-family: 'Outfit', sans-serif; color: var(--accent-blue);">0</strong>
+                                </div>
+                            </div>
+
+                            <div id="time-today-activity-list" style="display: flex; flex-direction: column; gap: 12px;">
+                                <!-- Populate via JS -->
+                                <div style="text-align: center; opacity: 0.6; padding: 20px;">Dnes nebyla zaznamenána žádná aktivita v editoru.</div>
+                            </div>
+                        </div>
+
+                        <!-- Timesheet Generation -->
+                        <div class="glass" style="padding: 25px; border-radius: 16px; border: 1px solid var(--border-glass); display: flex; flex-direction: column; justify-content: space-between;">
+                            <div>
+                                <h3 style="margin-top: 0; margin-bottom: 15px; display: flex; align-items: center; gap: 10px; font-family: 'Outfit', sans-serif;">
+                                    <span>📋</span> Generování klientských výkazů (Timesheets)
+                                </h3>
+                                <p style="font-size: 0.85rem; opacity: 0.7; margin-bottom: 20px;">
+                                    Lokální AI automaticky sloučí dnešní surové heartbeats a přepíše je do podoby elegantního, strukturovaného výkazu práce připraveného k fakturaci.
+                                </p>
+
+                                <div style="margin-bottom: 20px; display: flex; gap: 15px; align-items: center;">
+                                    <label style="font-size: 0.85rem; opacity: 0.8;">Použít model pro výkaz:</label>
+                                    <select id="timesheet-model-select" style="padding: 8px 12px; background: #0f172a; border: 1px solid var(--border-glass); border-radius: 8px; color: white; outline: none; flex-grow: 1;">
+                                        <option value="llama3">Llama-3 (Doporučeno)</option>
+                                        <option value="mistral">Mistral (Analytický)</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div style="text-align: center; padding: 10px 0;">
+                                <button class="btn btn-primary" onclick="window.appInstance.generateTimesheet()" style="width: 100%; padding: 14px; font-size: 1rem; display: flex; align-items: center; justify-content: center; gap: 10px; font-family: 'Outfit', sans-serif;">
+                                    <span>✍️</span> Sestavit profesionální denní výkaz
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Previously Generated Timesheets -->
+                    <div class="glass" style="padding: 25px; border-radius: 16px; border: 1px solid var(--border-glass);">
+                        <h3 style="margin-top: 0; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; font-family: 'Outfit', sans-serif;">
+                            <span>📁</span> Uložené denní výkazy práce
+                        </h3>
+                        <div id="timesheets-history-list" style="display: flex; flex-direction: column; gap: 15px;">
+                            <!-- Populate via JS -->
+                            <div style="text-align: center; opacity: 0.6; padding: 30px;">Zatím nebyly sestaveny žádné výkazy.</div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- TAB: RISKS & COMPLIANCE -->
+                <section class="tab-pane" id="tab-risks">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 25px;">
+                        
+                        <!-- Left: Conflict of Interest Onboarding -->
+                        <div class="glass" style="padding: 25px; border-radius: 16px; border: 1px solid var(--border-glass); display: flex; flex-direction: column; justify-content: space-between;">
+                            <div>
+                                <h3 style="margin-top: 0; margin-bottom: 15px; display: flex; align-items: center; gap: 10px; font-family: 'Outfit', sans-serif;">
+                                    <span>🔍</span> Prověrka střetu zájmů (Conflict Check)
+                                </h3>
+                                <p style="font-size: 0.85rem; opacity: 0.7; margin-bottom: 20px;">
+                                    Onboarding nového klienta. Lokální AI a RAG index prohledají kompletní historické spisy a dřívější e-maily na shodu s protistranou.
+                                </p>
+
+                                <form id="conflict-check-form" style="display: flex; flex-direction: column; gap: 12px;" onsubmit="window.appInstance.runConflictCheck(event)">
+                                    <div>
+                                        <label style="font-size: 0.8rem; opacity: 0.8; display: block; margin-bottom: 5px;">Jméno nového klienta</label>
+                                        <input type="text" id="conflict-client-name" placeholder="Např. ACME Legal s.r.o." required style="width: 100%; padding: 10px 14px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 8px; color: white; outline: none;" />
+                                    </div>
+                                    <div>
+                                        <label style="font-size: 0.8rem; opacity: 0.8; display: block; margin-bottom: 5px;">Jméno protistrany (Opponent)</label>
+                                        <input type="text" id="conflict-opponent-name" placeholder="Např. Jan Novák" required style="width: 100%; padding: 10px 14px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 8px; color: white; outline: none;" />
+                                    </div>
+                                    <button type="submit" class="btn btn-primary" style="margin-top: 10px; padding: 12px;">Prověřit střet zájmů 🔍</button>
+                                </form>
+                            </div>
+
+                            <div id="conflict-result-panel" class="glass" style="display: none; padding: 15px; border-radius: 12px; margin-top: 20px; background: rgba(255,255,255,0.02); border: 1px solid var(--border-glass);">
+                                <h4 style="margin-top: 0; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between;">
+                                    <span>Výsledek prověrky:</span>
+                                    <span id="conflict-risk-badge" style="font-size: 0.75rem; padding: 4px 10px; border-radius: 20px; font-weight: bold;">Žádné riziko</span>
+                                </h4>
+                                <p id="conflict-risk-desc" style="font-size: 0.85rem; opacity: 0.9; margin: 0;"></p>
+                            </div>
+                        </div>
+
+                        <!-- Right: Template Compliance Check -->
+                        <div class="glass" style="padding: 25px; border-radius: 16px; border: 1px solid var(--border-glass);">
+                            <h3 style="margin-top: 0; margin-bottom: 15px; display: flex; align-items: center; gap: 10px; font-family: 'Outfit', sans-serif;">
+                                <span>⚖️</span> Hlídač judikatury (Template Compliance)
+                            </h3>
+                            <p style="font-size: 0.85rem; opacity: 0.7; margin-bottom: 20px;">
+                                Vložte koncept smlouvy k analýze. AI porovná text s čerstvými judikáty Nejvyššího soudu (např. o limitaci pokut) a navrhne opravy.
+                            </p>
+
+                            <form id="compliance-check-form" style="display: flex; flex-direction: column; gap: 12px;" onsubmit="window.appInstance.runComplianceCheck(event)">
+                                <div>
+                                    <label style="font-size: 0.8rem; opacity: 0.8; display: block; margin-bottom: 5px;">Název smlouvy/konceptu</label>
+                                    <input type="text" id="compliance-doc-name" placeholder="Např. Nájemní smlouva - Vzor 2026" required style="width: 100%; padding: 10px 14px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 8px; color: white; outline: none;" />
+                                </div>
+                                <div>
+                                    <label style="font-size: 0.8rem; opacity: 0.8; display: block; margin-bottom: 5px;">Text konceptu k analýze</label>
+                                    <textarea id="compliance-doc-text" rows="5" placeholder="Vložte sem text doložky nebo smlouvy..." required style="width: 100%; padding: 10px 14px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 8px; color: white; outline: none; resize: vertical; font-family: monospace; font-size: 0.8rem;"></textarea>
+                                </div>
+                                <button type="submit" class="btn btn-secondary" style="background: rgba(255,255,255,0.05); border: 1px solid var(--border-glass); padding: 12px; color: white;">
+                                    Analyzovat soulad s judikáty ⚖️
+                                </button>
+                            </form>
+
+                            <div id="compliance-result-panel" class="glass" style="display: none; padding: 15px; border-radius: 12px; margin-top: 20px; background: rgba(255,255,255,0.02); border: 1px solid var(--border-glass);">
+                                <h4 style="margin-top: 0; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between;">
+                                    <span>Výsledek souladu:</span>
+                                    <span id="compliance-status-badge" style="font-size: 0.75rem; padding: 4px 10px; border-radius: 20px; font-weight: bold;">Plně vyhovující</span>
+                                </h4>
+                                <div id="compliance-alerts-container" style="display: flex; flex-direction: column; gap: 10px; font-size: 0.85rem;"></div>
+                            </div>
+                        </div>
+
+                    </div>
+
+                    <!-- Conflicts History logs -->
+                    <div class="glass" style="padding: 25px; border-radius: 16px; border: 1px solid var(--border-glass); margin-top: 25px;">
+                        <h3 style="margin-top: 0; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; font-family: 'Outfit', sans-serif;">
+                           <span>📜</span> Protokoly provedených prověrek a auditů
+                        </h3>
+                        <div id="conflicts-history-list" style="display: flex; flex-direction: column; gap: 12px;">
+                            <!-- Populate via JS -->
+                            <div style="text-align: center; opacity: 0.6; padding: 20px;">Žádné historické prověrky.</div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- TAB: MANAGERIAL INTELLIGENCE -->
+                <section class="tab-pane" id="tab-managerial">
+                    <div style="display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 25px;">
+                        
+                        <!-- Profitability Tracker -->
+                        <div class="glass" style="padding: 25px; border-radius: 16px; border: 1px solid var(--border-glass);">
+                            <h3 style="margin-top: 0; margin-bottom: 15px; display: flex; align-items: center; gap: 10px; font-family: 'Outfit', sans-serif;">
+                                <span>📊</span> Hlídač ziskovosti spisů (Profitability)
+                            </h3>
+                            <p style="font-size: 0.85rem; opacity: 0.7; margin-bottom: 20px;">
+                                Porovnání odpracovaného času (Time-tracking) s alokovanými budgety.
+                            </p>
+
+                            <div id="managerial-profitability-list" style="display: flex; flex-direction: column; gap: 15px; margin-bottom: 25px;">
+                                <!-- Populate via JS -->
+                                <div style="text-align: center; opacity: 0.6; padding: 30px;">Načítám ziskovost spisů...</div>
+                            </div>
+
+                            <hr style="border: 0; border-top: 1px solid var(--border-glass); margin-bottom: 20px;" />
+
+                            <h4 style="margin-top: 0; margin-bottom: 15px; font-family: 'Outfit', sans-serif;">⚙️ Konfigurovat rozpočet spisu</h4>
+                            <form id="managerial-budget-form" style="display: flex; gap: 12px; align-items: flex-end;" onsubmit="window.appInstance.saveBudget(event)">
+                                <div style="flex: 1.5;">
+                                    <label style="font-size: 0.8rem; opacity: 0.8; display: block; margin-bottom: 5px;">Název dokumentu / spisu</label>
+                                    <input type="text" id="budget-doc-name" placeholder="Např. Nájemní smlouva.docx" required style="width: 100%; padding: 8px 12px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 8px; color: white; outline: none;" />
+                                </div>
+                                <div style="flex: 1;">
+                                    <label style="font-size: 0.8rem; opacity: 0.8; display: block; margin-bottom: 5px;">Typ budgetu</label>
+                                    <select id="budget-type" style="width: 100%; padding: 8px 12px; background: #0f172a; border: 1px solid var(--border-glass); border-radius: 8px; color: white; outline: none;">
+                                        <option value="hourly_cap">Hodinový strop (Cap)</option>
+                                        <option value="flat">Paušál (Flat fee)</option>
+                                    </select>
+                                </div>
+                                <div style="flex: 0.8;">
+                                    <label style="font-size: 0.8rem; opacity: 0.8; display: block; margin-bottom: 5px;">Hodinový limit</label>
+                                    <input type="number" id="budget-hours" placeholder="10" required style="width: 100%; padding: 8px 12px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 8px; color: white; outline: none;" />
+                                </div>
+                                <button type="submit" class="btn btn-primary" style="padding: 10px 16px;">Uložit 💾</button>
+                            </form>
+                        </div>
+
+                        <!-- Capacity allocation -->
+                        <div class="glass" style="padding: 25px; border-radius: 16px; border: 1px solid var(--border-glass); height: fit-content;">
+                            <h3 style="margin-top: 0; margin-bottom: 15px; display: flex; align-items: center; gap: 10px; font-family: 'Outfit', sans-serif;">
+                                <span>👥</span> Alokace kapacit & Vytížení týmu
+                            </h3>
+                            <p style="font-size: 0.85rem; opacity: 0.7; margin-bottom: 25px;">
+                                Automatické sledování rozložení úkolů mezi koncipienty na základě aktivních lhůt.
+                            </p>
+
+                            <div id="managerial-capacity-list" style="display: flex; flex-direction: column; gap: 15px;">
+                                <!-- Populate via JS -->
+                                <div style="text-align: center; opacity: 0.6; padding: 30px;">Načítám vytížení týmu...</div>
+                            </div>
+                        </div>
+
                     </div>
                 </section>
 

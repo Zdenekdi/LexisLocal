@@ -296,6 +296,22 @@ class LexisLocalApp {
                 title: "Správce AI Agentů",
                 sub: "Vizuální konfigurátor chování a systémových instrukcí lokálního swarmu."
             },
+            workflow: {
+                title: "Workflow & Automatizace Lhůt",
+                sub: "Hlídání procesních lhůt z příchozích zpráv a automatické recepty."
+            },
+            timetracking: {
+                title: "Time-tracking & Výkazy práce",
+                sub: "Automatické klientské timesheety a sledování aktivity v reálném čase."
+            },
+            risks: {
+                title: "Hlídač rizik & Legislativa",
+                sub: "Detektor střetu zájmů klienta a kontrola souladu doložek s judikaturou Nejvyššího soudu."
+            },
+            managerial: {
+                title: "Manažerská inteligence & Přehledy",
+                sub: "Ekonomické řízení ziskovosti spisů, rozpočty a přehled kapacitního vytížení týmu."
+            },
             audit: {
                 title: "Auditní logy & Provoz",
                 sub: "Historie zpracování dat, OCR úkonů a klientského vytížení AI."
@@ -316,6 +332,14 @@ class LexisLocalApp {
             this.loadAuditLogs();
         } else if (tabName === 'agents') {
             this.loadAgentsList();
+        } else if (tabName === 'workflow') {
+            this.loadWorkflowTab();
+        } else if (tabName === 'timetracking') {
+            this.loadTimeTrackingTab();
+        } else if (tabName === 'risks') {
+            this.loadRisksTab();
+        } else if (tabName === 'managerial') {
+            this.loadManagerialTab();
         }
 
         // Auto close mobile drawer on tab switch
@@ -2077,6 +2101,553 @@ Generováno systémem LexisLocal. 100% soukromé a šifrované.`;
             }
         } catch (err) {
             alert("❌ Síťová chyba při resetu agenta: " + err.message);
+        }
+    }
+
+    // --- WORKFLOW TAB INTEGRATIONS ---
+
+    async loadWorkflowTab() {
+        try {
+            console.log("📅 Načítám workflow tab...");
+            
+            // Fetch Rules
+            const resRules = await fetch(`${this.apiBase}/workflows/rules`, { headers: this.getHeaders() });
+            const dataRules = await resRules.json();
+            
+            // Fetch Alerts
+            const resAlerts = await fetch(`${this.apiBase}/workflows/alerts`, { headers: this.getHeaders() });
+            const dataAlerts = await resAlerts.json();
+
+            if (dataRules.success) {
+                this.renderWorkflowRules(dataRules.rules);
+            }
+            if (dataAlerts.success) {
+                this.renderWorkflowAlerts(dataAlerts.alerts);
+            }
+        } catch (err) {
+            console.error("❌ Nelze načíst workflow data:", err);
+        }
+    }
+
+    renderWorkflowRules(rules) {
+        const listEl = document.getElementById('workflow-rules-list');
+        if (!listEl) return;
+
+        if (rules.length === 0) {
+            listEl.innerHTML = `<div style="text-align: center; opacity: 0.6; padding: 10px;">Žádná pravidla.</div>`;
+            return;
+        }
+
+        listEl.innerHTML = rules.map(rule => `
+            <div class="glass" style="padding: 12px 15px; border-radius: 8px; background: rgba(255,255,255,0.02); border: 1px solid var(--border-glass); display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem;">
+                <div>
+                    <strong style="color: white; display: block; margin-bottom: 2px;">${rule.name}</strong>
+                    <span style="opacity: 0.7; font-size: 0.75rem;">
+                        Trigger: <code>${rule.triggerType}</code> | Kdy: <code>${rule.conditionField}</code> obsahuje <code>${rule.conditionValue}</code>
+                    </span>
+                    <span style="display: block; font-size: 0.75rem; color: var(--accent-gold); margin-top: 4px;">➡️ Úkol: ${rule.actionTitle}</span>
+                </div>
+                ${rule.isSystem ? 
+                    `<span style="font-size: 0.75rem; color: var(--accent-blue); padding: 2px 6px; background: rgba(59,130,246,0.1); border-radius: 4px; border: 1px solid rgba(59,130,246,0.2);">Systém</span>` :
+                    `<button class="btn btn-secondary" onclick="window.appInstance.deleteWorkflowRule('${rule.id}')" style="padding: 4px 8px; font-size: 0.75rem; background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.2); color: #f87171;">Smazat</button>`
+                }
+            </div>
+        `).join('');
+    }
+
+    renderWorkflowAlerts(alerts) {
+        const listEl = document.getElementById('workflow-alerts-list');
+        if (!listEl) return;
+
+        if (alerts.length === 0) {
+            listEl.innerHTML = `<div style="text-align: center; opacity: 0.6; padding: 40px; font-size: 0.9rem;">
+                🎉 Všechny lhůty jsou splněné! Žádné resty.
+            </div>`;
+            return;
+        }
+
+        listEl.innerHTML = alerts.map(alert => {
+            const isCompleted = alert.status === 'completed';
+            const deadlineDate = new Date(alert.deadline);
+            const isOverdue = !isCompleted && deadlineDate < new Date();
+            
+            return `
+                <div class="glass" style="padding: 15px 20px; border-radius: 12px; background: ${isCompleted ? 'rgba(34,197,94,0.02)' : isOverdue ? 'rgba(239,68,68,0.04)' : 'rgba(255,255,255,0.01)'}; border: 1px solid ${isCompleted ? 'rgba(34,197,94,0.2)' : isOverdue ? 'rgba(239,68,68,0.3)' : 'var(--border-glass)'}; display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 5px;">
+                            <span style="font-size: 1.1rem; color: ${isCompleted ? '#4ade80' : isOverdue ? '#f87171' : '#fbbf24'};">${isCompleted ? '🟢' : isOverdue ? '⚠️' : '⏰'}</span>
+                            <strong style="color: white; font-size: 0.95rem; text-decoration: ${isCompleted ? 'line-through' : 'none'};">${alert.title}</strong>
+                        </div>
+                        <span style="font-size: 0.75rem; opacity: 0.7; display: block; margin-bottom: 2px;">Pravidlo: ${alert.triggerRule}</span>
+                        <span style="font-size: 0.75rem; font-weight: bold; color: ${isCompleted ? '#4ade80' : isOverdue ? '#f87171' : 'white'};">
+                            Termín: ${deadlineDate.toLocaleString('cs-CZ')} ${isOverdue ? '(PO TERMÍNU!)' : isCompleted ? '(Splněno!)' : ''}
+                        </span>
+                    </div>
+                    <div>
+                        ${isCompleted ? 
+                            `<span style="color: #4ade80; font-size: 0.85rem; font-weight: bold;">Splněno ✓</span>` :
+                            `<button class="btn btn-primary" onclick="window.appInstance.completeAlert('${alert.id}')" style="padding: 6px 12px; font-size: 0.8rem; background: var(--accent-blue);">Splnit 🟢</button>`
+                        }
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    async saveWorkflowRule(e) {
+        e.preventDefault();
+        const name = document.getElementById('wf-rule-name').value;
+        const triggerType = document.getElementById('wf-rule-trigger').value;
+        const conditionField = document.getElementById('wf-rule-field').value;
+        const conditionValue = document.getElementById('wf-rule-value').value;
+        const actionTitle = document.getElementById('wf-rule-action').value;
+
+        try {
+            const res = await fetch(`${this.apiBase}/workflows/rules`, {
+                method: 'POST',
+                headers: {
+                    ...this.getHeaders(),
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ name, triggerType, conditionField, conditionValue, actionTitle })
+            });
+
+            const data = await res.json();
+            if (data.success) {
+                alert("✓ Pravidlo bylo úspěšně vytvořeno a uloženo do šifrované databáze.");
+                document.getElementById('workflow-rule-form').reset();
+                await this.loadWorkflowTab();
+            } else {
+                alert("❌ Selhalo vytvoření pravidla: " + data.error);
+            }
+        } catch (err) {
+            alert("❌ Síťová chyba: " + err.message);
+        }
+    }
+
+    async deleteWorkflowRule(id) {
+        if (!confirm("Opravdu chcete smazat toto pravidlo?")) return;
+        try {
+            const res = await fetch(`${this.apiBase}/workflows/rules/${id}`, {
+                method: 'DELETE',
+                headers: this.getHeaders()
+            });
+            const data = await res.json();
+            if (data.success) {
+                await this.loadWorkflowTab();
+            }
+        } catch (err) {
+            alert("❌ Nelze smazat pravidlo: " + err.message);
+        }
+    }
+
+    async completeAlert(id) {
+        try {
+            const res = await fetch(`${this.apiBase}/workflows/alerts/${id}/complete`, {
+                method: 'POST',
+                headers: this.getHeaders()
+            });
+            const data = await res.json();
+            if (data.success) {
+                await this.loadWorkflowTab();
+            }
+        } catch (err) {
+            alert("❌ Nelze označit za splněné: " + err.message);
+        }
+    }
+
+    // --- TIME-TRACKING TAB INTEGRATIONS ---
+
+    async loadTimeTrackingTab() {
+        try {
+            console.log("🕒 Načítám Time-tracking tab...");
+            
+            // Get today's activity stats
+            const resToday = await fetch(`${this.apiBase}/activity/today`, { headers: this.getHeaders() });
+            const dataToday = await resToday.json();
+
+            // Get generated timesheets
+            const resTimesheets = await fetch(`${this.apiBase}/activity/timesheets`, { headers: this.getHeaders() });
+            const dataTimesheets = await resTimesheets.json();
+
+            if (dataToday.success) {
+                this.renderTodayActivities(dataToday.aggregated, dataToday.rawLogsCount);
+            }
+            if (dataTimesheets.success) {
+                this.renderTimesheetsHistory(dataTimesheets.timesheets);
+            }
+        } catch (err) {
+            console.error("❌ Selhalo načítání Time-tracking tab:", err);
+        }
+    }
+
+    renderTodayActivities(aggregated, rawCount) {
+        const totalHoursEl = document.getElementById('time-stat-total');
+        const countEl = document.getElementById('time-stat-count');
+        const listEl = document.getElementById('time-today-activity-list');
+
+        let totalHours = 0;
+        aggregated.forEach(item => totalHours += item.totalHours);
+
+        if (totalHoursEl) totalHoursEl.textContent = `${totalHours.toFixed(1)} hod`;
+        if (countEl) countEl.textContent = rawCount;
+
+        if (!listEl) return;
+
+        if (aggregated.length === 0) {
+            listEl.innerHTML = `<div style="text-align: center; opacity: 0.6; padding: 20px;">Dnes nebyla zaznamenána žádná aktivita v editoru.</div>`;
+            return;
+        }
+
+        listEl.innerHTML = aggregated.map(item => `
+            <div class="glass" style="padding: 10px 15px; border-radius: 8px; background: rgba(255,255,255,0.02); border: 1px solid var(--border-glass); font-size: 0.85rem; display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <strong style="color: white; display: block; margin-bottom: 2px;">${item.documentName}</strong>
+                    <span style="opacity: 0.7; font-size: 0.75rem;">Primární úkon: <code>${item.primaryAction}</code></span>
+                </div>
+                <div style="text-align: right;">
+                    <strong style="color: var(--accent-gold); font-size: 0.9rem; display: block;">${item.totalHours.toFixed(2)} hod</strong>
+                    <span style="opacity: 0.7; font-size: 0.7rem;">(Změn: ${item.saves})</span>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    renderTimesheetsHistory(timesheets) {
+        const listEl = document.getElementById('timesheets-history-list');
+        if (!listEl) return;
+
+        if (timesheets.length === 0) {
+            listEl.innerHTML = `<div style="text-align: center; opacity: 0.6; padding: 30px;">Zatím nebyly sestaveny žádné výkazy.</div>`;
+            return;
+        }
+
+        // Sort descending
+        const sorted = [...timesheets].sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+        listEl.innerHTML = sorted.map(ts => `
+            <div class="glass" style="padding: 18px; border-radius: 12px; background: rgba(255,255,255,0.01); border: 1px solid var(--border-glass);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <div>
+                        <strong style="color: white; font-size: 1rem; font-family: 'Outfit', sans-serif;">📋 Výkaz práce ze dne ${ts.date}</strong>
+                        <span style="opacity: 0.6; font-size: 0.75rem; display: block;">Sestaveno: ${new Date(ts.createdAt).toLocaleString('cs-CZ')}</span>
+                    </div>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <span style="color: var(--accent-gold); font-weight: bold; font-size: 0.95rem;">${ts.totalHours.toFixed(1)} hod celkem</span>
+                        <button class="btn btn-secondary" onclick="window.appInstance.copyTimesheetToClipboard('${ts.id}')" style="padding: 4px 8px; font-size: 0.75rem; background: rgba(255,255,255,0.05); border: 1px solid var(--border-glass);">
+                            Kopírovat 📋
+                        </button>
+                    </div>
+                </div>
+                <div class="glass" style="padding: 12px 15px; border-radius: 8px; font-family: 'Outfit', sans-serif; font-size: 0.85rem; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.02); white-space: pre-wrap; color: #cbd5e1; max-height: 200px; overflow-y: auto;" id="ts-text-${ts.id}">${ts.synthesizedOutput}</div>
+            </div>
+        `).join('');
+    }
+
+    async generateTimesheet() {
+        const model = document.getElementById('timesheet-model-select').value || 'llama3';
+        
+        try {
+            console.log("🕒 Spouštím generování timesheetu přes Ollama...");
+            const res = await fetch(`${this.apiBase}/activity/timesheet`, {
+                method: 'POST',
+                headers: {
+                    ...this.getHeaders(),
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ model })
+            });
+
+            const data = await res.json();
+            if (data.success) {
+                alert("✓ Denní výkaz práce byl úspěšně vygenerován lokální AI a šifrovaně uložen.");
+                await this.loadTimeTrackingTab();
+            } else {
+                alert("❌ Chyba při generování: " + data.message);
+            }
+        } catch (err) {
+            alert("❌ Síťové selhání při generování výkazu: " + err.message);
+        }
+    }
+
+    // --- RISKS & COMPLIANCE TAB INTEGRATIONS ---
+
+    async loadRisksTab() {
+        try {
+            console.log("🔍 Načítám tab Hlídač rizik...");
+            
+            // Get history of conflict checks
+            const resConflicts = await fetch(`${this.apiBase}/conflicts/history`, { headers: this.getHeaders() });
+            const dataConflicts = await resConflicts.json();
+
+            if (dataConflicts.success) {
+                this.renderConflictsHistory(dataConflicts.history);
+            }
+        } catch (err) {
+            console.error("❌ Nelze načíst data pro tab rizik:", err);
+        }
+    }
+
+    renderConflictsHistory(history) {
+        const listEl = document.getElementById('conflicts-history-list');
+        if (!listEl) return;
+
+        if (history.length === 0) {
+            listEl.innerHTML = `<div style="text-align: center; opacity: 0.6; padding: 20px;">Žádné historické prověrky.</div>`;
+            return;
+        }
+
+        // Sort descending by timestamp
+        const sorted = [...history].sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+        listEl.innerHTML = sorted.map(run => {
+            const isHigh = run.riskLevel === 'high';
+            const isMedium = run.riskLevel === 'medium';
+            const badgeColor = isHigh ? '#f87171' : isMedium ? '#fbbf24' : '#4ade80';
+            const badgeText = isHigh ? 'VYSOKÉ RIZIKO' : isMedium ? 'Střední riziko' : 'Bezpečné ✓';
+
+            return `
+                <div class="glass" style="padding: 15px; border-radius: 10px; background: rgba(255,255,255,0.01); border: 1px solid var(--border-glass); font-size: 0.85rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <div>
+                            <strong style="color: white; font-size: 0.95rem;">Prověrka střetu zájmů</strong>
+                            <span style="opacity: 0.6; font-size: 0.75rem; display: block;">Prověřeno: ${new Date(run.timestamp).toLocaleString('cs-CZ')}</span>
+                        </div>
+                        <span style="font-size: 0.75rem; padding: 3px 8px; border-radius: 4px; font-weight: bold; background: ${badgeColor}20; color: ${badgeColor}; border: 1px solid ${badgeColor}30;">
+                            ${badgeText}
+                        </span>
+                    </div>
+                    <div style="margin-bottom: 8px;">
+                        <span style="opacity: 0.8;">Klient: <strong>${run.clientName}</strong> | Protistrana: <strong>${run.counterpartyName}</strong></span>
+                    </div>
+                    <p style="margin: 0; font-size: 0.8rem; opacity: 0.9; color: ${isHigh ? '#f87171' : 'white'};">${run.description}</p>
+                    ${run.conflictsFound && run.conflictsFound.length > 0 ? `
+                        <div style="margin-top: 10px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 6px; border: 1px solid rgba(255,255,255,0.03);">
+                            <span style="font-size: 0.75rem; font-weight: bold; color: var(--accent-gold); display: block; margin-bottom: 5px;">Detaily nalezeného konfliktu:</span>
+                            ${run.conflictsFound.map(c => `
+                                <div style="font-size: 0.75rem; margin-bottom: 4px; opacity: 0.9;">
+                                    • Shoda v souboru: <code>${c.fileName}</code> (sémantická váha: ${(c.score * 100).toFixed(0)}%)
+                                    <span style="display: block; opacity: 0.6; font-style: italic; margin-left: 10px;">"${c.textSnippet}"</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        }).join('');
+    }
+
+    async runConflictCheck(e) {
+        e.preventDefault();
+        const clientName = document.getElementById('conflict-client-name').value;
+        const counterpartyName = document.getElementById('conflict-opponent-name').value;
+
+        try {
+            const res = await fetch(`${this.apiBase}/conflicts/check`, {
+                method: 'POST',
+                headers: {
+                    ...this.getHeaders(),
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ clientName, counterpartyName })
+            });
+
+            const data = await res.json();
+            if (data.success) {
+                const report = data.report;
+                const panel = document.getElementById('conflict-result-panel');
+                const badge = document.getElementById('conflict-risk-badge');
+                const desc = document.getElementById('conflict-risk-desc');
+
+                panel.style.display = 'block';
+                desc.textContent = report.description;
+
+                const isHigh = report.riskLevel === 'high';
+                const isMedium = report.riskLevel === 'medium';
+                badge.textContent = isHigh ? 'VYSOKÉ RIZIKO' : isMedium ? 'Střední riziko' : 'Bezpečné ✓';
+                badge.style.background = isHigh ? 'rgba(239,68,68,0.2)' : isMedium ? 'rgba(251,191,36,0.2)' : 'rgba(52,211,153,0.2)';
+                badge.style.color = isHigh ? '#f87171' : isMedium ? '#fbbf24' : '#34d399';
+                badge.style.border = `1px solid ${isHigh ? '#f87171' : isMedium ? '#fbbf24' : '#34d399'}30`;
+
+                await this.loadRisksTab();
+            } else {
+                alert("❌ Chyba prověrky střetu zájmů: " + data.error);
+            }
+        } catch (err) {
+            alert("❌ Síťová chyba prověrky: " + err.message);
+        }
+    }
+
+    async runComplianceCheck(e) {
+        e.preventDefault();
+        const documentName = document.getElementById('compliance-doc-name').value;
+        const content = document.getElementById('compliance-doc-text').value;
+
+        try {
+            const res = await fetch(`${this.apiBase}/judikatura/check`, {
+                method: 'POST',
+                headers: {
+                    ...this.getHeaders(),
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ content, documentName })
+            });
+
+            const data = await res.json();
+            if (data.success || data.compliant !== undefined) {
+                const panel = document.getElementById('compliance-result-panel');
+                const badge = document.getElementById('compliance-status-badge');
+                const container = document.getElementById('compliance-alerts-container');
+
+                panel.style.display = 'block';
+
+                badge.textContent = data.compliant ? 'Plně vyhovující ✓' : 'NALEZEN NESOULAD ⚠️';
+                badge.style.background = data.compliant ? 'rgba(52,211,153,0.2)' : 'rgba(239,68,68,0.2)';
+                badge.style.color = data.compliant ? '#34d399' : '#f87171';
+                badge.style.border = `1px solid ${data.compliant ? '#34d399' : '#f87171'}30`;
+
+                if (data.compliant) {
+                    container.innerHTML = `<div style="color: #34d399; font-weight: bold; padding: 10px 0;">✓ Dokument vyhovuje všem prověřovaným judikátům Nejvyššího soudu a e-Sbírky.</div>`;
+                } else {
+                    container.innerHTML = data.alerts.map(alert => `
+                        <div class="glass" style="padding: 12px; border-radius: 8px; background: rgba(239,68,68,0.02); border: 1px solid rgba(239,68,68,0.2); margin-top: 10px;">
+                            <div style="font-weight: bold; color: #f87171; margin-bottom: 5px;">⚠️ Nesoulad s ${alert.benchmarkTitle}</div>
+                            <div style="font-size: 0.8rem; margin-bottom: 8px; opacity: 0.9;">Téma: <strong>${alert.topic}</strong></div>
+                            <div style="font-size: 0.8rem; margin-bottom: 8px; opacity: 0.8; font-style: italic;">"${alert.description}"</div>
+                            <div style="font-size: 0.8rem; padding: 8px; background: rgba(52,211,153,0.05); border: 1px solid rgba(52,211,153,0.2); border-radius: 6px; color: #a7f3d0;">
+                                <strong style="display: block; margin-bottom: 3px; color: #34d399;">Doporučené znění opravy:</strong>
+                                ${alert.suggestedRemedy}
+                            </div>
+                        </div>
+                    `).join('');
+                }
+            } else {
+                alert("❌ Selhala analýza compliance.");
+            }
+        } catch (err) {
+            alert("❌ Síťová chyba analýzy: " + err.message);
+        }
+    }
+
+    // --- MANAGERIAL INTELLIGENCE TAB INTEGRATIONS ---
+
+    async loadManagerialTab() {
+        try {
+            console.log("📊 Načítám tab Manažerské přehledy...");
+            
+            // Fetch profitability report
+            const resProfitability = await fetch(`${this.apiBase}/managerial/profitability`, { headers: this.getHeaders() });
+            const dataProfitability = await resProfitability.json();
+
+            // Fetch capacity workload report
+            const resCapacity = await fetch(`${this.apiBase}/managerial/capacity`, { headers: this.getHeaders() });
+            const dataCapacity = await resCapacity.json();
+
+            if (dataProfitability.success) {
+                this.renderProfitability(dataProfitability.report);
+            }
+            if (dataCapacity.success) {
+                this.renderCapacity(dataCapacity.allocation);
+            }
+        } catch (err) {
+            console.error("❌ Nelze načíst manažerská data:", err);
+        }
+    }
+
+    renderProfitability(report) {
+        const listEl = document.getElementById('managerial-profitability-list');
+        if (!listEl) return;
+
+        if (report.length === 0) {
+            listEl.innerHTML = `<div style="text-align: center; opacity: 0.6; padding: 20px;">Žádné rozpracované spisy s nastavenými budgety.</div>`;
+            return;
+        }
+
+        listEl.innerHTML = report.map(item => {
+            const isUnprofitable = item.status === 'unprofitable';
+            const isWarning = item.status === 'warning';
+            const statusColor = isUnprofitable ? '#f87171' : isWarning ? '#fbbf24' : '#4ade80';
+            const barFill = Math.min(item.spentPercentage, 100);
+
+            return `
+                <div class="glass" style="padding: 15px; border-radius: 12px; background: rgba(255,255,255,0.01); border: 1px solid var(--border-glass);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <div>
+                            <strong style="color: white; font-size: 0.95rem; font-family: 'Outfit', sans-serif;">📄 ${item.documentName}</strong>
+                            <span style="opacity: 0.6; font-size: 0.75rem; display: block;">Typ: <code>${item.budgetType}</code> | Sazba: ${item.hourlyRate} Kč/hod</span>
+                        </div>
+                        <div style="text-align: right;">
+                            <span style="font-weight: bold; color: ${statusColor}; font-size: 0.95rem;">${item.actualHours.toFixed(1)} / ${item.limitHours} hod</span>
+                            <span style="opacity: 0.6; font-size: 0.75rem; display: block;">(Čerpáno: ${item.spentPercentage}%)</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Progress Bar -->
+                    <div style="width: 100%; height: 8px; background: rgba(255,255,255,0.05); border-radius: 4px; overflow: hidden; margin-bottom: 10px; border: 1px solid rgba(255,255,255,0.02);">
+                        <div style="width: ${barFill}%; height: 100%; background: ${statusColor}; border-radius: 4px; transition: width 0.3s ease;"></div>
+                    </div>
+
+                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem;">
+                        <span style="opacity: 0.7;">Odhadované náklady na práci:</span>
+                        <strong style="color: white;">${item.estimatedCost.toLocaleString('cs-CZ')} Kč</strong>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    renderCapacity(allocation) {
+        const listEl = document.getElementById('managerial-capacity-list');
+        if (!listEl) return;
+
+        listEl.innerHTML = allocation.staff.map(member => {
+            const isOverloaded = member.status === 'overloaded';
+            const isUnderloaded = member.status === 'underloaded';
+            const statusColor = isOverloaded ? '#f87171' : isUnderloaded ? '#60a5fa' : '#4ade80';
+            const statusText = isOverloaded ? 'PŘETÍŽENÍ' : isUnderloaded ? 'Volné kapacity' : 'Ideální vytížení';
+
+            return `
+                <div class="glass" style="padding: 15px; border-radius: 12px; background: rgba(255,255,255,0.01); border: 1px solid var(--border-glass); display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <strong style="color: white; font-size: 0.95rem; font-family: 'Outfit', sans-serif; display: block; margin-bottom: 2px;">${member.name}</strong>
+                        <span style="opacity: 0.7; font-size: 0.75rem;">Role: ${member.role} | Aktivní úkolová zátěž: <strong>${member.load.toFixed(1)}</strong></span>
+                    </div>
+                    <div>
+                        <span style="font-size: 0.75rem; padding: 4px 10px; border-radius: 20px; font-weight: bold; background: ${statusColor}20; color: ${statusColor}; border: 1px solid ${statusColor}30;">
+                            ${statusText}
+                        </span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    async saveBudget(e) {
+        e.preventDefault();
+        const documentName = document.getElementById('budget-doc-name').value;
+        const budgetType = document.getElementById('budget-type').value;
+        const limitHours = parseFloat(document.getElementById('budget-hours').value);
+
+        try {
+            const res = await fetch(`${this.apiBase}/managerial/budgets`, {
+                method: 'POST',
+                headers: {
+                    ...this.getHeaders(),
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ documentName, budgetType, limitHours })
+            });
+
+            const data = await res.json();
+            if (data.success) {
+                alert("✓ Rozpočet spisu byl úspěšně nakonfigurován a šifrovaně uložen.");
+                document.getElementById('managerial-budget-form').reset();
+                await this.loadManagerialTab();
+            } else {
+                alert("❌ Chyba při ukládání rozpočtu: " + data.error);
+            }
+        } catch (err) {
+            alert("❌ Síťové selhání: " + err.message);
         }
     }
 }

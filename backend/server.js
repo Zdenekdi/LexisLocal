@@ -9,6 +9,13 @@ const { checkSubject } = require('./lib/registries');
 const { indexDocument, deleteDocumentIndex, searchSimilar, loadIndex } = require('./lib/rag');
 const { logEvent } = require('./lib/audit');
 const { loadAgents, saveAgent, deleteAgent, resetAgentToDefault } = require('./lib/agents');
+const ChiefOrchestrator = require('./lib/orchestrator');
+const db = require('./lib/database');
+const TimeTracker = require('./lib/timetracking');
+const WorkflowEngine = require('./lib/workflow');
+const ConflictDetector = require('./lib/conflicts');
+const JudikaturaWatcher = require('./lib/judikatura');
+const ManagerialIntelligence = require('./lib/managerial');
 
 // Robust Ollama module import supporting both CommonJS and ESM default exports
 const ollamaLib = require('ollama');
@@ -321,6 +328,272 @@ app.post('/api/agent-swarm/debate', async (req, res) => {
             agent2: { id: agentId2, name: agent2.name, response: answer2 },
             timestamp: new Date().toISOString()
         });
+    }
+});
+
+// POST /api/agent-swarm/orchestrate - Hierarchy Swarm Orchestration with Chief Orchestrator
+app.post('/api/agent-swarm/orchestrate', async (req, res) => {
+    const { prompt, context, model } = req.body;
+    if (!prompt) {
+        return res.status(400).json({ error: "Zadání (prompt) je povinné." });
+    }
+
+    const selectedModel = model || "llama3";
+    console.log(`🧠 Express Server: Spouštím Chief Orchestrator pro: "${prompt.substring(0, 50)}..."`);
+
+    try {
+        const result = await ChiefOrchestrator.orchestrate(prompt, context || "", selectedModel);
+        
+        logEvent('LexisEditor', 'Chief Orchestrator', `Orchestrace: ${prompt.substring(0, 40)}`, {
+            model: selectedModel,
+            durationMs: result.durationMs,
+            stepsCount: result.steps.length,
+            success: true
+        });
+
+        res.json(result);
+    } catch (err) {
+        console.error("❌ Orchestrace selhala:", err.message);
+        res.status(500).json({ error: `Orchestrace selhala: ${err.message}` });
+    }
+});
+
+// POST /api/activity/log - Log active heartbeat from LexisEditor
+app.post('/api/activity/log', (req, res) => {
+    const { documentName, activeSeconds, actionType } = req.body;
+    try {
+        const entry = TimeTracker.logActivity(documentName, activeSeconds, actionType);
+        
+        // Trigger workflow event asynchronously
+        WorkflowEngine.triggerEvent('document_saved', { documentName: documentName || "", actionType: actionType || "edit" })
+            .catch(err => console.error("⚠️ Asynchronní workflow trigger selhal:", err.message));
+
+        res.json({ success: true, entry });
+    } catch (err) {
+        res.status(500).json({ error: `Nelze uložit aktivitu: ${err.message}` });
+    }
+});
+
+// GET /api/activity/today - Get aggregated activities for today
+app.get('/api/activity/today', (req, res) => {
+    try {
+        const todayStr = new Date().toISOString().split('T')[0];
+        const rawLogs = TimeTracker.getDailyActivities(todayStr);
+        const aggregated = TimeTracker.aggregateActivities(rawLogs);
+        res.json({ success: true, date: todayStr, rawLogsCount: rawLogs.length, aggregated });
+    } catch (err) {
+        res.status(500).json({ error: `Nelze načíst dnešní aktivity: ${err.message}` });
+    }
+});
+
+// POST /api/activity/timesheet - Generate daily timesheet report
+app.post('/api/activity/timesheet', async (req, res) => {
+    const { date, model } = req.body;
+    const targetDate = date || new Date().toISOString().split('T')[0];
+    const selectedModel = model || "llama3";
+    
+    try {
+        const result = await TimeTracker.generateDailyTimesheet(targetDate, selectedModel);
+        
+        if (result.success) {
+            logEvent('LexisEditor', 'Time-tracking', `Generován timesheet pro ${targetDate}`, {
+                date: targetDate,
+                model: selectedModel,
+                totalHours: result.timesheet.totalHours
+            });
+        }
+        
+        res.json(result);
+    } catch (err) {
+        res.status(500).json({ error: `Selhalo generování timesheetu: ${err.message}` });
+    }
+});
+
+// GET /api/activity/timesheets - Retrieve all generated timesheets from encrypted database
+app.get('/api/activity/timesheets', (req, res) => {
+    try {
+        const timesheets = db.get('timesheets');
+        res.json({ success: true, timesheets });
+    } catch (err) {
+        res.status(500).json({ error: `Nelze načíst výkazy práce: ${err.message}` });
+    }
+});
+
+// GET /api/workflows/rules - Retrieve all workflow rules
+app.get('/api/workflows/rules', (req, res) => {
+    try {
+        const rules = WorkflowEngine.getRules();
+        res.json({ success: true, rules });
+    } catch (err) {
+        res.status(500).json({ error: `Nelze načíst pravidla workflow: ${err.message}` });
+    }
+});
+
+// POST /api/workflows/rules - Create new custom workflow rule
+app.post('/api/workflows/rules', (req, res) => {
+    try {
+        const rule = WorkflowEngine.addRule(req.body);
+        res.json({ success: true, rule });
+    } catch (err) {
+        res.status(500).json({ error: `Nelze vytvořit pravidlo workflow: ${err.message}` });
+    }
+});
+
+// DELETE /api/workflows/rules/:id - Delete custom workflow rule
+app.delete('/api/workflows/rules/:id', (req, res) => {
+    const { id } = req.params;
+    try {
+        const deleted = WorkflowEngine.deleteRule(id);
+        res.json({ success: true, deleted });
+    } catch (err) {
+        res.status(500).json({ error: `Nelze smazat pravidlo workflow: ${err.message}` });
+    }
+});
+
+// GET /api/workflows/alerts - Retrieve all pending calendar tasks and deadlines
+app.get('/api/workflows/alerts', (req, res) => {
+    try {
+        const alerts = db.get('alerts');
+        res.json({ success: true, alerts });
+    } catch (err) {
+        res.status(500).json({ error: `Nelze načíst procesní lhůty: ${err.message}` });
+    }
+});
+
+// POST /api/workflows/alerts/:id/complete - Mark task/deadline as resolved
+app.post('/api/workflows/alerts/:id/complete', (req, res) => {
+    const { id } = req.params;
+    try {
+        const updated = db.update('alerts', id, { status: 'completed', completedAt: new Date().toISOString() });
+        res.json({ success: true, alert: updated });
+    } catch (err) {
+        res.status(500).json({ error: `Nelze splnit lhůtu: ${err.message}` });
+    }
+});
+
+// POST /api/workflows/trigger - Manually trigger an event in the workflow engine
+app.post('/api/workflows/trigger', async (req, res) => {
+    const { triggerType, payload } = req.body;
+    if (!triggerType) {
+        return res.status(400).json({ error: "Typ události (triggerType) je povinný." });
+    }
+    try {
+        const createdAlerts = await WorkflowEngine.triggerEvent(triggerType, payload || {});
+        res.json({ success: true, triggeredCount: createdAlerts.length, alerts: createdAlerts });
+    } catch (err) {
+        res.status(500).json({ error: `Chyba při spouštění workflow: ${err.message}` });
+    }
+});
+
+// --- CONFLICT OF INTEREST ENDPOINTS ---
+
+// POST /api/conflicts/check - Perform conflict of interest check
+app.post('/api/conflicts/check', async (req, res) => {
+    const { clientName, counterpartyName } = req.body;
+    if (!clientName || !counterpartyName) {
+        return res.status(400).json({ error: "Jména klienta i protistrany jsou povinná." });
+    }
+    try {
+        const report = await ConflictDetector.checkConflict(clientName, counterpartyName);
+        
+        logEvent('LexisEditor', 'Conflicts Check', `Ověřeno: ${clientName} vs ${counterpartyName}`, {
+            clientName,
+            counterpartyName,
+            riskLevel: report.riskLevel
+        });
+
+        res.json({ success: true, report });
+    } catch (err) {
+        res.status(500).json({ error: `Nelze provést prověrku střetu zájmů: ${err.message}` });
+    }
+});
+
+// GET /api/conflicts/history - Get conflicts checks history log
+app.get('/api/conflicts/history', (req, res) => {
+    try {
+        const history = ConflictDetector.getHistory();
+        res.json({ success: true, history });
+    } catch (err) {
+        res.status(500).json({ error: `Nelze načíst historii prověrek: ${err.message}` });
+    }
+});
+
+// --- JUDIKATURA & COMPLIANCE ENDPOINTS ---
+
+// POST /api/judikatura/check - Run compliance check on document text content
+app.post('/api/judikatura/check', (req, res) => {
+    const { content, documentName } = req.body;
+    if (!content) {
+        return res.status(400).json({ error: "Obsah dokumentu (content) je povinný." });
+    }
+    try {
+        const result = JudikaturaWatcher.checkTemplateCompliance(content, documentName || "Aktivní dokument");
+        
+        logEvent('LexisEditor', 'Compliance Check', `Ověřeno: ${documentName || "Dokument"}`, {
+            documentName: documentName || "Dokument",
+            compliant: result.compliant,
+            alertsCount: result.alerts.length
+        });
+
+        res.json(result);
+    } catch (err) {
+        res.status(500).json({ error: `Nelze provést kontrolu compliance: ${err.message}` });
+    }
+});
+
+// GET /api/judikatura/benchmarks - Get active Supreme Court benchmarks list
+app.get('/api/judikatura/benchmarks', (req, res) => {
+    try {
+        const benchmarks = JudikaturaWatcher.getBenchmarks();
+        res.json({ success: true, benchmarks });
+    } catch (err) {
+        res.status(500).json({ error: `Nelze načíst judikáty: ${err.message}` });
+    }
+});
+
+// GET /api/judikatura/history - Retrieve compliance checks runs history logs
+app.get('/api/judikatura/history', (req, res) => {
+    try {
+        const history = JudikaturaWatcher.getHistory();
+        res.json({ success: true, history });
+    } catch (err) {
+        res.status(500).json({ error: `Nelze načíst historii compliance: ${err.message}` });
+    }
+});
+
+// --- MANAGERIAL INTELLIGENCE ENDPOINTS ---
+
+// GET /api/managerial/profitability - Get profitability report
+app.get('/api/managerial/profitability', (req, res) => {
+    try {
+        const report = ManagerialIntelligence.getProfitabilityReport();
+        res.json({ success: true, report });
+    } catch (err) {
+        res.status(500).json({ error: `Nelze načíst ziskovost: ${err.message}` });
+    }
+});
+
+// POST /api/managerial/budgets - Set budget limits for document
+app.post('/api/managerial/budgets', (req, res) => {
+    const { documentName, budgetType, limitHours, hourlyRate } = req.body;
+    if (!documentName) {
+        return res.status(400).json({ error: "Název dokumentu (documentName) je povinný." });
+    }
+    try {
+        const budget = ManagerialIntelligence.setBudget({ documentName, budgetType, limitHours, hourlyRate });
+        res.json({ success: true, budget });
+    } catch (err) {
+        res.status(500).json({ error: `Nelze uložit rozpočet: ${err.message}` });
+    }
+});
+
+// GET /api/managerial/capacity - Get allocation and lawyer capacities workload
+app.get('/api/managerial/capacity', (req, res) => {
+    try {
+        const allocation = ManagerialIntelligence.getCapacityAllocation();
+        res.json({ success: true, allocation });
+    } catch (err) {
+        res.status(500).json({ error: `Nelze načíst vytížení týmu: ${err.message}` });
     }
 });
 
