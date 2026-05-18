@@ -45,6 +45,7 @@ class LexisLocalApp {
         await this.loadModels();
         await this.loadInbox();
         await this.loadAlerts();
+        await this.loadAgentsList();
         
         // Periodically refresh stats and inbox
         setInterval(() => this.checkSystemStatus(), 10000);
@@ -205,6 +206,40 @@ class LexisLocalApp {
         if (auditSearchInput) {
             auditSearchInput.addEventListener('input', () => this.filterAuditLogs());
         }
+
+        // --- AI Agents Customizer Listeners ---
+        const btnAddAgent = document.getElementById('btn-add-agent');
+        if (btnAddAgent) {
+            btnAddAgent.addEventListener('click', () => this.showNewAgentForm());
+        }
+
+        const agentEditorForm = document.getElementById('agent-editor-form');
+        if (agentEditorForm) {
+            agentEditorForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                this.submitAgentForm();
+            });
+        }
+
+        const btnResetAgent = document.getElementById('btn-reset-agent');
+        if (btnResetAgent) {
+            btnResetAgent.addEventListener('click', () => {
+                const agentId = document.getElementById('agent-form-id').value;
+                if (confirm("Opravdu chcete tohoto systémového agenta vrátit do výchozího stavu? Vaše úpravy promptu budou smazány.")) {
+                    this.resetAgent(agentId);
+                }
+            });
+        }
+
+        const btnDeleteAgent = document.getElementById('btn-delete-agent');
+        if (btnDeleteAgent) {
+            btnDeleteAgent.addEventListener('click', () => {
+                const agentId = document.getElementById('agent-form-id').value;
+                if (confirm("Opravdu chcete tohoto vlastního agenta trvale smazat?")) {
+                    this.deleteAgent(agentId);
+                }
+            });
+        }
     }
 
     startClock() {
@@ -257,6 +292,10 @@ class LexisLocalApp {
                 title: "Nápověda & Nastavení",
                 sub: "Kompletní návod na konfiguraci lokální AI a chování swarmu."
             },
+            agents: {
+                title: "Správce AI Agentů",
+                sub: "Vizuální konfigurátor chování a systémových instrukcí lokálního swarmu."
+            },
             audit: {
                 title: "Auditní logy & Provoz",
                 sub: "Historie zpracování dat, OCR úkonů a klientského vytížení AI."
@@ -275,6 +314,8 @@ class LexisLocalApp {
             this.loadInbox();
         } else if (tabName === 'audit') {
             this.loadAuditLogs();
+        } else if (tabName === 'agents') {
+            this.loadAgentsList();
         }
 
         // Auto close mobile drawer on tab switch
@@ -1769,6 +1810,274 @@ Generováno systémem LexisLocal. 100% soukromé a šifrované.`;
         });
 
         this.renderAuditLogs(filtered);
+    }
+
+    async loadAgentsList() {
+        try {
+            console.log("🤖 Načítám agenty swarmu ze serveru...");
+            const res = await fetch(`${this.apiBase}/agents`, {
+                headers: this.getHeaders()
+            });
+            const data = await res.json();
+            if (data.success) {
+                this.agents = data.agents;
+                this.renderAgentsList(this.agents);
+                this.syncAgentDropdowns(this.agents);
+            } else {
+                console.error("⚠️ Selhalo načtení agentů:", data.error);
+            }
+        } catch (err) {
+            console.error("❌ Síťová chyba při načítání agentů:", err.message);
+        }
+    }
+
+    renderAgentsList(agents) {
+        const container = document.getElementById('agents-list-container');
+        if (!container) return;
+
+        container.innerHTML = agents.map(agent => {
+            const isSystemBadge = agent.isSystem ? '<span class="system-badge">Systém</span>' : '';
+            return `
+                <div class="agents-list-item" data-id="${agent.id}">
+                    <div class="agent-item-avatar">${agent.emoji}</div>
+                    <div class="agent-item-meta">
+                        <span class="agent-item-name">${agent.name}</span>
+                        <span class="agent-item-role">${agent.role}</span>
+                    </div>
+                    ${isSystemBadge}
+                </div>
+            `;
+        }).join('');
+
+        // Bind clicks to list items
+        container.querySelectorAll('.agents-list-item').forEach(item => {
+            item.addEventListener('click', () => {
+                // Highlight active item
+                container.querySelectorAll('.agents-list-item').forEach(i => i.classList.remove('active'));
+                item.classList.add('active');
+
+                const agentId = item.getAttribute('data-id');
+                const selected = this.agents.find(a => a.id === agentId);
+                if (selected) {
+                    this.showAgentEditor(selected);
+                }
+            });
+        });
+    }
+
+    syncAgentDropdowns(agents) {
+        const dropdown1 = document.getElementById('chat-agent-select');
+        const dropdown2 = document.getElementById('chat-agent-2-select');
+        if (!dropdown1) return;
+
+        // Remember currently selected values if any
+        const val1 = dropdown1.value;
+        const val2 = dropdown2 ? dropdown2.value : '';
+
+        // Repopulate
+        dropdown1.innerHTML = '';
+        if (dropdown2) dropdown2.innerHTML = '';
+
+        agents.forEach(agent => {
+            const opt1 = document.createElement('option');
+            opt1.value = agent.id;
+            opt1.textContent = `${agent.emoji} ${agent.name}`;
+            dropdown1.appendChild(opt1);
+
+            if (dropdown2) {
+                const opt2 = document.createElement('option');
+                opt2.value = agent.id;
+                opt2.textContent = `${agent.emoji} ${agent.name}`;
+                dropdown2.appendChild(opt2);
+            }
+        });
+
+        // Restore selection if they still exist, otherwise default
+        if (agents.some(a => a.id === val1)) {
+            dropdown1.value = val1;
+        }
+        if (dropdown2 && agents.some(a => a.id === val2)) {
+            dropdown2.value = val2;
+        } else if (dropdown2) {
+            dropdown2.value = 'kontrolor'; // default fallback for second agent
+        }
+    }
+
+    showAgentEditor(agent) {
+        // Toggle view
+        document.getElementById('agent-editor-placeholder').style.display = 'none';
+        
+        const form = document.getElementById('agent-editor-form');
+        form.style.display = 'flex';
+
+        // Set inputs
+        document.getElementById('agent-form-is-system').value = agent.isSystem ? 'true' : 'false';
+        
+        const idGroup = document.getElementById('agent-form-id-group');
+        const idInput = document.getElementById('agent-form-id');
+        idGroup.style.display = 'block';
+        idInput.value = agent.id;
+        idInput.disabled = true; // cannot edit ID of existing agents
+
+        document.getElementById('agent-form-emoji').value = agent.emoji;
+        document.getElementById('agent-form-name').value = agent.name;
+        document.getElementById('agent-form-role').value = agent.role;
+        document.getElementById('agent-form-prompt').value = agent.systemPrompt;
+
+        // Toggle buttons based on system status
+        const btnReset = document.getElementById('btn-reset-agent');
+        const btnDelete = document.getElementById('btn-delete-agent');
+
+        if (agent.isSystem) {
+            if (btnReset) btnReset.style.display = 'block';
+            if (btnDelete) btnDelete.style.display = 'none';
+        } else {
+            if (btnReset) btnReset.style.display = 'none';
+            if (btnDelete) btnDelete.style.display = 'block';
+        }
+    }
+
+    showNewAgentForm() {
+        // Clear active highlights
+        const container = document.getElementById('agents-list-container');
+        if (container) {
+            container.querySelectorAll('.agents-list-item').forEach(i => i.classList.remove('active'));
+        }
+
+        // Toggle view
+        document.getElementById('agent-editor-placeholder').style.display = 'none';
+        
+        const form = document.getElementById('agent-editor-form');
+        form.style.display = 'flex';
+        form.reset();
+
+        // Configure ID field for new creation
+        document.getElementById('agent-form-is-system').value = 'false';
+        
+        const idGroup = document.getElementById('agent-form-id-group');
+        const idInput = document.getElementById('agent-form-id');
+        idGroup.style.display = 'block';
+        idInput.value = '';
+        idInput.disabled = false;
+        idInput.focus();
+
+        // Pre-fill some generic helper values
+        document.getElementById('agent-form-emoji').value = '🤖';
+        document.getElementById('agent-form-name').value = '';
+        document.getElementById('agent-form-role').value = '';
+        document.getElementById('agent-form-prompt').value = 'Jsi specializovaný český AI asistent...';
+
+        // Actions
+        const btnReset = document.getElementById('btn-reset-agent');
+        const btnDelete = document.getElementById('btn-delete-agent');
+        if (btnReset) btnReset.style.display = 'none';
+        if (btnDelete) btnDelete.style.display = 'none';
+    }
+
+    async submitAgentForm() {
+        const isSystem = document.getElementById('agent-form-is-system').value === 'true';
+        const idInput = document.getElementById('agent-form-id');
+        const agentId = idInput.value.toLowerCase().replace(/[^a-z0-9_-]/g, '_').trim();
+        
+        if (!agentId) {
+            alert("⚠️ Identifikátor agenta je povinné pole.");
+            return;
+        }
+
+        const name = document.getElementById('agent-form-name').value.trim();
+        const emoji = document.getElementById('agent-form-emoji').value.trim();
+        const role = document.getElementById('agent-form-role').value.trim();
+        const systemPrompt = document.getElementById('agent-form-prompt').value.trim();
+
+        try {
+            // If it is a new custom agent and disabled = false, we create a new one using POST /api/agents.
+            // If it is editing, we use POST /api/agents/:agentId
+            const isEditing = idInput.disabled;
+            const url = isEditing ? `${this.apiBase}/agents/${agentId}` : `${this.apiBase}/agents`;
+            
+            const payload = {
+                id: agentId,
+                name,
+                emoji,
+                role,
+                systemPrompt
+            };
+
+            console.log(`💾 Ukládám agenta [${agentId}]...`);
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: this.getHeaders({ 'Content-Type': 'application/json' }),
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json();
+
+            if (data.success) {
+                alert(`✓ Agent "${name}" byl úspěšně uložen.`);
+                await this.loadAgentsList();
+                
+                // Highlight the updated/created agent
+                setTimeout(() => {
+                    const listContainer = document.getElementById('agents-list-container');
+                    if (listContainer) {
+                        const item = listContainer.querySelector(`[data-id="${agentId}"]`);
+                        if (item) item.click();
+                    }
+                }, 100);
+            } else {
+                alert("❌ Nepodařilo se uložit agenta: " + data.error);
+            }
+        } catch (err) {
+            alert("❌ Síťová chyba při ukládání agenta: " + err.message);
+        }
+    }
+
+    async deleteAgent(agentId) {
+        try {
+            console.log(`🗑️ Mažu vlastního agenta [${agentId}]...`);
+            const res = await fetch(`${this.apiBase}/agents/${agentId}`, {
+                method: 'DELETE',
+                headers: this.getHeaders()
+            });
+            const data = await res.json();
+            if (data.success) {
+                alert("✓ Vlastní agent byl úspěšně smazán.");
+                
+                // Reset editor pane
+                document.getElementById('agent-editor-form').style.display = 'none';
+                document.getElementById('agent-editor-placeholder').style.display = 'flex';
+                
+                await this.loadAgentsList();
+            } else {
+                alert("❌ Chyba při mazání agenta: " + data.error);
+            }
+        } catch (err) {
+            alert("❌ Síťová chyba při mazání agenta: " + err.message);
+        }
+    }
+
+    async resetAgent(agentId) {
+        try {
+            console.log(`🔄 Resetuji systémového agenta [${agentId}] do výchozího stavu...`);
+            const res = await fetch(`${this.apiBase}/agents/${agentId}/reset`, {
+                method: 'POST',
+                headers: this.getHeaders()
+            });
+            const data = await res.json();
+            if (data.success) {
+                alert("✓ Agent byl úspěšně obnoven do výchozího nastavení.");
+                await this.loadAgentsList();
+                
+                // Refresh form view
+                const selected = this.agents.find(a => a.id === agentId);
+                if (selected) {
+                    this.showAgentEditor(selected);
+                }
+            } else {
+                alert("❌ Chyba při resetu agenta: " + data.error);
+            }
+        } catch (err) {
+            alert("❌ Síťová chyba při resetu agenta: " + err.message);
+        }
     }
 }
 

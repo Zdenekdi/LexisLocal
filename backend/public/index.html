@@ -38,6 +38,9 @@
                 <button class="nav-btn" data-tab="models">
                     <span class="icon">🤖</span> Správce Modelů
                 </button>
+                <button class="nav-btn" data-tab="agents">
+                    <span class="icon">🕵️‍♂️</span> AI Agenti Swarmu
+                </button>
                 <button class="nav-btn" data-tab="chat">
                     <span class="icon">💬</span> Chat Swarmu
                 </button>
@@ -391,6 +394,67 @@
                                 <button class="btn btn-primary" id="btn-save-token">Uložit klíč 🔒</button>
                             </div>
                             <span id="token-status-text" style="font-size: 0.75rem; margin-top: 5px; color: var(--accent-green); display: none;">✓ Bezpečnostní klíč byl uložen do paměti prohlížeče.</span>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- TAB: AI AGENTS CUSTOMIZER -->
+                <section class="tab-pane" id="tab-agents">
+                    <div class="glass agents-container" style="display: flex; gap: 20px; height: calc(100vh - 200px); min-height: 550px;">
+                        <!-- Left pane: Agents List -->
+                        <div class="agents-sidebar" style="flex: 0 0 280px; display: flex; flex-direction: column; border-right: 1px solid rgba(255, 255, 255, 0.1); padding-right: 20px;">
+                            <div class="sidebar-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                                <h3 style="margin: 0; font-size: 1.1rem;">🤖 AI Swarm</h3>
+                                <button class="btn btn-primary btn-sm" id="btn-add-agent" style="font-size: 0.8rem; padding: 5px 10px;">➕ Nový</button>
+                            </div>
+                            <div class="agents-list" id="agents-list-container" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 5px;">
+                                <!-- Dynamically loaded list of agents -->
+                            </div>
+                        </div>
+                        
+                        <!-- Right pane: Agent Editor Form -->
+                        <div class="agents-editor" style="flex: 1; display: flex; flex-direction: column; justify-content: center; position: relative;">
+                            <div class="editor-placeholder" id="agent-editor-placeholder" style="text-align: center; opacity: 0.6; padding: 40px;">
+                                <span class="placeholder-icon" style="font-size: 3rem; display: block; margin-bottom: 15px;">🕵️‍♂️</span>
+                                <h4 style="margin: 0 0 10px 0;">Vyberte agenta ze seznamu</h4>
+                                <p style="margin: 0; font-size: 0.9rem;">Zvolte stávajícího agenta nebo klikněte na "Nový" pro přidání nového specializovaného bota.</p>
+                            </div>
+                            
+                            <form class="agent-form" id="agent-editor-form" style="display: none; flex-direction: column; gap: 15px; text-align: left;">
+                                <input type="hidden" id="agent-form-is-system" value="false">
+                                
+                                <div class="form-group" id="agent-form-id-group" style="display: none;">
+                                    <label style="display: block; font-size: 0.85rem; margin-bottom: 5px; opacity: 0.9;">Jedinečné ID agenta (pouze malá písmena a podtržítka, např. <code>financnik</code>)</label>
+                                    <input type="text" id="agent-form-id" class="form-control" placeholder="Např. financnik" style="width: 100%; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: #fff;">
+                                </div>
+
+                                <div class="form-row" style="display: flex; gap: 15px;">
+                                    <div class="form-group" style="flex: 0 0 100px;">
+                                        <label style="display: block; font-size: 0.85rem; margin-bottom: 5px; opacity: 0.9;">Emoji</label>
+                                        <input type="text" id="agent-form-emoji" class="form-control" placeholder="🤖" required style="width: 100%; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: #fff; font-size: 1.5rem; text-align: center;">
+                                    </div>
+                                    <div class="form-group" style="flex: 1;">
+                                        <label style="display: block; font-size: 0.85rem; margin-bottom: 5px; opacity: 0.9;">Název Agenta</label>
+                                        <input type="text" id="agent-form-name" class="form-control" placeholder="Např. Finanční Analytik" required style="width: 100%; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: #fff;">
+                                    </div>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label style="display: block; font-size: 0.85rem; margin-bottom: 5px; opacity: 0.9;">Popis / Hlavní role</label>
+                                    <input type="text" id="agent-form-role" class="form-control" placeholder="Stručný popisek k čemu agent slouží..." required style="width: 100%; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: #fff;">
+                                </div>
+                                
+                                <div class="form-group" style="flex: 1; display: flex; flex-direction: column;">
+                                    <label style="display: block; font-size: 0.85rem; margin-bottom: 5px; opacity: 0.9;">Systémové instrukce (System Prompt)</label>
+                                    <textarea id="agent-form-prompt" class="form-control" placeholder="Popište přesně chování a styl, jakým má agent odpovídat klientské dotazy..." required style="flex: 1; width: 100%; min-height: 220px; padding: 12px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: #fff; font-family: monospace; font-size: 0.9rem; line-height: 1.5; resize: vertical;"></textarea>
+                                </div>
+                                
+                                <div class="form-actions" style="display: flex; gap: 10px; margin-top: 10px;">
+                                    <button type="submit" class="btn btn-primary" id="btn-save-agent-submit" style="padding: 10px 20px;">Uložit agenta 💾</button>
+                                    <button type="button" class="btn btn-warning" id="btn-reset-agent" style="display: none; padding: 10px 15px; background: #e67e22; border: none; color: #fff; border-radius: 6px; cursor: pointer;">Obnovit výchozí 🔄</button>
+                                    <button type="button" class="btn btn-danger" id="btn-delete-agent" style="display: none; padding: 10px 15px; background: #e74c3c; border: none; color: #fff; border-radius: 6px; cursor: pointer;">Smazat 🗑️</button>
+                                </div>
+                            </form>
                         </div>
                     </div>
                 </section>

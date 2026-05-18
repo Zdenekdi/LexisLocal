@@ -8,6 +8,7 @@ const { WATCH_DIR, loadInbox, saveInbox, processDocument, setWatcherState, check
 const { checkSubject } = require('./lib/registries');
 const { indexDocument, deleteDocumentIndex, searchSimilar, loadIndex } = require('./lib/rag');
 const { logEvent } = require('./lib/audit');
+const { loadAgents, saveAgent, deleteAgent, resetAgentToDefault } = require('./lib/agents');
 
 // Robust Ollama module import supporting both CommonJS and ESM default exports
 const ollamaLib = require('ollama');
@@ -47,48 +48,15 @@ const authenticate = (req, res, next) => {
 
 app.use(authenticate);
 
-// Special Agent Swarm Definition
-const AGENTS = {
-    resersnik: {
-        name: "Rešeršník",
-        emoji: "📚",
-        role: "Vyhledávání v zákonech a judikatuře. Formulace právních argumentů.",
-        systemPrompt: "Jsi zkušený český advokátní koncipient zaměřený na rešerše. Tvým úkolem je na základě zadaných právních předpisů a judikátů vypracovat objektivní právní rozbor."
-    },
-    stylista: {
-        name: "Stylista",
-        emoji: "✍️",
-        role: "Klonování stylu advokáta. Přepisování textu do elegantní advokátní češtiny.",
-        systemPrompt: "Jsi expert na stylistiku a právní psaní. Tvým úkolem je upravit text tak, aby působil nanejvýš profesionálně, autoritativně, přesvědčivě a přirozeně."
-    },
-    kontrolor: {
-        name: "Kontrolor",
-        emoji: "⚖️",
-        role: "Detekce rizik, protimluvů a slabých míst v argumentaci.",
-        systemPrompt: "Jsi oponentní právní zástupce. Tvým úkolem je kriticky zhodnotit předložený text, najít v něm logické chyby, slabá místa a navrhnout protiargumenty."
-    },
-    sekretarka: {
-        name: "Sekretářka",
-        emoji: "⏰",
-        role: "Správa spisové agendy, formátování doložek, extrakce schůzek a úkolů.",
-        systemPrompt: "Jsi vysoce organizovaná a profesionální advokátní sekretářka. Tvým úkolem je pomáhat advokátům strukturovat úkoly, shrnout termíny, upravovat tón e-mailové komunikace s klienty a organizovat spisové složky."
-    },
-    spisovatel: {
-        name: "Spisovatel",
-        emoji: "📝",
-        role: "Tvorba a úprava právních dokumentů (žaloby, smlouvy, odvolání) na míru.",
-        systemPrompt: "Jsi špičkový český advokát a mistr legislativního a kontraktuálního draftování. Tvým úkolem je na základě zadání sestavovat precizní, bezchybné a strukturované právní dokumenty (smlouvy, podání k soudu, odvolání, žaloby) a zapracovávat do nich věcné či stylistické připomínky uživatele s maximálním právním a jazykovým citem."
-    }
-};
-
 // Root Status
 app.get('/api/status', (req, res) => {
+    const agents = loadAgents();
     res.json({
         status: "online",
         project: "LexisLocal AI Ecosystem",
         version: "1.2.0",
         watcherDir: WATCH_DIR,
-        activeAgents: Object.keys(AGENTS)
+        activeAgents: Object.keys(agents)
     });
 });
 
@@ -135,7 +103,8 @@ app.post('/api/agent/:agentId', async (req, res) => {
     const { prompt, context, model } = req.body;
     const startTime = Date.now();
     
-    const agent = AGENTS[agentId];
+    const agents = loadAgents();
+    const agent = agents[agentId];
     if (!agent) {
         return res.status(404).json({ error: "Agent nebyl nalezen." });
     }
@@ -224,8 +193,9 @@ app.post('/api/agent-swarm/debate', async (req, res) => {
     const { prompt, agentId1, agentId2, context, model } = req.body;
     const startTime = Date.now();
     
-    const agent1 = AGENTS[agentId1];
-    const agent2 = AGENTS[agentId2];
+    const agents = loadAgents();
+    const agent1 = agents[agentId1];
+    const agent2 = agents[agentId2];
     
     if (!agent1 || !agent2) {
         return res.status(404).json({ error: "Jeden nebo oba vybraní agenti nebyli nalezeni." });
@@ -841,6 +811,73 @@ app.post('/api/watcher/toggle', (req, res) => {
     const isActive = active === 'true';
     setWatcherState(isActive);
     res.json({ success: true, active: isActive });
+});
+
+// GET /api/agents - List all active agents
+app.get('/api/agents', (req, res) => {
+    try {
+        const agents = loadAgents();
+        res.json({ success: true, agents: Object.values(agents) });
+    } catch (err) {
+        res.status(500).json({ error: `Nelze načíst agenty: ${err.message}` });
+    }
+});
+
+// POST /api/agents/:agentId - Update an agent
+app.post('/api/agents/:agentId', (req, res) => {
+    const { agentId } = req.params;
+    const { name, emoji, role, systemPrompt } = req.body;
+    try {
+        const updated = saveAgent(agentId, { name, emoji, role, systemPrompt });
+        logEvent('LexisLocal Dashboard', `Úprava agenta (${updated.name})`, 'AI Konfigurace', { agentId });
+        res.json({ success: true, agent: updated });
+    } catch (err) {
+        res.status(500).json({ error: `Nelze upravit agenta: ${err.message}` });
+    }
+});
+
+// POST /api/agents - Create a new custom agent
+app.post('/api/agents', (req, res) => {
+    const { id, name, emoji, role, systemPrompt } = req.body;
+    if (!id || !name) {
+        return res.status(400).json({ error: "ID a název agenta jsou povinné údaje." });
+    }
+    const cleanId = id.toLowerCase().replace(/[^a-z0-9_-]/g, '_').trim();
+    try {
+        const agents = loadAgents();
+        if (agents[cleanId]) {
+            return res.status(400).json({ error: `Agent s ID "${cleanId}" již existuje.` });
+        }
+        const created = saveAgent(cleanId, { name, emoji, role, systemPrompt });
+        logEvent('LexisLocal Dashboard', `Vytvoření agenta (${created.name})`, 'AI Konfigurace', { agentId: cleanId });
+        res.json({ success: true, agent: created });
+    } catch (err) {
+        res.status(500).json({ error: `Nelze vytvořit agenta: ${err.message}` });
+    }
+});
+
+// DELETE /api/agents/:agentId - Delete a custom agent
+app.delete('/api/agents/:agentId', (req, res) => {
+    const { agentId } = req.params;
+    try {
+        deleteAgent(agentId);
+        logEvent('LexisLocal Dashboard', `Smazání agenta (${agentId})`, 'AI Konfigurace', { agentId });
+        res.json({ success: true, message: `Agent ${agentId} byl smazán.` });
+    } catch (err) {
+        res.status(400).json({ error: err.message });
+    }
+});
+
+// POST /api/agents/:agentId/reset - Reset system agent back to default
+app.post('/api/agents/:agentId/reset', (req, res) => {
+    const { agentId } = req.params;
+    try {
+        const reseted = resetAgentToDefault(agentId);
+        logEvent('LexisLocal Dashboard', `Reset agenta (${reseted.name})`, 'AI Konfigurace', { agentId });
+        res.json({ success: true, agent: reseted });
+    } catch (err) {
+        res.status(400).json({ error: err.message });
+    }
 });
 
 const USE_HTTPS = process.env.USE_HTTPS === 'true';
