@@ -122,6 +122,23 @@ class LexisLocalApp {
             });
         }
 
+        // Swarm Debate Toggle UI behavior
+        const swarmToggle = document.getElementById('toggle-swarm-debate');
+        if (swarmToggle) {
+            swarmToggle.addEventListener('change', (e) => {
+                const agent2Container = document.getElementById('config-agent-2-container');
+                const lblAgent1 = document.getElementById('lbl-agent-1');
+                
+                if (e.target.checked) {
+                    if (agent2Container) agent2Container.style.display = 'block';
+                    if (lblAgent1) lblAgent1.textContent = 'Aktivní AI Agent / Tvůrce:';
+                } else {
+                    if (agent2Container) agent2Container.style.display = 'none';
+                    if (lblAgent1) lblAgent1.textContent = 'Aktivní AI Agent:';
+                }
+            });
+        }
+
         // Semantic Search triggers
         const searchBtn = document.getElementById('btn-semantic-search');
         if (searchBtn) {
@@ -892,6 +909,94 @@ class LexisLocalApp {
             </div>
         `;
         output.scrollTop = output.scrollHeight;
+
+        const swarmToggle = document.getElementById('toggle-swarm-debate');
+        const isSwarm = swarmToggle && swarmToggle.checked;
+        
+        if (isSwarm) {
+            const agent2Select = document.getElementById('chat-agent-2-select');
+            const agentId2 = agent2Select ? agent2Select.value : 'kontrolor';
+            
+            try {
+                const res = await fetch(`${this.apiBase}/agent-swarm/debate`, {
+                    method: 'POST',
+                    headers: this.getHeaders({ 'Content-Type': 'application/json' }),
+                    body: JSON.stringify({
+                        prompt: userText,
+                        agentId1: agentId,
+                        agentId2: agentId2,
+                        model: modelName
+                    })
+                });
+                const data = await res.json();
+                
+                // Remove typing indicator
+                const typingEl = document.getElementById(typingId);
+                if (typingEl) typingEl.remove();
+
+                const emojis = { resersnik: "📚", stylista: "✍️", kontrolor: "⚖️", sekretarka: "⏰", spisovatel: "📝" };
+                const emoji1 = emojis[agentId] || "🤖";
+                const emoji2 = emojis[agentId2] || "⚖️";
+
+                const formatted1 = data.agent1.response
+                    .replace(/\n/g, '<br>')
+                    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+                    
+                const formatted2 = data.agent2.response
+                    .replace(/\n/g, '<br>')
+                    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+
+                output.innerHTML += `
+                    <div class="chat-message agent" style="border-left: 3px solid var(--accent-blue); padding-left: 15px; margin-bottom: 20px; background: rgba(0, 102, 204, 0.02); border-radius: 4px 12px 12px 4px; width: 100%;">
+                        <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--accent-blue); font-weight: bold; margin-bottom: 10px; display: flex; align-items: center; gap: 6px;">
+                            <span>👥</span> Spuštěna AI Swarm Debata (Model: ${data.model})
+                        </div>
+                        
+                        <!-- Agent 1 Bubble -->
+                        <div style="display: flex; gap: 12px; margin-bottom: 15px;">
+                            <div class="message-avatar" style="background: rgba(255,255,255,0.05); min-width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.1rem;">
+                                ${emoji1}
+                            </div>
+                            <div class="message-content" style="flex: 1;">
+                                <span style="font-weight: bold; color: white; font-size: 0.85rem; display: block; margin-bottom: 4px;">
+                                    Prvotní vypracování (${data.agent1.name}):
+                                </span>
+                                <p style="margin: 0; font-size: 0.9rem; line-height: 1.5; color: var(--text-muted);">${formatted1}</p>
+                            </div>
+                        </div>
+
+                        <hr style="border: none; border-top: 1px dashed var(--border-glass); margin: 15px 0;">
+
+                        <!-- Agent 2 Bubble -->
+                        <div style="display: flex; gap: 12px;">
+                            <div class="message-avatar" style="background: rgba(239, 68, 68, 0.1); min-width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; border: 1px solid rgba(239, 68, 68, 0.2);">
+                                ${emoji2}
+                            </div>
+                            <div class="message-content" style="flex: 1;">
+                                <span style="font-weight: bold; color: #fca5a5; font-size: 0.85rem; display: block; margin-bottom: 4px;">
+                                    Oponentní posudek & Revize (${data.agent2.name}):
+                                </span>
+                                <p style="margin: 0; font-size: 0.9rem; line-height: 1.5; color: white; background: rgba(255,255,255,0.02); padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border-glass);">${formatted2}</p>
+                            </div>
+                        </div>
+                        
+                        <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 15px;">
+                            <button class="btn btn-secondary" onclick="window.appInstance.sendTextToLexisEditor('=== NÁVRH OD ${data.agent1.name} ===\\n${data.agent1.response.replace(/'/g, "\\'").replace(/\n/g, '\\n')}\\n\\n=== REVIZE A OPONENTURA OD ${data.agent2.name} ===\\n${data.agent2.response.replace(/'/g, "\\'").replace(/\n/g, '\\n')}', 'Swarm Debata: ${data.agent1.name} & ${data.agent2.name}')" style="font-size: 0.75rem; padding: 5px 10px;">
+                                ✍️ Odeslat debatu do Editoru
+                            </button>
+                        </div>
+                    </div>
+                `;
+                output.scrollTop = output.scrollHeight;
+                
+            } catch (e) {
+                const typingEl = document.getElementById(typingId);
+                if (typingEl) typingEl.remove();
+                output.innerHTML += `<div class="chat-message agent"><div class="message-content"><p style="color:var(--accent-red);">❌ Chyba připojení: ${e.message}</p></div></div>`;
+                output.scrollTop = output.scrollHeight;
+            }
+            return;
+        }
 
         try {
             const res = await fetch(`${this.apiBase}/agent/${agentId}`, {

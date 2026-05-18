@@ -232,10 +232,10 @@
                 <section class="tab-pane" id="tab-chat">
                     <div class="chat-wrapper glass">
                         <!-- Chat Sidebar Config -->
-                        <div class="chat-config-bar">
+                        <div class="chat-config-bar" style="display: flex; gap: 15px; flex-wrap: wrap; align-items: flex-end; padding: 15px 20px; border-bottom: 1px solid var(--border-glass);">
                             <div class="config-item">
-                                <label for="chat-agent-select">Aktivní AI Agent:</label>
-                                <select id="chat-agent-select" class="glass-select">
+                                <label for="chat-agent-select" id="lbl-agent-1">Aktivní AI Agent:</label>
+                                <select id="chat-agent-select" class="glass-select" style="min-width: 160px;">
                                     <option value="resersnik">📚 Rešeršník</option>
                                     <option value="stylista">✍️ Stylista</option>
                                     <option value="kontrolor">⚖️ Kontrolor</option>
@@ -243,9 +243,28 @@
                                     <option value="spisovatel">📝 Spisovatel</option>
                                 </select>
                             </div>
+                            
+                            <!-- Toggle for Swarm Debate Mode -->
+                            <div class="config-item" style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                                <input type="checkbox" id="toggle-swarm-debate" style="width: 18px; height: 18px; accent-color: var(--accent-blue); cursor: pointer;">
+                                <label for="toggle-swarm-debate" style="margin: 0; cursor: pointer; font-weight: bold; color: var(--accent-blue);">👥 Swarm Debata</label>
+                            </div>
+
+                            <!-- Second Agent Dropdown (Only visible in Swarm Debate Mode) -->
+                            <div class="config-item" id="config-agent-2-container" style="display: none;">
+                                <label for="chat-agent-2-select">Oponent / Kontrolor:</label>
+                                <select id="chat-agent-2-select" class="glass-select" style="min-width: 160px;">
+                                    <option value="kontrolor">⚖️ Kontrolor (Doporučeno)</option>
+                                    <option value="stylista">✍️ Stylista</option>
+                                    <option value="resersnik">📚 Rešeršník</option>
+                                    <option value="sekretarka">⏰ Sekretářka</option>
+                                    <option value="spisovatel">📝 Spisovatel</option>
+                                </select>
+                            </div>
+
                             <div class="config-item">
                                 <label for="chat-model-select">LLM Model:</label>
-                                <select id="chat-model-select" class="glass-select">
+                                <select id="chat-model-select" class="glass-select" style="min-width: 160px;">
                                     <!-- Dynamic options -->
                                 </select>
                             </div>
