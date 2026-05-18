@@ -29,12 +29,23 @@ if (!fs.existsSync(INBOX_PATH)) {
 
 console.log(`👀 Spouštím sledování složky: ${WATCH_DIR}`);
 
+let isWatcherActive = true;
+
+function setWatcherState(active) {
+    isWatcherActive = active;
+    console.log(`👀 Stav sledování spisy složky změněn na: ${isWatcherActive ? 'AKTIVNÍ' : 'POZASTAVENO'}`);
+}
+
 const watcher = chokidar.watch(WATCH_DIR, {
     ignored: /(^|[\/\\])\../, // ignore dotfiles
     persistent: true
 });
 
 watcher.on('add', async (filePath) => {
+    if (!isWatcherActive) {
+        console.log(`👀 Sledování spisy je dočasně pozastaveno, přeskakuji: ${path.basename(filePath)}`);
+        return;
+    }
     // Skip the inbox config itself
     if (path.basename(filePath) === '.inbox.json') return;
     
@@ -260,4 +271,4 @@ ${text.substring(0, 3000)}`;
     return null;
 }
 
-module.exports = { WATCH_DIR, loadInbox, saveInbox, processDocument };
+module.exports = { WATCH_DIR, loadInbox, saveInbox, processDocument, setWatcherState };

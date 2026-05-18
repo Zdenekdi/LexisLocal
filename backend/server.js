@@ -9,7 +9,7 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
-const { WATCH_DIR, loadInbox, saveInbox, processDocument } = require('./lib/watcher');
+const { WATCH_DIR, loadInbox, saveInbox, processDocument, setWatcherState } = require('./lib/watcher');
 const { checkSubject } = require('./lib/registries');
 
 // Robust Ollama module import supporting both CommonJS and ESM default exports
@@ -222,6 +222,68 @@ app.get('/api/registry/check', async (req, res) => {
     }
 });
 
+// Helper function to sanitize calendar file names
+function sanitizeFileName(name) {
+    return name.replace(/[^a-zA-Z0-9_á-žÁ-Ž]/g, '_').substring(0, 100);
+}
+
+// POST /api/calendar/add - Generate standard .ics file inside LexisSpisy/Kalendar folder
+app.post('/api/calendar/add', async (req, res) => {
+    const { id, title, dueDate, context } = req.body;
+    if (!title || !dueDate) {
+        return res.status(400).json({ error: "Název a datum splatnosti jsou povinné parametry." });
+    }
+    
+    try {
+        const CALENDAR_DIR = path.join(WATCH_DIR, 'Kalendar');
+        if (!fs.existsSync(CALENDAR_DIR)) {
+            fs.mkdirSync(CALENDAR_DIR, { recursive: true });
+        }
+        
+        const cleanId = id || 'dl_' + Date.now();
+        const dtstamp = new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+        const startDate = dueDate.replace(/-/g, '');
+        
+        const endD = new Date(dueDate);
+        endD.setDate(endD.getDate() + 1);
+        const endDate = endD.toISOString().split('T')[0].replace(/-/g, '');
+        
+        const cleanTitle = `⚠️ LHŮTA: ${title}`;
+        const cleanDesc = context ? context.replace(/\r?\n/g, ' ') : `Detekovaná procesní lhůta v systému Lexis.`;
+        
+        const icsContent = [
+            'BEGIN:VCALENDAR',
+            'VERSION:2.0',
+            'PRODID:-//LexisLocal//NONSGML iCalendar Generator//CS',
+            'CALSCALE:GREGORIAN',
+            'BEGIN:VEVENT',
+            `UID:${cleanId}@lexislocal`,
+            `DTSTAMP:${dtstamp}`,
+            `DTSTART;VALUE=DATE:${startDate}`,
+            `DTEND;VALUE=DATE:${endDate}`,
+            `SUMMARY:${cleanTitle}`,
+            `DESCRIPTION:${cleanDesc}`,
+            'BEGIN:VALARM',
+            'TRIGGER:-P2D', // Alert 2 days before
+            'ACTION:DISPLAY',
+            'DESCRIPTION:Připomenutí blížící se lhůty Lexis',
+            'END:VALARM',
+            'END:VEVENT',
+            'END:VCALENDAR'
+        ].join('\r\n');
+        
+        const safeName = sanitizeFileName(title);
+        const filePath = path.join(CALENDAR_DIR, `${safeName}.ics`);
+        
+        fs.writeFileSync(filePath, icsContent, 'utf-8');
+        console.log(`📅 ICS Kalendářová událost vygenerována: ${filePath}`);
+        
+        res.json({ success: true, filePath, message: "ICS soubor byl úspěšně vygenerován na plochu." });
+    } catch (err) {
+        res.status(500).json({ error: `Chyba při generování ICS kalendáře: ${err.message}` });
+    }
+});
+
 // Resilient Fallback Engine
 function generateAgentFallback(agentId, prompt) {
     if (agentId === 'resersnik') {
@@ -233,6 +295,14 @@ function generateAgentFallback(agentId, prompt) {
     }
     return `🤖 **[Agent ${agentId}]**\n\nZpracoval jsem Váš dotaz ohledně: "${prompt}". Služba Ollama je offline, toto je záložní odpověď.`;
 }
+
+// POST /api/watcher/toggle - Toggle dynamic Desktop Spisy folder watching activity state
+app.post('/api/watcher/toggle', (req, res) => {
+    const { active } = req.query;
+    const isActive = active === 'true';
+    setWatcherState(isActive);
+    res.json({ success: true, active: isActive });
+});
 
 app.listen(PORT, () => {
     console.log(`🚀 LexisLocal AI backend běží na http://localhost:${PORT}`);
