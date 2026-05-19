@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LexisLocal - Síťová politika a datová suverenita</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #1e3a8a;
+            --primary-light: #eff6ff;
+            --accent: #2563eb;
+            --text-main: #1e293b;
+            --text-muted: #64748b;
+            --border: #e2e8f0;
+            --bg-body: #f8fafc;
+            --bg-card: #ffffff;
+            --warning-bg: #fffbeb;
+            --warning-border: #fcd34d;
+            --warning-text: #b45309;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-body);
+            color: var(--text-main);
+            line-height: 1.6;
+            margin: 0;
+            padding: 40px 20px;
+        }
+
+        .document-container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: var(--bg-card);
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.04);
+            padding: 60px;
+            border: 1px solid var(--border);
+        }
+
+        header {
+            text-align: center;
+            border-bottom: 2px solid var(--border);
+            padding-bottom: 40px;
+            margin-bottom: 40px;
+        }
+
+        .logo {
+            font-size: 50px;
+            margin-bottom: 15px;
+        }
+
+        h1 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 32px;
+            font-weight: 800;
+            color: var(--primary);
+            margin: 0 0 10px 0;
+            letter-spacing: -0.5px;
+        }
+
+        .subtitle {
+            font-size: 18px;
+            color: var(--text-muted);
+            font-weight: 500;
+            margin: 0 0 15px 0;
+        }
+
+        .meta-tag {
+            display: inline-block;
+            background: var(--primary-light);
+            color: var(--accent);
+            font-weight: 700;
+            font-size: 12px;
+            padding: 6px 16px;
+            border-radius: 9999px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        h2 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--primary);
+            margin-top: 35px;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 8px;
+        }
+
+        p {
+            font-size: 15px;
+            color: var(--text-main);
+            margin-bottom: 20px;
+        }
+
+        ul {
+            padding-left: 20px;
+            margin-bottom: 20px;
+        }
+
+        li {
+            font-size: 15px;
+            margin-bottom: 10px;
+            color: var(--text-main);
+        }
+
+        /* Table Styling */
+        .table-wrapper {
+            overflow-x: auto;
+            margin: 25px 0;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+            font-size: 14px;
+        }
+
+        th {
+            background-color: var(--primary-light);
+            color: var(--primary);
+            font-weight: 700;
+            padding: 14px 16px;
+            border-bottom: 2px solid var(--border);
+        }
+
+        td {
+            padding: 14px 16px;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-main);
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        tr:nth-child(even) {
+            background-color: #f8fafc;
+        }
+
+        .badge-yes {
+            background: #dcfce7;
+            color: #15803d;
+            font-weight: 700;
+            font-size: 11px;
+            padding: 3px 8px;
+            border-radius: 4px;
+            text-transform: uppercase;
+        }
+
+        .badge-no {
+            background: #f1f5f9;
+            color: #64748b;
+            font-weight: 700;
+            font-size: 11px;
+            padding: 3px 8px;
+            border-radius: 4px;
+            text-transform: uppercase;
+        }
+
+        /* Callout Box */
+        .risk-box {
+            background-color: var(--warning-bg);
+            border-left: 4px solid var(--warning-border);
+            padding: 20px;
+            border-radius: 0 12px 12px 0;
+            margin: 25px 0;
+        }
+
+        .risk-box h3 {
+            margin: 0 0 10px 0;
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--warning-text);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .risk-box ol {
+            margin: 0;
+            padding-left: 20px;
+        }
+
+        .risk-box li {
+            color: #78350f;
+            margin-bottom: 8px;
+        }
+
+        .risk-box li:last-child {
+            margin-bottom: 0;
+        }
+
+        /* Rules Cards */
+        .rules-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 15px;
+            margin: 20px 0;
+        }
+
+        .rule-card {
+            background: #f8fafc;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 15px 20px;
+        }
+
+        .rule-card strong {
+            color: var(--primary);
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        footer {
+            margin-top: 50px;
+            border-top: 1px solid var(--border);
+            padding-top: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        /* Print styling optimized for A4 */
+        @media print {
+            body {
+                background: white;
+                padding: 0;
+            }
+            .document-container {
+                border: none;
+                box-shadow: none;
+                padding: 0;
+            }
+            .table-wrapper {
+                page-break-inside: avoid;
+            }
+            tr {
+                page-break-inside: avoid;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="document-container">
+        <header>
+            <div class="logo">⚖️</div>
+            <h1>LexisLocal</h1>
+            <div class="subtitle">Síťová politika a datová suverenita</div>
+            <div class="meta-tag">Dodatek k projektovému návrhu • v1.0</div>
+        </header>
+
+        <section>
+            <h2>1. Účel dokumentu</h2>
+            <p>Tento dodatek explicitně definuje, které síťové operace systém <strong>LexisLocal</strong> provádí, jakým směrem data toků probíhají a zda při nich dochází k přenosu klientských dat mimo lokální síť (LAN). Dokument slouží jako podklad pro bezpečnostní audit, GDPR dokumentaci a správné nastavení firewallových pravidel v advokátní kanceláři.</p>
+        </section>
+
+        <section>
+            <h2>2. Základní princip: jednosměrný tok</h2>
+            <p>Hlavní architektura je postavena na striktním rozdělení provozu za účelem maximálního bezpečí:</p>
+            <ul>
+                <li><strong>Lokální zpracování dat (Zero-Cloud)</strong>: Veškerá klientská data (obsahy smluv, vstupy do chatu, historie dotazů, sémantická paměť a systémové logy) jsou uložena a zpracovávána výhradně na vlastním serveru kanceláře. Lokální LLM server (Ollama) i Whisper přepis běží 100% offline.</li>
+                <li><strong>Jednosměrný odchozí provoz pro veřejná data</strong>: Připojení do vnějšího internetu se využívá pouze pro jednosměrné stahování veřejných informací z rejstříků (ARES, ISIR, zákony). Do internetu se nikdy neposílají dokumenty nebo klientské texty – odchází pouze obecné identifikátory (např. IČO při lustraci).</li>
+            </ul>
+        </section>
+
+        <section>
+            <h2>3. Mapa síťového provozu</h2>
+            <p>Následující tabulka klasifikuje veškerý síťový provoz systému LexisLocal:</p>
+            
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Služba / Účel</th>
+                            <th>Směr</th>
+                            <th>Protokol</th>
+                            <th>Cíl / Doména</th>
+                            <th>Port</th>
+                            <th>Klientská data?</th>
+                            <th>Bezpečnostní dopad / Poznámka</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Lokální LLM (Ollama)</strong></td>
+                            <td>LAN (Příchozí)</td>
+                            <td>TCP</td>
+                            <td>IP serveru LexisLocal</td>
+                            <td><code>11434</code></td>
+                            <td><span class="badge-yes">ANO</span></td>
+                            <td>Data neopouští vnitřní síť (LAN).</td>
+                        </tr>
+                        <tr>
+                            <td><strong>LexisLocal API</strong></td>
+                            <td>LAN (Příchozí)</td>
+                            <td>TCP</td>
+                            <td>IP serveru LexisLocal</td>
+                            <td><code>3000</code></td>
+                            <td><span class="badge-yes">ANO</span></td>
+                            <td>Data neopouští vnitřní síť (LAN).</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Registr ARES</strong></td>
+                            <td>WAN (Odchozí)</td>
+                            <td>HTTPS</td>
+                            <td><code>ares.gov.cz</code></td>
+                            <td><code>443</code></td>
+                            <td><span class="badge-no">NE</span></td>
+                            <td>Odesílá se pouze dotazované IČO subjektu.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Insolvenční rejstřík (ISIR)</strong></td>
+                            <td>WAN (Odchozí)</td>
+                            <td>HTTPS</td>
+                            <td><code>isir.justice.cz</code></td>
+                            <td><code>443</code></td>
+                            <td><span class="badge-no">NE</span></td>
+                            <td>Odesílá se pouze dotazované IČO/jméno.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Zákony pro lidi (e-Sbírka)</strong></td>
+                            <td>WAN (Odchozí)</td>
+                            <td>HTTPS</td>
+                            <td><code>zakonyprolidi.cz</code></td>
+                            <td><code>443</code></td>
+                            <td><span class="badge-no">NE</span></td>
+                            <td>Stahuje pouze texty veřejných zákonů.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Datové schránky (ISDS)</strong></td>
+                            <td>WAN (Obousměrný)</td>
+                            <td>HTTPS</td>
+                            <td><code>mojedatovaschranka.cz</code></td>
+                            <td><code>443</code></td>
+                            <td><span class="badge-yes">ANO</span></td>
+                            <td>Zákonné podání – end-to-end šifrováno státem.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>DopisOnline (Česká pošta)</strong></td>
+                            <td>WAN (Odchozí)</td>
+                            <td>HTTPS</td>
+                            <td><code>postservis.cz</code></td>
+                            <td><code>443</code></td>
+                            <td><span class="badge-yes">ANO</span></td>
+                            <td>Odeslání dopisu hybridní poštou přes HTTPS.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section>
+            <div class="risk-box">
+                <h3>⚠️ 4. Risková upozornění</h3>
+                <p style="margin-top: 0; font-size: 14px; color: var(--warning-text);">Následující body vyžadují explicitní konfiguraci při implementaci a administraci systému:</p>
+                <ol>
+                    <li><strong>Zákaz Cloud Fallbacku</strong>: Některé AI knihovny se při výpadku lokální Ollamy automaticky pokouší připojit ke cloudovým API (OpenAI/Anthropic). V <code>deployment_security.json</code> musí být striktně nastaveno <code>"OLLAMA_FALLBACK": "none"</code>.</li>
+                    <li><strong>Deaktivace telemetrie</strong>: Externí balíčky (sledování chyb, Sentry apod.) musí být striktně zakázány volbou <code>"TELEMETRY_ENABLED": false</code>.</li>
+                    <li><strong>Lokální složka spisů</strong>: Pracovní složka (např. <code>Desktop/LexisSpisy</code>) nesmí být synchronizována do spotřebitelských cloudů (OneDrive, iCloud, Dropbox). Zálohování musí být řešeno striktně na lokální šifrovaný NAS.</li>
+                    <li><strong>Group Policy pro MS Word</strong>: Vynutit vypnutí telemetrie MS Word Connected Experiences na klientských stanicích (úroveň diagnostických dat 0).</li>
+                </ol>
+            </div>
+        </section>
+
+        <section>
+            <h2>5. Doporučená firewallová pravidla</h2>
+            <p>Konfigurace na hraničním firewallu (např. pfSense, OPNsense, FortiGate) pro dedikovaný LexisLocal AI server:</p>
+            
+            <div class="rules-grid">
+                <div class="rule-card">
+                    <strong>Pravidlo 1: LAN Příchozí (Povolit)</strong>
+                    <p style="margin: 0; font-size: 13.5px; color: var(--text-muted);">Umožňuje stanicím v LAN přístup k portu <code>11434</code> (Ollama LLM) a portu <code>3000</code> (LexisLocal API) na serveru.</p>
+                </div>
+                <div class="rule-card">
+                    <strong>Pravidlo 2: WAN Odchozí (Povolit selektivně)</strong>
+                    <p style="margin: 0; font-size: 13.5px; color: var(--text-muted);">Umožňuje serveru pouze odchozí HTTPS port <code>443</code> na státní domény (<code>*.gov.cz</code>, <code>*.justice.cz</code>, <code>zakonyprolidi.cz</code>).</p>
+                </div>
+                <div class="rule-card" style="border-color: #f87171; background: #fef2f2;">
+                    <strong style="color: #b91c1c;">Pravidlo 3: WAN Výchozí odchozí (ZAKÁZAT)</strong>
+                    <p style="margin: 0; font-size: 13.5px; color: #991b1b;">Striktní zákaz jakéhokoliv dalšího odchozího provozu ze serveru do internetu (Default Block Any to Any).</p>
+                </div>
+            </div>
+        </section>
+
+        <section>
+            <h2>6. Datové schránky (ISDS) — zvláštní případ</h2>
+            <p>ISDS představuje jedinou službu, kde dochází k obousměrnému přenosu klientských souborů přes internet:</p>
+            <ul>
+                <li>Systém stahuje zprávy z datové schránky (Internet → LAN) — bezpečné.</li>
+                <li>Systém odesílá dokumenty přes datovou schránku (LAN → Internet) — nezbytné ze zákona.</li>
+            </ul>
+            <p>Toto nepředstavuje bezpečnostní riziko ve smyslu GDPR, protože komunikace probíhá přes státem garantovaný a end-to-end šifrovaný kanál (MV ČR) dle zákona č. 300/2008 Sb. LexisLocal pouze automatizuje stávající zákonnou povinnost advokáta.</p>
+        </section>
+
+        <section>
+            <h2>7. Závěr: klasifikace systému</h2>
+            <p>Na základě provedené analýzy spadá systém LexisLocal do následující kategorie:</p>
+            <div style="background: var(--primary-light); padding: 20px; border-radius: 12px; border: 1px solid #bfdbfe;">
+                <p style="margin: 0; font-weight: 700; color: var(--primary); font-size: 16px; text-align: center;">
+                    Strictly On-Premise, Local-First Legal Information System
+                </p>
+                <p style="margin: 10px 0 0 0; font-size: 13.5px; color: var(--text-main); text-align: center;">
+                    Systém nezavádí žádné externí cloudové zpracovatele (Cloud Processors). Všechna citlivá klientská data podléhají plné suverenitě advokátní kanceláře a odpovídají povinnosti mlčenlivosti dle zákona o advokacii.
+                </p>
+            </div>
+        </section>
+
+        <footer>
+            <span>Zdeněk Dias • Antigravity AI</span>
+            <span>© 2026 | LexisLocal Projektový návrh</span>
+        </footer>
+    </div>
+
+</body>
+</html>

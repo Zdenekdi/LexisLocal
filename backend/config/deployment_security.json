@@ -1,0 +1,6 @@
+{
+  "WHISPER_BACKEND": "local",
+  "OLLAMA_FALLBACK": "none",
+  "TELEMETRY_ENABLED": false,
+  "ALLOW_CLOUD_BACKUPS": false
+}
