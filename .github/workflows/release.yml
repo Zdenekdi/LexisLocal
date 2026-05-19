@@ -1,0 +1,43 @@
+name: Build/Release LexisLocal
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'package.json'
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+    strategy:
+      matrix:
+        os: [macos-latest, windows-latest]
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Build and Publish Electron App
+        run: |
+          if [ "$RUNNER_OS" == "Windows" ]; then
+            npx electron-builder --win --x64 --publish always -c.releaseInfo.releaseNotes=""
+          else
+            npx electron-builder --mac --arm64 --publish always -c.releaseInfo.releaseNotes=""
+          fi
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
