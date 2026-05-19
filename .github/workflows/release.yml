@@ -33,10 +33,11 @@ jobs:
 
       - name: Build and Publish Electron App
         run: |
+          git log -1 --pretty=%B > release-notes.txt
           if [ "$RUNNER_OS" == "Windows" ]; then
-            npx electron-builder --win --x64 --publish always -c.releaseInfo.releaseNotes=""
+            npx electron-builder --win --x64 --publish always -c.releaseInfo.releaseNotesFile=release-notes.txt
           else
-            npx electron-builder --mac zip --arm64 --publish always -c.releaseInfo.releaseNotes=""
+            npx electron-builder --mac zip --arm64 --publish always -c.releaseInfo.releaseNotesFile=release-notes.txt
           fi
         shell: bash
         env:
