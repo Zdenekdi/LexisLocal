@@ -597,6 +597,26 @@ app.get('/api/managerial/capacity', (req, res) => {
     }
 });
 
+// GET /api/managerial/settings - Get office billing/hourly rate settings
+app.get('/api/managerial/settings', (req, res) => {
+    try {
+        const settings = ManagerialIntelligence.getOfficeSettings();
+        res.json({ success: true, settings });
+    } catch (err) {
+        res.status(500).json({ error: `Nelze načíst nastavení sazeb: ${err.message}` });
+    }
+});
+
+// POST /api/managerial/settings - Update office billing/hourly rate settings
+app.post('/api/managerial/settings', (req, res) => {
+    try {
+        const result = ManagerialIntelligence.updateOfficeSettings(req.body);
+        res.json({ success: true, settings: result });
+    } catch (err) {
+        res.status(500).json({ error: `Nelze uložit nastavení sazeb: ${err.message}` });
+    }
+});
+
 // GET /api/inbox - Retrieve unread parsed documents
 app.get('/api/inbox', (req, res) => {
     try {

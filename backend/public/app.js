@@ -2543,6 +2543,16 @@ Generováno systémem LexisLocal. 100% soukromé a šifrované.`;
             const resCapacity = await fetch(`${this.apiBase}/managerial/capacity`, { headers: this.getHeaders() });
             const dataCapacity = await resCapacity.json();
 
+            // Fetch office default hourly rate setting
+            const resSettings = await fetch(`${this.apiBase}/managerial/settings`, { headers: this.getHeaders() });
+            const dataSettings = await resSettings.json();
+            if (dataSettings.success && dataSettings.settings) {
+                const defaultRateInput = document.getElementById('office-default-rate');
+                if (defaultRateInput) {
+                    defaultRateInput.value = dataSettings.settings.defaultHourlyRate;
+                }
+            }
+
             if (dataProfitability.success) {
                 this.renderProfitability(dataProfitability.report);
             }
@@ -2627,6 +2637,8 @@ Generováno systémem LexisLocal. 100% soukromé a šifrované.`;
         const documentName = document.getElementById('budget-doc-name').value;
         const budgetType = document.getElementById('budget-type').value;
         const limitHours = parseFloat(document.getElementById('budget-hours').value);
+        const hourlyRateVal = document.getElementById('budget-rate').value;
+        const hourlyRate = hourlyRateVal ? parseFloat(hourlyRateVal) : null;
 
         try {
             const res = await fetch(`${this.apiBase}/managerial/budgets`, {
@@ -2635,7 +2647,7 @@ Generováno systémem LexisLocal. 100% soukromé a šifrované.`;
                     ...this.getHeaders(),
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ documentName, budgetType, limitHours })
+                body: JSON.stringify({ documentName, budgetType, limitHours, hourlyRate })
             });
 
             const data = await res.json();
@@ -2645,6 +2657,32 @@ Generováno systémem LexisLocal. 100% soukromé a šifrované.`;
                 await this.loadManagerialTab();
             } else {
                 alert("❌ Chyba při ukládání rozpočtu: " + data.error);
+            }
+        } catch (err) {
+            alert("❌ Síťové selhání: " + err.message);
+        }
+    }
+
+    async saveOfficeRate(e) {
+        e.preventDefault();
+        const defaultHourlyRate = parseFloat(document.getElementById('office-default-rate').value);
+
+        try {
+            const res = await fetch(`${this.apiBase}/managerial/settings`, {
+                method: 'POST',
+                headers: {
+                    ...this.getHeaders(),
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ defaultHourlyRate })
+            });
+
+            const data = await res.json();
+            if (data.success) {
+                alert("✓ Výchozí hodinová sazba kanceláře byla uložena a zašifrována.");
+                await this.loadManagerialTab();
+            } else {
+                alert("❌ Chyba při ukládání sazby: " + data.error);
             }
         } catch (err) {
             alert("❌ Síťové selhání: " + err.message);

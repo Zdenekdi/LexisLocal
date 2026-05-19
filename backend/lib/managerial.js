@@ -33,11 +33,51 @@ class ManagerialIntelligence {
     }
 
     /**
+     * Gets the office default hourly rate from database settings
+     */
+    getDefaultHourlyRate() {
+        const settings = db.get('settings');
+        const rateSetting = settings.find(s => s.key === 'default_hourly_rate');
+        return rateSetting ? parseFloat(rateSetting.value) : 2500;
+    }
+
+    /**
+     * Returns office managerial settings
+     */
+    getOfficeSettings() {
+        return {
+            defaultHourlyRate: this.getDefaultHourlyRate()
+        };
+    }
+
+    /**
+     * Updates office managerial settings
+     */
+    updateOfficeSettings(settingsData) {
+        const rate = parseFloat(settingsData.defaultHourlyRate);
+        if (isNaN(rate) || rate <= 0) {
+            throw new Error("Neplatná výše hodinové sazby.");
+        }
+
+        const settings = db.get('settings');
+        const existing = settings.find(s => s.key === 'default_hourly_rate');
+
+        if (existing) {
+            db.update('settings', existing.id, { value: rate.toString() });
+        } else {
+            db.insert('settings', { key: 'default_hourly_rate', value: rate.toString() });
+        }
+
+        return { defaultHourlyRate: rate };
+    }
+
+    /**
      * Returns a profitability report for all monitored documents/cases
      */
     getProfitabilityReport() {
         const budgets = db.get('budgets');
         const activities = db.get('activities');
+        const defaultRate = this.getDefaultHourlyRate();
 
         // Aggregate actual time spent per document
         const timeSpent = {};
@@ -62,7 +102,8 @@ class ManagerialIntelligence {
                 status = 'warning';
             }
 
-            const estimatedCost = actualHours * (budget.hourlyRate || 2500);
+            const currentRate = budget.hourlyRate || defaultRate;
+            const estimatedCost = actualHours * currentRate;
 
             return {
                 id: budget.id,
@@ -71,7 +112,7 @@ class ManagerialIntelligence {
                 limitHours,
                 actualHours,
                 spentPercentage,
-                hourlyRate: budget.hourlyRate,
+                hourlyRate: currentRate,
                 estimatedCost,
                 status
             };
@@ -88,8 +129,8 @@ class ManagerialIntelligence {
                     limitHours: 0,
                     actualHours,
                     spentPercentage: 0,
-                    hourlyRate: 2500,
-                    estimatedCost: actualHours * 2500,
+                    hourlyRate: defaultRate,
+                    estimatedCost: actualHours * defaultRate,
                     status: 'profitable'
                 });
             }
@@ -103,12 +144,14 @@ class ManagerialIntelligence {
      */
     setBudget(budgetData) {
         const existing = db.get('budgets').find(b => b.documentName === budgetData.documentName);
+        const defaultRate = this.getDefaultHourlyRate();
+        const rate = parseFloat(budgetData.hourlyRate) || defaultRate;
         
         if (existing) {
             return db.update('budgets', existing.id, {
                 budgetType: budgetData.budgetType || existing.budgetType,
                 limitHours: parseFloat(budgetData.limitHours) || existing.limitHours,
-                hourlyRate: parseFloat(budgetData.hourlyRate) || existing.hourlyRate
+                hourlyRate: parseFloat(budgetData.hourlyRate) || existing.hourlyRate || defaultRate
             });
         }
 
@@ -116,7 +159,7 @@ class ManagerialIntelligence {
             documentName: budgetData.documentName,
             budgetType: budgetData.budgetType || "hourly_cap",
             limitHours: parseFloat(budgetData.limitHours) || 8,
-            hourlyRate: parseFloat(budgetData.hourlyRate) || 2500
+            hourlyRate: rate
         });
     }
 
