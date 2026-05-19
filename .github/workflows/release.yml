@@ -36,7 +36,7 @@ jobs:
           if [ "$RUNNER_OS" == "Windows" ]; then
             npx electron-builder --win --x64 --publish always -c.releaseInfo.releaseNotes=""
           else
-            npx electron-builder --mac --arm64 --publish always -c.releaseInfo.releaseNotes=""
+            npx electron-builder --mac zip --arm64 --publish always -c.releaseInfo.releaseNotes=""
           fi
         shell: bash
         env:
