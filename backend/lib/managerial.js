@@ -9,6 +9,7 @@ const db = require('./database');
 class ManagerialIntelligence {
     constructor() {
         this.initDefaultBudgets();
+        this.initDefaultFees();
     }
 
     /**
@@ -207,6 +208,94 @@ class ManagerialIntelligence {
             totalAlertsCount: alerts.length,
             timestamp: new Date().toISOString()
         };
+    }
+
+    /**
+     * Seeds initial fee items (ceník odměn)
+     */
+    initDefaultFees() {
+        const existing = db.get('fees');
+        if (existing.length === 0) {
+            db.insert('fees', {
+                name: "Právní konzultace",
+                type: "hourly",
+                amount: 2500
+            });
+            db.insert('fees', {
+                name: "Sepis standardní smlouvy",
+                type: "flat",
+                amount: 8000
+            });
+            db.insert('fees', {
+                name: "Zastupování před soudem",
+                type: "hourly",
+                amount: 3500
+            });
+            db.insert('fees', {
+                name: "Právní rešerše a analýza",
+                type: "hourly",
+                amount: 2000
+            });
+            db.insert('fees', {
+                name: "AML prověrka & Onboarding",
+                type: "flat",
+                amount: 1500
+            });
+        }
+    }
+
+    /**
+     * Retrieves all fee items
+     */
+    getFees() {
+        return db.get('fees');
+    }
+
+    /**
+     * Adds or updates a fee item
+     */
+    saveFee(feeData) {
+        if (!feeData.name) {
+            throw new Error("Název služby je povinný.");
+        }
+        const amount = parseFloat(feeData.amount);
+        if (isNaN(amount) || amount < 0) {
+            throw new Error("Sazba musí být nezáporné číslo.");
+        }
+
+        const type = feeData.type || "hourly";
+
+        if (feeData.id) {
+            // Update existing
+            return db.update('fees', feeData.id, {
+                name: feeData.name,
+                type: type,
+                amount: amount
+            });
+        }
+
+        // Check if item with this name already exists
+        const existing = db.get('fees').find(f => f.name.toLowerCase() === feeData.name.toLowerCase());
+        if (existing) {
+            return db.update('fees', existing.id, {
+                type: type,
+                amount: amount
+            });
+        }
+
+        // Insert new
+        return db.insert('fees', {
+            name: feeData.name,
+            type: type,
+            amount: amount
+        });
+    }
+
+    /**
+     * Deletes a fee item
+     */
+    deleteFee(id) {
+        return db.delete('fees', id);
     }
 }
 

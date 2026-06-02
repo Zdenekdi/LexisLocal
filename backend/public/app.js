@@ -19,6 +19,17 @@ class LexisLocalApp {
         this.inbox = [];
         this.watcherActive = true;
         this.apiToken = localStorage.getItem('lexis_api_token') || '';
+        
+        // Calendar state
+        this.calendarState = {
+            currentYear: new Date().getFullYear(),
+            currentMonth: new Date().getMonth(),
+            selectedDate: new Date().toISOString().split('T')[0],
+            events: []
+        };
+        this.expandedTimelines = new Set();
+        this.emailSettings = null;
+        this.emailTasks = [];
     }
 
     getHeaders(extraHeaders = {}) {
@@ -43,6 +54,8 @@ class LexisLocalApp {
         await this.checkSystemStatus();
         await this.checkRagStatus();
         await this.loadModels();
+        await this.loadEmailSettings();
+        await this.loadEmailTasks();
         await this.loadInbox();
         await this.loadAlerts();
         await this.loadAgentsList();
@@ -50,7 +63,15 @@ class LexisLocalApp {
         // Periodically refresh stats and inbox
         setInterval(() => this.checkSystemStatus(), 10000);
         setInterval(() => this.checkRagStatus(), 10000);
-        setInterval(() => this.loadInbox(), 8000);
+        setInterval(() => {
+            const activeFilterBtn = document.querySelector('.filter-btn.active');
+            const filter = activeFilterBtn ? activeFilterBtn.getAttribute('data-filter') : 'all';
+            if (filter === 'emails') {
+                this.loadEmailTasks().then(() => this.renderInbox());
+            } else {
+                this.loadInbox();
+            }
+        }, 8000);
         setInterval(() => this.loadAlerts(), 10000);
     }
 
@@ -132,10 +153,26 @@ class LexisLocalApp {
                 
                 if (e.target.checked) {
                     if (agent2Container) agent2Container.style.display = 'block';
-                    if (lblAgent1) lblAgent1.textContent = 'Aktivní AI Agent / Tvůrce:';
+                    if (lblAgent1) lblAgent1.textContent = 'Aktivní AI Asistent / Tvůrce:';
                 } else {
                     if (agent2Container) agent2Container.style.display = 'none';
-                    if (lblAgent1) lblAgent1.textContent = 'Aktivní AI Agent:';
+                    if (lblAgent1) lblAgent1.textContent = 'Aktivní AI Asistent:';
+                }
+            });
+        }
+
+        // Auto-select recommended model when active assistant changes
+        const chatAgentSelect = document.getElementById('chat-agent-select');
+        if (chatAgentSelect) {
+            chatAgentSelect.addEventListener('change', (e) => {
+                const agentId = e.target.value;
+                const agent = this.agents.find(a => a.id === agentId);
+                if (agent && agent.preferredModel) {
+                    const modelSelect = document.getElementById('chat-model-select');
+                    if (modelSelect) {
+                        modelSelect.value = agent.preferredModel;
+                        console.log(`🤖 Auto-selected recommended model [${agent.preferredModel}] for assistant [${agent.name}]`);
+                    }
                 }
             });
         }
@@ -240,6 +277,22 @@ class LexisLocalApp {
                 }
             });
         }
+
+        // Global Keyboard Shortcuts
+        window.addEventListener('keydown', (e) => {
+            // Alt+T (or Option+T on macOS)
+            if (e.altKey && (e.code === 'KeyT' || e.key.toLowerCase() === 't')) {
+                e.preventDefault();
+                const dialog = document.getElementById('dialog-quick-timelog');
+                if (dialog) {
+                    if (dialog.open) {
+                        dialog.close();
+                    } else {
+                        this.openQuickTimeLogModal();
+                    }
+                }
+            }
+        });
     }
 
     startClock() {
@@ -285,16 +338,16 @@ class LexisLocalApp {
                 sub: "Stahování a správa lokálních neuronových sítí z knihovny Ollama."
             },
             chat: {
-                title: "Agent Playground",
-                sub: "Otestujte chování specializovaných boti swarmu v reálném čase."
+                title: "Konzultace s AI",
+                sub: "Konzultujte právní případy s jedním nebo více lokálními AI asistenty."
             },
             manual: {
                 title: "Nápověda & Nastavení",
-                sub: "Kompletní návod na konfiguraci lokální AI a chování swarmu."
+                sub: "Kompletní návod na konfiguraci lokální AI a chování asistentů."
             },
             agents: {
-                title: "Správce AI Agentů",
-                sub: "Vizuální konfigurátor chování a systémových instrukcí lokálního swarmu."
+                title: "Správce AI asistentů",
+                sub: "Vizuální konfigurátor chování a systémových instrukcí lokálních asistentů."
             },
             workflow: {
                 title: "Workflow & Automatizace Lhůt",
@@ -372,14 +425,14 @@ class LexisLocalApp {
             
             // Load Swarm info on Overview
             if (data.activeAgents) {
-                this.renderAgentsList(data.activeAgents);
+                this.renderOverviewAgents(data.activeAgents);
             }
         } catch (e) {
             console.warn("Chyba při komunikaci se serverem status:", e);
         }
     }
 
-    renderAgentsList(agentIds) {
+    renderOverviewAgents(agentIds) {
         const listEl = document.getElementById('agents-list');
         if (!listEl) return;
         
@@ -478,6 +531,15 @@ class LexisLocalApp {
         const filter = activeFilterBtn ? activeFilterBtn.getAttribute('data-filter') : 'all';
 
         // Filter list
+        if (filter === 'emails') {
+            const countText = document.getElementById('inbox-count-text');
+            if (countText) {
+                countText.textContent = `Nalezeno ${this.emailTasks.length} e-mailových úkolů`;
+            }
+            this.renderEmailTasks();
+            return;
+        }
+
         let filtered = this.inbox;
         if (filter === 'unread') {
             filtered = this.inbox.filter(f => f.status === 'unread');
@@ -521,6 +583,7 @@ class LexisLocalApp {
         let html = '';
         Object.keys(groups).forEach(caseNum => {
             const files = groups[caseNum];
+            const caseNumSanitized = caseNum.replace(/[^a-zA-Z0-9-_]/g, '_');
             
             // Gather group-wide metadata
             const firstWithPlaintiff = files.find(f => f.plaintiff && f.plaintiff !== 'Nezjištěn');
@@ -601,6 +664,13 @@ class LexisLocalApp {
                 `;
             });
 
+            const isExpanded = this.expandedTimelines && this.expandedTimelines.has(caseNum);
+            const timelineDisplay = isExpanded ? 'block' : 'none';
+            const btnText = isExpanded ? '✕ Skrýt historii' : '⏱️ Časová osa spisu';
+            const btnStyle = isExpanded 
+                ? 'background: rgba(239, 68, 68, 0.08); border-color: rgba(239, 68, 68, 0.25); color: #f87171;' 
+                : 'background: rgba(59, 130, 246, 0.08); border-color: rgba(59, 130, 246, 0.25); color: #60a5fa;';
+
             html += `
                 <div class="inbox-card glass" style="display: flex; flex-direction: row; gap: 20px; padding: 25px; margin-bottom: 15px;">
                     <div class="inbox-avatar" style="font-size: 1.5rem; background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); width: 54px; height: 54px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
@@ -622,9 +692,27 @@ class LexisLocalApp {
                                 ${filesHtml}
                             </div>
                             
-                            <button class="btn btn-secondary" onclick="window.appInstance.analyzeEntireCase('${caseNum.replace(/'/g, "\\'")}')" style="margin-top: 12px; width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 0.78rem; padding: 8px 12px;">
-                                🤖 Zanalyzovat kompletní podklady spisu (${files.length} dok.)
-                            </button>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px;">
+                                <button class="btn btn-secondary" onclick="window.appInstance.analyzeEntireCase('${caseNum.replace(/'/g, "\\'")}')" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 0.78rem; padding: 8px 12px;">
+                                    🤖 Analyzovat AI (${files.length} dok.)
+                                </button>
+                                <button id="btn-timeline-toggle-${caseNumSanitized}" class="btn btn-secondary" onclick="window.appInstance.showCaseTimeline('${caseNum.replace(/'/g, "\\'")}')" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 0.78rem; padding: 8px 12px; ${btnStyle}">
+                                    ${btnText}
+                                </button>
+                            </div>
+
+                            <!-- Inline Collapsible Timeline -->
+                            <div class="case-timeline-collapse" id="timeline-collapse-${caseNumSanitized}" style="display: ${timelineDisplay}; margin-top: 15px; border-top: 1px dashed var(--border-glass); padding-top: 15px;">
+                                <div class="inline-timeline-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                                    <div class="inline-timeline-title" style="font-size: 0.85rem; font-weight: 700; color: var(--accent-blue); display: flex; align-items: center; gap: 6px;">
+                                        ⏱️ Historie a časová osa spisu
+                                    </div>
+                                    <button class="btn btn-secondary" onclick="window.appInstance.showCaseTimeline('${caseNum.replace(/'/g, "\\'")}')" style="padding: 2px 8px; font-size: 0.7rem;">✕ Zavřít</button>
+                                </div>
+                                <div class="timeline-events-inline-list" id="timeline-events-${caseNumSanitized}" style="display: flex; flex-direction: column; gap: 12px;">
+                                    <!-- Populate via JS -->
+                                </div>
+                            </div>
                         </div>
                     </div>
                     <div class="inbox-deadline" style="width: 180px; display: flex; flex-direction: column; align-items: flex-end; justify-content: flex-start; text-align: right; flex-shrink: 0; border-left: 1px solid var(--border-glass); padding-left: 20px;">
@@ -635,6 +723,13 @@ class LexisLocalApp {
         });
 
         container.innerHTML = html;
+
+        // Trigger fetch for any inline timelines that were already expanded
+        if (this.expandedTimelines) {
+            this.expandedTimelines.forEach(caseNum => {
+                this.loadInlineTimelineData(caseNum);
+            });
+        }
     }
 
     async markRead(fileName) {
@@ -1090,7 +1185,7 @@ class LexisLocalApp {
                 output.innerHTML += `
                     <div class="chat-message agent" style="border-left: 3px solid var(--accent-blue); padding-left: 15px; margin-bottom: 20px; background: rgba(0, 102, 204, 0.02); border-radius: 4px 12px 12px 4px; width: 100%;">
                         <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--accent-blue); font-weight: bold; margin-bottom: 10px; display: flex; align-items: center; gap: 6px;">
-                            <span>👥</span> Spuštěna AI Swarm Debata (Model: ${data.model})
+                            <span>👥</span> Spuštěna oponentní diskuse asistentů (Model: ${data.model})
                         </div>
                         
                         <!-- Agent 1 Bubble -->
@@ -1122,8 +1217,8 @@ class LexisLocalApp {
                         </div>
                         
                         <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 15px;">
-                            <button class="btn btn-secondary" onclick="window.appInstance.sendTextToLexisEditor('=== NÁVRH OD ${data.agent1.name} ===\\n${data.agent1.response.replace(/'/g, "\\'").replace(/\n/g, '\\n')}\\n\\n=== REVIZE A OPONENTURA OD ${data.agent2.name} ===\\n${data.agent2.response.replace(/'/g, "\\'").replace(/\n/g, '\\n')}', 'Swarm Debata: ${data.agent1.name} & ${data.agent2.name}')" style="font-size: 0.75rem; padding: 5px 10px;">
-                                ✍️ Odeslat debatu do Editoru
+                            <button class="btn btn-secondary" onclick="window.appInstance.sendTextToLexisEditor('=== NÁVRH OD ${data.agent1.name} ===\\n${data.agent1.response.replace(/'/g, "\\'").replace(/\n/g, '\\n')}\\n\\n=== REVIZE A OPONENTURA OD ${data.agent2.name} ===\\n${data.agent2.response.replace(/'/g, "\\'").replace(/\n/g, '\\n')}', 'Oponentní diskuse: ${data.agent1.name} & ${data.agent2.name}')" style="font-size: 0.75rem; padding: 5px 10px;">
+                                ✍️ Odeslat diskusi do Editoru
                             </button>
                         </div>
                     </div>
@@ -1838,7 +1933,7 @@ Generováno systémem LexisLocal. 100% soukromé a šifrované.`;
 
     async loadAgentsList() {
         try {
-            console.log("🤖 Načítám agenty swarmu ze serveru...");
+            console.log("🤖 Načítám AI asistenty ze serveru...");
             const res = await fetch(`${this.apiBase}/agents`, {
                 headers: this.getHeaders()
             });
@@ -1861,12 +1956,14 @@ Generováno systémem LexisLocal. 100% soukromé a šifrované.`;
 
         container.innerHTML = agents.map(agent => {
             const isSystemBadge = agent.isSystem ? '<span class="system-badge">Systém</span>' : '';
+            const modelBadge = agent.preferredModel ? `<span class="recommendation-badge" style="margin-top: 4px;">Doporučeno: ${agent.preferredModel}</span>` : '';
             return `
                 <div class="agents-list-item" data-id="${agent.id}">
                     <div class="agent-item-avatar">${agent.emoji}</div>
-                    <div class="agent-item-meta">
+                    <div class="agent-item-meta" style="flex-grow: 1;">
                         <span class="agent-item-name">${agent.name}</span>
                         <span class="agent-item-role">${agent.role}</span>
+                        ${modelBadge}
                     </div>
                     ${isSystemBadge}
                 </div>
@@ -1947,6 +2044,12 @@ Generováno systémem LexisLocal. 100% soukromé a šifrované.`;
         document.getElementById('agent-form-name').value = agent.name;
         document.getElementById('agent-form-role').value = agent.role;
         document.getElementById('agent-form-prompt').value = agent.systemPrompt;
+        
+        // Load new model and permissions fields
+        document.getElementById('agent-form-model').value = agent.preferredModel || 'llama3';
+        document.getElementById('agent-form-perm-files').checked = !!(agent.permissions && agent.permissions.read_files);
+        document.getElementById('agent-form-perm-registries').checked = !!(agent.permissions && agent.permissions.query_registries);
+        document.getElementById('agent-form-perm-desktop').checked = !!(agent.permissions && agent.permissions.write_desktop);
 
         // Toggle buttons based on system status
         const btnReset = document.getElementById('btn-reset-agent');
@@ -1990,6 +2093,12 @@ Generováno systémem LexisLocal. 100% soukromé a šifrované.`;
         document.getElementById('agent-form-name').value = '';
         document.getElementById('agent-form-role').value = '';
         document.getElementById('agent-form-prompt').value = 'Jsi specializovaný český AI asistent...';
+        
+        // Reset models and checkboxes
+        document.getElementById('agent-form-model').value = 'llama3';
+        document.getElementById('agent-form-perm-files').checked = false;
+        document.getElementById('agent-form-perm-registries').checked = false;
+        document.getElementById('agent-form-perm-desktop').checked = false;
 
         // Actions
         const btnReset = document.getElementById('btn-reset-agent');
@@ -2004,7 +2113,7 @@ Generováno systémem LexisLocal. 100% soukromé a šifrované.`;
         const agentId = idInput.value.toLowerCase().replace(/[^a-z0-9_-]/g, '_').trim();
         
         if (!agentId) {
-            alert("⚠️ Identifikátor agenta je povinné pole.");
+            alert("⚠️ Identifikátor asistenta je povinné pole.");
             return;
         }
 
@@ -2012,6 +2121,12 @@ Generováno systémem LexisLocal. 100% soukromé a šifrované.`;
         const emoji = document.getElementById('agent-form-emoji').value.trim();
         const role = document.getElementById('agent-form-role').value.trim();
         const systemPrompt = document.getElementById('agent-form-prompt').value.trim();
+        
+        // Read model and permissions inputs
+        const preferredModel = document.getElementById('agent-form-model').value;
+        const readFiles = document.getElementById('agent-form-perm-files').checked;
+        const queryRegistries = document.getElementById('agent-form-perm-registries').checked;
+        const writeDesktop = document.getElementById('agent-form-perm-desktop').checked;
 
         try {
             // If it is a new custom agent and disabled = false, we create a new one using POST /api/agents.
@@ -2024,10 +2139,16 @@ Generováno systémem LexisLocal. 100% soukromé a šifrované.`;
                 name,
                 emoji,
                 role,
-                systemPrompt
+                systemPrompt,
+                preferredModel,
+                permissions: {
+                    read_files: readFiles,
+                    query_registries: queryRegistries,
+                    write_desktop: writeDesktop
+                }
             };
 
-            console.log(`💾 Ukládám agenta [${agentId}]...`);
+            console.log(`💾 Ukládám profil asistenta [${agentId}]...`);
             const res = await fetch(url, {
                 method: 'POST',
                 headers: this.getHeaders({ 'Content-Type': 'application/json' }),
@@ -2036,7 +2157,7 @@ Generováno systémem LexisLocal. 100% soukromé a šifrované.`;
             const data = await res.json();
 
             if (data.success) {
-                alert(`✓ Agent "${name}" byl úspěšně uložen.`);
+                alert(`✓ Profil asistenta "${name}" byl úspěšně uložen.`);
                 await this.loadAgentsList();
                 
                 // Highlight the updated/created agent
@@ -2114,15 +2235,17 @@ Generováno systémem LexisLocal. 100% soukromé a šifrované.`;
             const resRules = await fetch(`${this.apiBase}/workflows/rules`, { headers: this.getHeaders() });
             const dataRules = await resRules.json();
             
-            // Fetch Alerts
-            const resAlerts = await fetch(`${this.apiBase}/workflows/alerts`, { headers: this.getHeaders() });
-            const dataAlerts = await resAlerts.json();
+            // Fetch Events (from the new events endpoint)
+            const resEvents = await fetch(`${this.apiBase}/calendar/events`, { headers: this.getHeaders() });
+            const dataEvents = await resEvents.json();
 
             if (dataRules.success) {
                 this.renderWorkflowRules(dataRules.rules);
             }
-            if (dataAlerts.success) {
-                this.renderWorkflowAlerts(dataAlerts.alerts);
+            if (dataEvents.success) {
+                this.calendarState.events = dataEvents.events;
+                this.renderCalendar();
+                this.renderAgenda();
             }
         } catch (err) {
             console.error("❌ Nelze načíst workflow data:", err);
@@ -2134,64 +2257,300 @@ Generováno systémem LexisLocal. 100% soukromé a šifrované.`;
         if (!listEl) return;
 
         if (rules.length === 0) {
-            listEl.innerHTML = `<div style="text-align: center; opacity: 0.6; padding: 10px;">Žádná pravidla.</div>`;
+            listEl.innerHTML = `<div style="text-align: center; opacity: 0.6; padding: 10px; font-size: 0.8rem;">Žádná pravidla.</div>`;
             return;
         }
 
         listEl.innerHTML = rules.map(rule => `
-            <div class="glass" style="padding: 12px 15px; border-radius: 8px; background: rgba(255,255,255,0.02); border: 1px solid var(--border-glass); display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem;">
-                <div>
-                    <strong style="color: white; display: block; margin-bottom: 2px;">${rule.name}</strong>
-                    <span style="opacity: 0.7; font-size: 0.75rem;">
-                        Trigger: <code>${rule.triggerType}</code> | Kdy: <code>${rule.conditionField}</code> obsahuje <code>${rule.conditionValue}</code>
+            <div class="glass" style="padding: 10px 12px; border-radius: 8px; background: rgba(255,255,255,0.02); border: 1px solid var(--border-glass); display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; margin-bottom: 6px;">
+                <div style="flex-grow: 1; min-width: 0; padding-right: 8px;">
+                    <strong style="color: white; display: block; margin-bottom: 2px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${rule.name}</strong>
+                    <span style="opacity: 0.6; font-size: 0.7rem; display: block; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">
+                        Trigger: <code>${rule.triggerType === 'document_saved' ? 'Uložení' : 'ISDS'}</code> | Kdy: <code>${rule.conditionValue}</code>
                     </span>
-                    <span style="display: block; font-size: 0.75rem; color: var(--accent-gold); margin-top: 4px;">➡️ Úkol: ${rule.actionTitle}</span>
+                    <span style="display: block; font-size: 0.7rem; color: var(--accent-gold); margin-top: 2px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">➡️ ${rule.actionTitle}</span>
                 </div>
-                ${rule.isSystem ? 
-                    `<span style="font-size: 0.75rem; color: var(--accent-blue); padding: 2px 6px; background: rgba(59,130,246,0.1); border-radius: 4px; border: 1px solid rgba(59,130,246,0.2);">Systém</span>` :
-                    `<button class="btn btn-secondary" onclick="window.appInstance.deleteWorkflowRule('${rule.id}')" style="padding: 4px 8px; font-size: 0.75rem; background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.2); color: #f87171;">Smazat</button>`
-                }
+                <div>
+                    ${rule.isSystem ? 
+                        `<span style="font-size: 0.65rem; color: var(--accent-blue); padding: 1px 4px; background: rgba(59,130,246,0.1); border-radius: 4px; border: 1px solid rgba(59,130,246,0.2);">Systém</span>` :
+                        `<button class="btn btn-secondary" onclick="window.appInstance.deleteWorkflowRule('${rule.id}')" style="padding: 2px 6px; font-size: 0.65rem; background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.2); color: #f87171;">Smazat</button>`
+                    }
+                </div>
             </div>
         `).join('');
     }
 
-    renderWorkflowAlerts(alerts) {
-        const listEl = document.getElementById('workflow-alerts-list');
-        if (!listEl) return;
+    renderCalendar() {
+        const monthYearEl = document.getElementById('calendar-month-year');
+        const daysContainer = document.getElementById('calendar-days-grid');
+        if (!monthYearEl || !daysContainer) return;
 
-        if (alerts.length === 0) {
-            listEl.innerHTML = `<div style="text-align: center; opacity: 0.6; padding: 40px; font-size: 0.9rem;">
-                🎉 Všechny lhůty jsou splněné! Žádné resty.
-            </div>`;
+        const currentYear = this.calendarState.currentYear;
+        const currentMonth = this.calendarState.currentMonth;
+
+        const monthNamesCs = [
+            "Leden", "Únor", "Březen", "Duben", "Květen", "Červen", 
+            "Červenec", "Srpen", "Září", "Říjen", "Listopad", "Prosinec"
+        ];
+
+        monthYearEl.textContent = `${monthNamesCs[currentMonth]} ${currentYear}`;
+
+        // Calculate days to display
+        let firstDayIndex = new Date(currentYear, currentMonth, 1).getDay();
+        if (firstDayIndex === 0) firstDayIndex = 7; // Convert Sunday to 7
+        
+        const prevMonthDays = new Date(currentYear, currentMonth, 0).getDate();
+        const currentMonthDays = new Date(currentYear, currentMonth + 1, 0).getDate();
+
+        const days = [];
+
+        // Prev month days padding
+        const prevDaysCount = firstDayIndex - 1;
+        for (let i = prevDaysCount; i > 0; i--) {
+            days.push({
+                day: prevMonthDays - i + 1,
+                dateString: null,
+                isPrevNext: true
+            });
+        }
+
+        // Current month days
+        for (let i = 1; i <= currentMonthDays; i++) {
+            const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
+            days.push({
+                day: i,
+                dateString: dateStr,
+                isPrevNext: false
+            });
+        }
+
+        // Next month days padding to make full grid of 42
+        const remaining = 42 - days.length;
+        for (let i = 1; i <= remaining; i++) {
+            days.push({
+                day: i,
+                dateString: null,
+                isPrevNext: true
+            });
+        }
+
+        // Render days
+        daysContainer.innerHTML = '';
+        days.forEach(day => {
+            const cell = document.createElement('div');
+            cell.className = 'calendar-day';
+            
+            if (day.isPrevNext) {
+                cell.classList.add('prev-next');
+                cell.innerHTML = `<span class="day-number">${day.day}</span>`;
+                daysContainer.appendChild(cell);
+                return;
+            }
+
+            if (day.dateString === this.calendarState.selectedDate) {
+                cell.classList.add('active');
+            }
+
+            const todayStr = new Date().toISOString().split('T')[0];
+            if (day.dateString === todayStr) {
+                cell.classList.add('today');
+            }
+
+            const dayEvents = this.calendarState.events.filter(e => e.date === day.dateString);
+            
+            let dotsHtml = '';
+            if (dayEvents.length > 0) {
+                dotsHtml = '<div class="calendar-day-events">';
+                // Render max 3 dots, then "+" indicator
+                const renderLimit = 3;
+                dayEvents.slice(0, renderLimit).forEach(e => {
+                    const dotClass = e.status === 'completed' ? 'completed' : e.type === 'hearing' ? 'hearing' : 'deadline';
+                    dotsHtml += `<span class="calendar-day-dot ${dotClass}" title="${e.title}"></span>`;
+                });
+                if (dayEvents.length > renderLimit) {
+                    dotsHtml += `<span style="font-size:0.6rem; line-height:1; opacity:0.6; margin-left:1px;">+</span>`;
+                }
+                dotsHtml += '</div>';
+            }
+
+            cell.innerHTML = `
+                <span class="day-number">${day.day}</span>
+                ${dotsHtml}
+            `;
+
+            cell.addEventListener('click', () => this.selectDay(day.dateString));
+            daysContainer.appendChild(cell);
+        });
+    }
+
+    renderAgenda() {
+        const agendaEl = document.getElementById('calendar-day-agenda');
+        const dateLabel = document.getElementById('calendar-selected-date-label');
+        if (!agendaEl || !dateLabel) return;
+
+        const selectedDate = this.calendarState.selectedDate;
+        const parts = selectedDate.split('-');
+        dateLabel.textContent = `${parseInt(parts[2])}. ${parseInt(parts[1])}. ${parts[0]}`;
+
+        const dayEvents = this.calendarState.events.filter(e => e.date === selectedDate);
+
+        if (dayEvents.length === 0) {
+            agendaEl.innerHTML = `
+                <div style="text-align: center; padding: 30px; opacity: 0.6; font-size: 0.85rem;">
+                    🌴 Dnes nemáte žádné lhůty ani jednání.
+                </div>
+            `;
             return;
         }
 
-        listEl.innerHTML = alerts.map(alert => {
-            const isCompleted = alert.status === 'completed';
-            const deadlineDate = new Date(alert.deadline);
-            const isOverdue = !isCompleted && deadlineDate < new Date();
-            
+        agendaEl.innerHTML = dayEvents.map(event => {
+            const isCompleted = event.status === 'completed';
+            const isCancelled = event.status === 'cancelled';
+            const isHearing = event.type === 'hearing';
+
+            let icon = '⏰';
+            let typeLabel = 'Procesní lhůta';
+            let itemClass = 'deadline';
+
+            if (isCompleted) {
+                icon = '🟢';
+                itemClass = 'completed';
+            } else if (isCancelled) {
+                icon = '❌';
+                typeLabel = 'ZRUŠENÉ JEDNÁNÍ';
+                itemClass = 'completed';
+            } else if (isHearing) {
+                icon = '⚖️';
+                typeLabel = 'Soudní jednání';
+                itemClass = 'hearing';
+            }
+
+            let metaHtml = '';
+            if (event.time || event.location) {
+                metaHtml = `<div style="font-size: 0.75rem; opacity: 0.8; display: flex; flex-direction: column; gap: 2px; margin-top: 4px;">`;
+                if (event.time) metaHtml += `<span>🕒 ${event.time}</span>`;
+                if (event.location) metaHtml += `<span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${event.location}">📍 ${event.location}</span>`;
+                metaHtml += `</div>`;
+            }
+
+            let actionButtons = '';
+            if (!isCompleted && !isCancelled) {
+                actionButtons = `<div style="display: flex; gap: 8px; margin-top: 8px;">`;
+                if (event.type === 'deadline') {
+                    actionButtons += `<button class="btn btn-secondary" onclick="window.appInstance.completeAlert('${event.id}')" style="padding: 4px 8px; font-size: 0.7rem; background: rgba(16,185,129,0.1); border-color: rgba(16,185,129,0.2); color: #34d399;">Splnit ✓</button>`;
+                }
+                actionButtons += `<button class="btn btn-secondary" onclick="window.appInstance.syncEventToSystemCalendar('${event.id}')" style="padding: 4px 8px; font-size: 0.7rem; background: rgba(59,130,246,0.1); border-color: rgba(59,130,246,0.2); color: #60a5fa;">Zapsat do kalendáře 📅</button>`;
+                actionButtons += `</div>`;
+            }
+
             return `
-                <div class="glass" style="padding: 15px 20px; border-radius: 12px; background: ${isCompleted ? 'rgba(34,197,94,0.02)' : isOverdue ? 'rgba(239,68,68,0.04)' : 'rgba(255,255,255,0.01)'}; border: 1px solid ${isCompleted ? 'rgba(34,197,94,0.2)' : isOverdue ? 'rgba(239,68,68,0.3)' : 'var(--border-glass)'}; display: flex; justify-content: space-between; align-items: center;">
-                    <div>
-                        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 5px;">
-                            <span style="font-size: 1.1rem; color: ${isCompleted ? '#4ade80' : isOverdue ? '#f87171' : '#fbbf24'};">${isCompleted ? '🟢' : isOverdue ? '⚠️' : '⏰'}</span>
-                            <strong style="color: white; font-size: 0.95rem; text-decoration: ${isCompleted ? 'line-through' : 'none'};">${alert.title}</strong>
+                <div class="calendar-event-item ${itemClass}">
+                    <div style="display: flex; align-items: flex-start; gap: 10px;">
+                        <span style="font-size: 1.1rem; line-height: 1;">${icon}</span>
+                        <div style="flex-grow: 1; min-width: 0;">
+                            <strong style="color: white; font-size: 0.85rem; display: block; text-decoration: ${isCompleted ? 'line-through' : 'none'}; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;" title="${event.title}">${event.title}</strong>
+                            <span style="font-size: 0.7rem; opacity: 0.6; display: block; margin-top: 2px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${typeLabel} — ${event.description}</span>
+                            ${metaHtml}
+                            ${actionButtons}
                         </div>
-                        <span style="font-size: 0.75rem; opacity: 0.7; display: block; margin-bottom: 2px;">Pravidlo: ${alert.triggerRule}</span>
-                        <span style="font-size: 0.75rem; font-weight: bold; color: ${isCompleted ? '#4ade80' : isOverdue ? '#f87171' : 'white'};">
-                            Termín: ${deadlineDate.toLocaleString('cs-CZ')} ${isOverdue ? '(PO TERMÍNU!)' : isCompleted ? '(Splněno!)' : ''}
-                        </span>
-                    </div>
-                    <div>
-                        ${isCompleted ? 
-                            `<span style="color: #4ade80; font-size: 0.85rem; font-weight: bold;">Splněno ✓</span>` :
-                            `<button class="btn btn-primary" onclick="window.appInstance.completeAlert('${alert.id}')" style="padding: 6px 12px; font-size: 0.8rem; background: var(--accent-blue);">Splnit 🟢</button>`
-                        }
                     </div>
                 </div>
             `;
         }).join('');
+    }
+
+    prevMonth() {
+        this.calendarState.currentMonth--;
+        if (this.calendarState.currentMonth < 0) {
+            this.calendarState.currentMonth = 11;
+            this.calendarState.currentYear--;
+        }
+        this.renderCalendar();
+    }
+
+    nextMonth() {
+        this.calendarState.currentMonth++;
+        if (this.calendarState.currentMonth > 11) {
+            this.calendarState.currentMonth = 0;
+            this.calendarState.currentYear++;
+        }
+        this.renderCalendar();
+    }
+
+    jumpToToday() {
+        const today = new Date();
+        this.calendarState.currentYear = today.getFullYear();
+        this.calendarState.currentMonth = today.getMonth();
+        this.calendarState.selectedDate = today.toISOString().split('T')[0];
+        this.renderCalendar();
+        this.renderAgenda();
+    }
+
+    selectDay(dateString) {
+        this.calendarState.selectedDate = dateString;
+        this.renderCalendar();
+        this.renderAgenda();
+    }
+
+    async syncHearingsPortal() {
+        try {
+            console.log("⚖️ Synchronizuji jednání z portálu InfoJednání...");
+            const res = await fetch(`${this.apiBase}/calendar/sync`, {
+                method: 'POST',
+                headers: this.getHeaders()
+            });
+            const data = await res.json();
+            if (data.success) {
+                alert(`✓ Portálová synchronizace dokončena.\nZkontrolováno: ${data.checked} jednání\nNalezeno: ${data.updated} změn`);
+                await this.loadWorkflowTab();
+            } else {
+                alert("❌ Portálová synchronizace selhala: " + data.error);
+            }
+        } catch (err) {
+            alert("❌ Síťová chyba při synchronizaci: " + err.message);
+        }
+    }
+
+    async syncEventToSystemCalendar(eventId) {
+        const event = this.calendarState.events.find(e => e.id === eventId);
+        if (!event) return;
+
+        try {
+            console.log(`📅 Zapisuji událost [${event.title}] do systémového kalendáře...`);
+            const res = await fetch(`${this.apiBase}/calendar/add`, {
+                method: 'POST',
+                headers: {
+                    ...this.getHeaders(),
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    id: event.id,
+                    title: event.title,
+                    dueDate: event.date,
+                    time: event.time || null,
+                    location: event.location || null,
+                    context: event.description,
+                    isHearing: event.type === 'hearing'
+                })
+            });
+
+            const data = await res.json();
+            if (data.success) {
+                if (data.syncStatus === 'created') {
+                    alert(`✓ Událost "${event.title}" byla úspěšně zapsána do Vašeho systémového kalendáře.`);
+                } else if (data.syncStatus === 'duplicate') {
+                    alert(`ℹ️ Událost "${event.title}" již ve Vašem systémovém kalendáři existuje.`);
+                } else if (data.syncStatus === 'unsupported_platform') {
+                    alert(`⚠️ Tato platforma nepodporuje přímý zápis do kalendáře, ale ICS soubor byl uložen v adresáři Kalendář.`);
+                } else {
+                    alert(`✓ ICS soubor byl vygenerován.`);
+                }
+            } else {
+                alert("❌ Chyba při zápisu do kalendáře: " + data.error);
+            }
+        } catch (err) {
+            alert("❌ Síťová chyba zápisu: " + err.message);
+        }
     }
 
     async saveWorkflowRule(e) {
@@ -2214,7 +2573,7 @@ Generováno systémem LexisLocal. 100% soukromé a šifrované.`;
 
             const data = await res.json();
             if (data.success) {
-                alert("✓ Pravidlo bylo úspěšně vytvořeno a uloženo do šifrované databáze.");
+                alert("✓ Pravidlo bylo úspěšně vytvořeno a uloženo.");
                 document.getElementById('workflow-rule-form').reset();
                 await this.loadWorkflowTab();
             } else {
@@ -2553,11 +2912,18 @@ Generováno systémem LexisLocal. 100% soukromé a šifrované.`;
                 }
             }
 
+            // Fetch fee list (ceník)
+            const resFees = await fetch(`${this.apiBase}/managerial/fees`, { headers: this.getHeaders() });
+            const dataFees = await resFees.json();
+
             if (dataProfitability.success) {
                 this.renderProfitability(dataProfitability.report);
             }
             if (dataCapacity.success) {
                 this.renderCapacity(dataCapacity.allocation);
+            }
+            if (dataFees.success) {
+                this.renderFeesList(dataFees.fees);
             }
         } catch (err) {
             console.error("❌ Nelze načíst manažerská data:", err);
@@ -2687,6 +3053,588 @@ Generováno systémem LexisLocal. 100% soukromé a šifrované.`;
         } catch (err) {
             alert("❌ Síťové selhání: " + err.message);
         }
+    }
+
+    renderFeesList(fees) {
+        const listEl = document.getElementById('managerial-fees-list');
+        if (!listEl) return;
+
+        if (fees.length === 0) {
+            listEl.innerHTML = `<div style="text-align: center; opacity: 0.6; padding: 20px;">Ceník je prázdný.</div>`;
+            return;
+        }
+
+        listEl.innerHTML = fees.map(fee => {
+            const isHourly = fee.type === 'hourly';
+            const typeLabel = isHourly ? 'Kč/hod' : 'Kč (paušál)';
+            const typeBadgeColor = isHourly ? 'var(--accent-blue)' : 'var(--accent-purple)';
+
+            return `
+                <div class="glass" style="padding: 12px 15px; border-radius: 8px; background: rgba(255,255,255,0.01); border: 1px solid var(--border-glass); display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem;">
+                    <div>
+                        <strong style="color: white; display: block; margin-bottom: 2px;">${fee.name}</strong>
+                        <span style="font-size: 0.72rem; padding: 1px 6px; border-radius: 4px; font-weight: bold; background: ${typeBadgeColor}15; color: ${typeBadgeColor}; border: 1px solid ${typeBadgeColor}25;">
+                            ${isHourly ? 'Hodinová' : 'Paušální'}
+                        </span>
+                    </div>
+                    <div style="display: flex; gap: 12px; align-items: center;">
+                        <strong style="color: var(--accent-gold); font-size: 0.95rem;">${fee.amount.toLocaleString('cs-CZ')} ${typeLabel}</strong>
+                        <div style="display: flex; gap: 6px;">
+                            <button class="btn btn-secondary btn-sm" onclick="window.appInstance.editFeeItem('${fee.id}', '${fee.name.replace(/'/g, "\\'")}', '${fee.type}', ${fee.amount})" style="padding: 3px 6px; font-size: 0.75rem;">✏️</button>
+                            <button class="btn btn-secondary btn-sm" onclick="window.appInstance.deleteFeeItem('${fee.id}')" style="padding: 3px 6px; font-size: 0.75rem; background: rgba(239,68,68,0.1); border-color: rgba(239,68,68,0.2); color: #f87171;">🗑️</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    toggleFeeForm(show) {
+        const form = document.getElementById('fee-rule-form');
+        if (!form) return;
+
+        if (show) {
+            form.style.display = 'flex';
+            document.getElementById('fee-id').value = '';
+            document.getElementById('fee-name').value = '';
+            document.getElementById('fee-type').value = 'hourly';
+            document.getElementById('fee-amount').value = '';
+            document.getElementById('fee-name').focus();
+        } else {
+            form.style.display = 'none';
+            form.reset();
+        }
+    }
+
+    editFeeItem(id, name, type, amount) {
+        const form = document.getElementById('fee-rule-form');
+        if (!form) return;
+
+        form.style.display = 'flex';
+        document.getElementById('fee-id').value = id;
+        document.getElementById('fee-name').value = name;
+        document.getElementById('fee-type').value = type;
+        document.getElementById('fee-amount').value = amount;
+        document.getElementById('fee-name').focus();
+    }
+
+    async saveFeeItem(e) {
+        e.preventDefault();
+        const id = document.getElementById('fee-id').value;
+        const name = document.getElementById('fee-name').value;
+        const type = document.getElementById('fee-type').value;
+        const amount = parseFloat(document.getElementById('fee-amount').value);
+
+        try {
+            const res = await fetch(`${this.apiBase}/managerial/fees`, {
+                method: 'POST',
+                headers: {
+                    ...this.getHeaders(),
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ id: id || undefined, name, type, amount })
+            });
+
+            const data = await res.json();
+            if (data.success) {
+                this.toggleFeeForm(false);
+                await this.loadManagerialTab();
+            } else {
+                alert("❌ Chyba při ukládání položky: " + data.error);
+            }
+        } catch (err) {
+            alert("❌ Síťové selhání: " + err.message);
+        }
+    }
+
+    async deleteFeeItem(id) {
+        if (!confirm("Opravdu chcete smazat tuto položku z ceníku?")) return;
+        try {
+            const res = await fetch(`${this.apiBase}/managerial/fees/${id}`, {
+                method: 'DELETE',
+                headers: this.getHeaders()
+            });
+            const data = await res.json();
+            if (data.success) {
+                await this.loadManagerialTab();
+            } else {
+                alert("❌ Chyba při mazání položky: " + data.error);
+            }
+        } catch (err) {
+            alert("❌ Nelze smazat položku: " + err.message);
+        }
+    }
+
+    openQuickTimeLogModal() {
+        const dialog = document.getElementById('dialog-quick-timelog');
+        if (!dialog) return;
+        
+        document.getElementById('form-quick-timelog').reset();
+        const todayStr = new Date().toISOString().split('T')[0];
+        document.getElementById('qtl-date').value = todayStr;
+        
+        dialog.showModal();
+    }
+
+    async saveQuickTimeLog(e) {
+        e.preventDefault();
+        const documentName = document.getElementById('qtl-case').value.trim();
+        const date = document.getElementById('qtl-date').value;
+        const hours = parseFloat(document.getElementById('qtl-hours').value);
+        const description = document.getElementById('qtl-description').value.trim();
+        
+        try {
+            console.log(`🕒 Ukládám ruční výkaz práce pro [${documentName}]...`);
+            const res = await fetch(`${this.apiBase}/activity/custom`, {
+                method: 'POST',
+                headers: this.getHeaders({ 'Content-Type': 'application/json' }),
+                body: JSON.stringify({
+                    documentName,
+                    hours,
+                    date,
+                    actionType: description
+                })
+            });
+            
+            const data = await res.json();
+            if (data.success) {
+                alert(`✓ Úkon byl úspěšně zaznamenán.`);
+                document.getElementById('dialog-quick-timelog').close();
+                
+                if (this.activeTab === 'timetracking') {
+                    await this.loadTimeTrackingTab();
+                } else if (this.activeTab === 'overview') {
+                    await this.checkSystemStatus();
+                }
+            } else {
+                alert("❌ Chyba při ukládání úkonu: " + data.error);
+            }
+        } catch (err) {
+            alert("❌ Síťové selhání při zápisu času: " + err.message);
+        }
+    }
+
+    async loadInlineTimelineData(caseNum) {
+        const caseNumSanitized = caseNum.replace(/[^a-zA-Z0-9-_]/g, '_');
+        const listEl = document.getElementById(`timeline-events-${caseNumSanitized}`);
+        if (!listEl) return;
+        
+        try {
+            console.log(`⏱️ Načítám časovou osu pro spis [${caseNum}]...`);
+            const res = await fetch(`${this.apiBase}/inbox/case/${encodeURIComponent(caseNum)}/timeline`, {
+                headers: this.getHeaders()
+            });
+            const data = await res.json();
+            
+            if (data.success && data.timeline) {
+                if (data.timeline.length === 0) {
+                    listEl.innerHTML = `<div style="text-align: center; padding: 15px; opacity: 0.6; font-size: 0.8rem;">Žádná zaznamenaná historie pro tento spis.</div>`;
+                    return;
+                }
+                
+                listEl.innerHTML = data.timeline.map(item => {
+                    const dateStr = new Date(item.timestamp).toLocaleString('cs-CZ');
+                    return `
+                        <div class="timeline-item" style="margin-bottom: 12px;">
+                            <div class="timeline-icon">${item.icon || '⚫'}</div>
+                            <div class="timeline-content">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                                    <strong style="color: white; font-size: 0.82rem;">${item.title}</strong>
+                                    <span style="font-size: 0.68rem; opacity: 0.6;">${dateStr}</span>
+                                </div>
+                                <span style="font-size: 0.76rem; opacity: 0.85; color: #cbd5e1; display: block; line-height: 1.4;">${item.description}</span>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            } else {
+                listEl.innerHTML = `<div style="text-align: center; padding: 15px; color: var(--accent-red); font-size: 0.8rem;">❌ Chyba načítání: ${data.error}</div>`;
+            }
+        } catch (err) {
+            listEl.innerHTML = `<div style="text-align: center; padding: 15px; color: var(--accent-red); font-size: 0.8rem;">❌ Síťová chyba: ${err.message}</div>`;
+        }
+    }
+
+    async showCaseTimeline(caseNum) {
+        const caseNumSanitized = caseNum.replace(/[^a-zA-Z0-9-_]/g, '_');
+        const collapseEl = document.getElementById(`timeline-collapse-${caseNumSanitized}`);
+        const listEl = document.getElementById(`timeline-events-${caseNumSanitized}`);
+        const btnToggle = document.getElementById(`btn-timeline-toggle-${caseNumSanitized}`);
+        
+        if (!collapseEl || !listEl || !btnToggle) {
+            // Fallback to dialog if DOM elements for inline are not found
+            const dialog = document.getElementById('dialog-case-timeline');
+            const caseLabel = document.getElementById('timeline-case-number');
+            const dialogListEl = document.getElementById('timeline-events-list');
+            if (dialog && caseLabel && dialogListEl) {
+                caseLabel.textContent = `sp. zn. ${caseNum}`;
+                dialogListEl.innerHTML = `<div style="text-align: center; padding: 30px; opacity: 0.6; font-size: 0.85rem;">Načítám časovou osu spisu...</div>`;
+                dialog.showModal();
+                try {
+                    const res = await fetch(`${this.apiBase}/inbox/case/${encodeURIComponent(caseNum)}/timeline`, {
+                        headers: this.getHeaders()
+                    });
+                    const data = await res.json();
+                    if (data.success && data.timeline) {
+                        if (data.timeline.length === 0) {
+                            dialogListEl.innerHTML = `<div style="text-align: center; padding: 30px; opacity: 0.6; font-size: 0.85rem;">Žádná zaznamenaná historie pro tento spis.</div>`;
+                            return;
+                        }
+                        dialogListEl.innerHTML = data.timeline.map(item => {
+                            const dateStr = new Date(item.timestamp).toLocaleString('cs-CZ');
+                            return `
+                                <div class="timeline-item">
+                                    <div class="timeline-icon">${item.icon || '⚫'}</div>
+                                    <div class="timeline-content">
+                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                                            <strong style="color: white; font-size: 0.85rem;">${item.title}</strong>
+                                            <span style="font-size: 0.7rem; opacity: 0.6;">${dateStr}</span>
+                                        </div>
+                                        <span style="font-size: 0.78rem; opacity: 0.85; color: #cbd5e1; display: block; line-height: 1.4;">${item.description}</span>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('');
+                    } else {
+                        dialogListEl.innerHTML = `<div style="text-align: center; padding: 20px; color: var(--accent-red); font-size: 0.85rem;">❌ Chyba: ${data.error}</div>`;
+                    }
+                } catch (err) {
+                    dialogListEl.innerHTML = `<div style="text-align: center; padding: 20px; color: var(--accent-red); font-size: 0.85rem;">❌ Síťová chyba: ${err.message}</div>`;
+                }
+            }
+            return;
+        }
+
+        // Inline toggle logic
+        if (collapseEl.style.display === 'none') {
+            // Open the collapse
+            collapseEl.style.display = 'block';
+            this.expandedTimelines.add(caseNum);
+            
+            btnToggle.innerHTML = `✕ Skrýt historii`;
+            btnToggle.style.background = 'rgba(239, 68, 68, 0.08)';
+            btnToggle.style.borderColor = 'rgba(239, 68, 68, 0.25)';
+            btnToggle.style.color = '#f87171';
+            
+            listEl.innerHTML = `<div style="text-align: center; padding: 15px; opacity: 0.6; font-size: 0.8rem;">Načítám historii spisu...</div>`;
+            
+            await this.loadInlineTimelineData(caseNum);
+        } else {
+            // Close the collapse
+            collapseEl.style.display = 'none';
+            this.expandedTimelines.delete(caseNum);
+            
+            btnToggle.innerHTML = `⏱️ Časová osa spisu`;
+            btnToggle.style.background = 'rgba(59, 130, 246, 0.08)';
+            btnToggle.style.borderColor = 'rgba(59, 130, 246, 0.25)';
+            btnToggle.style.color = '#60a5fa';
+        }
+    }
+
+    // ─── E-mailové úkoly a AI Asistenti ──────────────────────────────────────────────
+
+    async loadEmailSettings() {
+        try {
+            const res = await fetch(`${this.apiBase}/email/settings`, {
+                headers: this.getHeaders()
+            });
+            const data = await res.json();
+            if (data.success) {
+                this.emailSettings = data.settings;
+            }
+        } catch (e) {
+            console.error("Chyba při načítání nastavení emailu:", e);
+        }
+    }
+
+    async loadEmailTasks() {
+        try {
+            const res = await fetch(`${this.apiBase}/email/tasks`, {
+                headers: this.getHeaders()
+            });
+            const data = await res.json();
+            if (data.success) {
+                this.emailTasks = data.tasks;
+            }
+        } catch (e) {
+            console.error("Chyba při načítání emailových úkolů:", e);
+        }
+    }
+
+    async saveEmailSettings(e) {
+        e.preventDefault();
+        const btn = e.target.querySelector('button[type="submit"]');
+        if (btn) btn.disabled = true;
+        
+        const settings = {
+            authorized_sender: document.getElementById('em-auth-sender').value.trim(),
+            recipient_filter: document.getElementById('em-recip-filter').value.trim(),
+            imap_host: document.getElementById('em-imap-host').value.trim(),
+            imap_port: document.getElementById('em-imap-port').value.trim(),
+            imap_user: document.getElementById('em-imap-user').value.trim(),
+            imap_ssl: document.getElementById('em-imap-ssl').checked,
+            smtp_host: document.getElementById('em-smtp-host').value.trim(),
+            smtp_port: document.getElementById('em-smtp-port').value.trim(),
+            smtp_user: document.getElementById('em-smtp-user').value.trim(),
+            smtp_ssl: document.getElementById('em-smtp-ssl').checked
+        };
+        
+        try {
+            const res = await fetch(`${this.apiBase}/email/settings`, {
+                method: 'POST',
+                headers: this.getHeaders({ 'Content-Type': 'application/json' }),
+                body: JSON.stringify(settings)
+            });
+            const data = await res.json();
+            if (data.success) {
+                alert("✓ Nastavení e-mailu bylo úspěšně uloženo.");
+                this.emailSettings = settings;
+                this.renderInbox();
+            } else {
+                alert("❌ Chyba: " + data.error);
+            }
+        } catch (err) {
+            alert("❌ Síťová chyba: " + err.message);
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    }
+
+    openEmailSimulationModal() {
+        const dialog = document.getElementById('dialog-email-simulation');
+        if (!dialog) return;
+        
+        // Předvyplnit odesílatele autorizovaným e-mailem advokáta
+        const senderInput = document.getElementById('ems-sender');
+        if (senderInput && this.emailSettings && this.emailSettings.authorized_sender) {
+            senderInput.value = this.emailSettings.authorized_sender;
+        }
+        
+        // Vyčistit předmět a tělo
+        const subjectInput = document.getElementById('ems-subject');
+        if (subjectInput) subjectInput.value = '';
+        const bodyInput = document.getElementById('ems-body');
+        if (bodyInput) bodyInput.value = '';
+        
+        dialog.showModal();
+    }
+
+    async submitEmailSimulation(e) {
+        e.preventDefault();
+        const dialog = document.getElementById('dialog-email-simulation');
+        const btn = e.target.querySelector('button[type="submit"]');
+        if (btn) {
+            btn.disabled = true;
+            btn.textContent = "AI asistent zpracovává úkol... 🤖";
+        }
+        
+        const taskData = {
+            sender: document.getElementById('ems-sender').value.trim(),
+            subject: document.getElementById('ems-subject').value.trim(),
+            body: document.getElementById('ems-body').value.trim()
+        };
+        
+        try {
+            const res = await fetch(`${this.apiBase}/email/simulate`, {
+                method: 'POST',
+                headers: this.getHeaders({ 'Content-Type': 'application/json' }),
+                body: JSON.stringify(taskData)
+            });
+            const data = await res.json();
+            if (data.success) {
+                if (dialog) dialog.close();
+                alert(`✓ Úkol byl úspěšně zpracován asistentem (${data.task.assignedAgentName} ${data.task.assignedAgentEmoji}) a odpověď odeslána zpět advokátovi!`);
+                await this.loadEmailTasks();
+                this.renderInbox();
+            } else {
+                alert("❌ Chyba: " + data.error);
+            }
+        } catch (err) {
+            alert("❌ Síťová chyba při simulaci: " + err.message);
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = "Odeslat úkol asistentovi 🚀";
+            }
+        }
+    }
+
+    async deleteEmailTask(id) {
+        if (!confirm("Opravdu chcete tento e-mailový úkol smazat z historie?")) return;
+        try {
+            const res = await fetch(`${this.apiBase}/email/tasks/${id}`, {
+                method: 'DELETE',
+                headers: this.getHeaders()
+            });
+            const data = await res.json();
+            if (data.success) {
+                await this.loadEmailTasks();
+                this.renderInbox();
+            } else {
+                alert("❌ Chyba při mazání: " + data.error);
+            }
+        } catch (err) {
+            alert("❌ Síťová chyba při mazání: " + err.message);
+        }
+    }
+
+    renderEmailTasks() {
+        const container = document.getElementById('inbox-container');
+        if (!container) return;
+
+        // Nabindovat znovu filter buttony pokud je to nutné
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+            if (!btn.dataset.bound) {
+                btn.dataset.bound = "true";
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    this.renderInbox();
+                });
+            }
+        });
+
+        const s = this.emailSettings || {
+            authorized_sender: 'advokat@dias.cz',
+            recipient_filter: 'dias+asistenti@advokatnikancelar.cz',
+            imap_host: 'imap.advokatnikancelar.cz',
+            imap_port: '993',
+            imap_user: 'dias@advokatnikancelar.cz',
+            imap_ssl: true,
+            smtp_host: 'smtp.advokatnikancelar.cz',
+            smtp_port: '465',
+            smtp_user: 'dias@advokatnikancelar.cz',
+            smtp_ssl: true
+        };
+
+        let tasksHtml = '';
+        if (this.emailTasks.length === 0) {
+            tasksHtml = `
+                <div class="empty-state" style="padding: 40px 20px; border: 1px dashed var(--border-glass); border-radius: 12px;">
+                    <div class="empty-icon" style="font-size: 2.5rem; margin-bottom: 10px;">📧</div>
+                    <h3 style="font-size: 1rem; margin-bottom: 5px; color: white;">Žádné e-mailové úkoly</h3>
+                    <p style="font-size: 0.8rem; max-width: 320px; margin: auto; opacity: 0.7;">Pošlete e-mail na schránku asistentů nebo použijte simulátor v levém panelu.</p>
+                </div>
+            `;
+        } else {
+            tasksHtml = this.emailTasks.map(task => {
+                const dateStr = new Date(task.createdAt).toLocaleString('cs-CZ');
+                const safeSubject = task.subject.replace(/"/g, '&quot;');
+                const escapedResponse = task.responseSent.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n');
+                
+                return `
+                    <div class="glass email-task-card" style="border: 1px solid var(--border-glass); border-radius: 12px; padding: 18px; display: flex; flex-direction: column; gap: 12px; background: rgba(15, 23, 42, 0.35); transition: border-color 0.2s;">
+                        <div style="display: flex; justify-content: space-between; align-items: start;">
+                            <div>
+                                <span style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-bottom: 2px;">Doručeno: ${dateStr}</span>
+                                <strong style="color: white; font-size: 0.95rem; font-family: 'Outfit', sans-serif;">${task.subject}</strong>
+                                <span style="font-size: 0.75rem; color: #94a3b8; display: block; margin-top: 2px;">Od: ${task.sender}</span>
+                            </div>
+                            <span style="background: rgba(59,130,246,0.12); border: 1px solid rgba(59,130,246,0.25); padding: 4px 10px; border-radius: 20px; font-size: 0.75rem; color: #93c5fd; font-weight: 600; display: flex; align-items: center; gap: 4px;">
+                                ${task.assignedAgentEmoji} ${task.assignedAgentName}
+                            </span>
+                        </div>
+                        
+                        <div style="background: rgba(0,0,0,0.2); padding: 10px 14px; border-radius: 8px; font-size: 0.82rem; color: #cbd5e1; border-left: 3px solid var(--accent-blue);">
+                            <strong style="color: white;">Zadání v e-mailu:</strong><br/>
+                            <span style="display: block; margin-top: 4px; line-height: 1.4;">${task.body}</span>
+                        </div>
+                        
+                        <div style="margin-top: 5px;">
+                            <span style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 5px;">Odpověď odeslaná advokátovi:</span>
+                            <div style="background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(255,255,255,0.06); padding: 12px; border-radius: 8px; font-family: 'Fira Code', 'Courier New', monospace; font-size: 0.78rem; color: #e2e8f0; max-height: 200px; overflow-y: auto; white-space: pre-wrap; line-height: 1.4; scrollbar-gutter: stable;">${task.responseSent}</div>
+                        </div>
+                        
+                        <div style="display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 10px; margin-top: 5px;">
+                            <button class="btn btn-secondary" onclick="window.appInstance.sendTextToLexisEditor('${escapedResponse}', 'Odpověd na email: ${safeSubject}')" style="font-size: 0.75rem; padding: 6px 12px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.02); color: white;">
+                                ✍️ Odeslat do Editoru
+                            </button>
+                            <button class="btn btn-secondary" onclick="window.appInstance.deleteEmailTask('${task.id}')" style="font-size: 0.75rem; padding: 6px 12px; border: 1px solid rgba(239,68,68,0.2); background: rgba(239,68,68,0.02); color: #f87171;">
+                                🗑️ Smazat
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        container.innerHTML = `
+            <div class="email-tasks-layout" style="display: grid; grid-template-columns: 1fr 1.8fr; gap: 25px; margin-top: 15px; align-items: start;">
+                <!-- Settings Panel -->
+                <div class="glass" style="border: 1px solid var(--border-glass); border-radius: 14px; padding: 20px; background: rgba(30, 41, 59, 0.25); backdrop-filter: blur(12px);">
+                    <h3 style="margin-top: 0; margin-bottom: 15px; display: flex; align-items: center; gap: 8px; font-family: 'Outfit', sans-serif; font-size: 1.1rem; color: white;">
+                        <span>⚙️</span> E-mailové propojení
+                    </h3>
+                    <form id="form-email-settings" onsubmit="window.appInstance.saveEmailSettings(event)" style="display: flex; flex-direction: column; gap: 12px; font-size: 0.82rem;">
+                        <div>
+                            <label style="opacity: 0.8; display: block; margin-bottom: 4px; font-weight: 500;">Váš autorizovaný e-mail (Advokát)</label>
+                            <input type="email" id="em-auth-sender" required style="width: 100%; padding: 8px 12px; background: rgba(0,0,0,0.25); border: 1px solid var(--border-glass); border-radius: 6px; color: white; outline: none;" />
+                        </div>
+                        <div>
+                            <label style="opacity: 0.8; display: block; margin-bottom: 4px; font-weight: 500;">Cílová adresa asistentů (filtr)</label>
+                            <input type="text" id="em-recip-filter" required style="width: 100%; padding: 8px 12px; background: rgba(0,0,0,0.25); border: 1px solid var(--border-glass); border-radius: 6px; color: white; outline: none;" />
+                        </div>
+                        
+                        <div style="border-top: 1px solid rgba(255,255,255,0.06); padding-top: 10px; margin-top: 5px;">
+                            <strong style="color: var(--accent-blue); display: block; margin-bottom: 8px; font-size: 0.8rem;">Příchozí pošta (IMAP)</strong>
+                            <div style="display: grid; grid-template-columns: 1.5fr 0.8fr; gap: 10px; margin-bottom: 8px;">
+                                <input type="text" id="em-imap-host" placeholder="imap.domain.cz" required style="width: 100%; padding: 8px; background: rgba(0,0,0,0.25); border: 1px solid var(--border-glass); border-radius: 6px; color: white; font-size: 0.8rem;" />
+                                <input type="text" id="em-imap-port" placeholder="993" required style="width: 100%; padding: 8px; background: rgba(0,0,0,0.25); border: 1px solid var(--border-glass); border-radius: 6px; color: white; font-size: 0.8rem;" />
+                            </div>
+                            <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 8px;">
+                                <input type="text" id="em-imap-user" placeholder="Uživatel / Login" required style="flex: 1; padding: 8px; background: rgba(0,0,0,0.25); border: 1px solid var(--border-glass); border-radius: 6px; color: white; font-size: 0.8rem;" />
+                                <div style="display: flex; align-items: center; gap: 5px; font-size: 0.72rem; white-space: nowrap; color: var(--text-secondary);">
+                                    <input type="checkbox" id="em-imap-ssl" /> SSL/TLS
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style="border-top: 1px solid rgba(255,255,255,0.06); padding-top: 10px;">
+                            <strong style="color: var(--accent-yellow); display: block; margin-bottom: 8px; font-size: 0.8rem;">Odesílání odpovědí (SMTP)</strong>
+                            <div style="display: grid; grid-template-columns: 1.5fr 0.8fr; gap: 10px; margin-bottom: 8px;">
+                                <input type="text" id="em-smtp-host" placeholder="smtp.domain.cz" required style="width: 100%; padding: 8px; background: rgba(0,0,0,0.25); border: 1px solid var(--border-glass); border-radius: 6px; color: white; font-size: 0.8rem;" />
+                                <input type="text" id="em-smtp-port" placeholder="465" required style="width: 100%; padding: 8px; background: rgba(0,0,0,0.25); border: 1px solid var(--border-glass); border-radius: 6px; color: white; font-size: 0.8rem;" />
+                            </div>
+                            <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 8px;">
+                                <input type="text" id="em-smtp-user" placeholder="Uživatel / Login" required style="flex: 1; padding: 8px; background: rgba(0,0,0,0.25); border: 1px solid var(--border-glass); border-radius: 6px; color: white; font-size: 0.8rem;" />
+                                <div style="display: flex; align-items: center; gap: 5px; font-size: 0.72rem; white-space: nowrap; color: var(--text-secondary);">
+                                    <input type="checkbox" id="em-smtp-ssl" /> SSL/TLS
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 10px;">
+                            <button type="submit" class="btn btn-primary" style="width: 100%; justify-content: center; padding: 10px; font-size: 0.82rem; background: var(--accent-blue); border: none; font-weight: 600; color: white;">
+                                Uložit nastavení 💾
+                            </button>
+                            <button type="button" class="btn btn-secondary" onclick="window.appInstance.openEmailSimulationModal()" style="width: 100%; justify-content: center; padding: 10px; font-size: 0.82rem; border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.05); color: white;">
+                                Simulovat zaslání úkolu 🚀
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Tasks List -->
+                <div style="display: flex; flex-direction: column; gap: 15px;">
+                    <h3 style="margin-top: 0; margin-bottom: 5px; font-family: 'Outfit', sans-serif; font-size: 1.1rem; color: white;">
+                        📥 Úkoly pro asistenty z e-mailu
+                    </h3>
+                    ${tasksHtml}
+                </div>
+            </div>
+        `;
+
+        // Fill form inputs
+        document.getElementById('em-auth-sender').value = s.authorized_sender || '';
+        document.getElementById('em-recip-filter').value = s.recipient_filter || '';
+        document.getElementById('em-imap-host').value = s.imap_host || '';
+        document.getElementById('em-imap-port').value = s.imap_port || '';
+        document.getElementById('em-imap-user').value = s.imap_user || '';
+        document.getElementById('em-imap-ssl').checked = s.imap_ssl !== false;
+        document.getElementById('em-smtp-host').value = s.smtp_host || '';
+        document.getElementById('em-smtp-port').value = s.smtp_port || '';
+        document.getElementById('em-smtp-user').value = s.smtp_user || '';
+        document.getElementById('em-smtp-ssl').checked = s.smtp_ssl !== false;
     }
 }
 

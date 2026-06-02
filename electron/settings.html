@@ -124,11 +124,24 @@
     </div>
 
     <div class="section">
+        <label>Provozní režim</label>
+        <select id="mode" onchange="updateModeVisibility()" style="width: 100%; background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 10px 14px; color: #e2e8f0; font-size: 13px; outline: none; transition: border-color 0.2s;">
+            <option value="local">Lokální (vše běží na tomto PC)</option>
+            <option value="server">Síťový (připojení k Mac Mini / serveru)</option>
+        </select>
+    </div>
+
+    <div class="section" id="serverUrl-section" style="display: none;">
+        <label>Adresa serveru (IP / URL)</label>
+        <input type="text" id="serverUrl" placeholder="Např. http://192.168.1.150:4000">
+    </div>
+
+    <div class="section" id="watchDir-section">
         <label>Sledovaná složka Spisy</label>
         <input type="text" id="watchDir" placeholder="Např. /Users/novak/Desktop/LexisSpisy">
     </div>
 
-    <div class="section">
+    <div class="section" id="port-section">
         <label>Port serveru</label>
         <input type="text" id="port" placeholder="4000">
     </div>
@@ -142,14 +155,14 @@
             </div>
             <div class="toggle active" id="toggle-autostart" onclick="toggleSwitch(this, 'autostart')"></div>
         </div>
-        <div class="setting-row">
+        <div class="setting-row" id="https-row">
             <div class="info">
                 <p>Zabezpečené HTTPS připojení</p>
                 <span>Vyžaduje SSL certifikát (key.pem + cert.pem)</span>
             </div>
             <div class="toggle" id="toggle-https" onclick="toggleSwitch(this, 'https')"></div>
         </div>
-        <div class="setting-row">
+        <div class="setting-row" id="token-row">
             <div class="info">
                 <p>API Token zabezpečení</p>
                 <span>Vyžadovat token pro vzdálený přístup</span>
@@ -167,6 +180,8 @@
         const path = require('path');
 
         const defaults = {
+            mode: 'local',
+            serverUrl: 'http://localhost:4000',
             watchDir: path.join(os.homedir(), 'Desktop', 'LexisSpisy'),
             port: '4000',
             autostart: true,
@@ -176,20 +191,51 @@
 
         let settings = { ...defaults };
 
-        // Načíst uložená nastavení z localStorage
-        const saved = localStorage.getItem('lexislocal_settings');
-        if (saved) {
-            try { settings = { ...defaults, ...JSON.parse(saved) }; } catch(e){}
-        }
+        // Vyžádat si nastavení z hlavního procesu
+        ipcRenderer.send('get-settings');
 
-        document.getElementById('watchDir').value = settings.watchDir;
-        document.getElementById('port').value = settings.port;
-        applyToggle('autostart', settings.autostart);
-        applyToggle('https', settings.https);
-        applyToggle('token', settings.token);
+        ipcRenderer.on('settings-data', (event, data) => {
+            settings = { ...defaults, ...data };
+            
+            document.getElementById('mode').value = settings.mode;
+            document.getElementById('serverUrl').value = settings.serverUrl;
+            document.getElementById('watchDir').value = settings.watchDir;
+            document.getElementById('port').value = settings.port;
+            
+            applyToggle('autostart', settings.autostart);
+            applyToggle('https', settings.https);
+            applyToggle('token', settings.token);
+            
+            updateModeVisibility();
+            document.getElementById('status-bar').textContent = 'Nastavení načtena z disku.';
+        });
+
+        function updateModeVisibility() {
+            const mode = document.getElementById('mode').value;
+            const serverUrlSec = document.getElementById('serverUrl-section');
+            const watchDirSec = document.getElementById('watchDir-section');
+            const portSec = document.getElementById('port-section');
+            const httpsRow = document.getElementById('https-row');
+            const tokenRow = document.getElementById('token-row');
+
+            if (mode === 'server') {
+                serverUrlSec.style.display = 'block';
+                watchDirSec.style.display = 'none';
+                portSec.style.display = 'none';
+                httpsRow.style.display = 'none';
+                tokenRow.style.display = 'none';
+            } else {
+                serverUrlSec.style.display = 'none';
+                watchDirSec.style.display = 'block';
+                portSec.style.display = 'block';
+                httpsRow.style.display = 'flex';
+                tokenRow.style.display = 'flex';
+            }
+        }
 
         function applyToggle(id, state) {
             const el = document.getElementById(`toggle-${id}`);
+            if (!el) return;
             if (state) el.classList.add('active');
             else el.classList.remove('active');
         }
@@ -200,10 +246,15 @@
         }
 
         function saveSettings() {
+            settings.mode = document.getElementById('mode').value;
+            settings.serverUrl = document.getElementById('serverUrl').value.trim() || defaults.serverUrl;
             settings.watchDir = document.getElementById('watchDir').value.trim() || defaults.watchDir;
             settings.port = document.getElementById('port').value.trim() || defaults.port;
-            localStorage.setItem('lexislocal_settings', JSON.stringify(settings));
-            document.getElementById('status-bar').textContent = '✅ Nastavení uložena. Server se restartuje...';
+            
+            // Odeslat nastavení k uložení do hlavního procesu
+            ipcRenderer.send('save-settings', settings);
+            
+            document.getElementById('status-bar').textContent = '✅ Nastavení uložena. Aplikace se restartuje...';
             setTimeout(() => window.close(), 1200);
         }
     </script>

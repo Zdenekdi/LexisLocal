@@ -1663,3 +1663,384 @@ body {
     flex-shrink: 0;
 }
 
+/* Custom Tooltip styling for sidebar navigation buttons */
+.nav-btn[data-tooltip]::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    left: 105%;
+    top: 50%;
+    transform: translateY(-50%) scale(0.95);
+    background: rgba(19, 21, 26, 0.95);
+    border: 1px solid var(--border-glass);
+    color: var(--text-primary);
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 0.78rem;
+    font-weight: 500;
+    line-height: 1.4;
+    white-space: normal;
+    width: 220px;
+    box-shadow: var(--shadow-premium);
+    opacity: 0;
+    pointer-events: none;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 999;
+}
+
+.nav-btn[data-tooltip]::before {
+    content: '';
+    position: absolute;
+    left: 101%;
+    top: 50%;
+    transform: translateY(-50%);
+    border-width: 5px;
+    border-style: solid;
+    border-color: transparent var(--border-glass) transparent transparent;
+    opacity: 0;
+    pointer-events: none;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 999;
+}
+
+.nav-btn[data-tooltip]:hover::after {
+    opacity: 1;
+    transform: translateY(-50%) scale(1);
+    left: 108%;
+}
+
+.nav-btn[data-tooltip]:hover::before {
+    opacity: 1;
+    left: 104%;
+}
+
+@media (max-width: 768px) {
+    .nav-btn[data-tooltip]::after,
+    .nav-btn[data-tooltip]::before {
+        display: none !important;
+    }
+}
+
+/* Calendar UI Component */
+.calendar-wrapper {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+}
+
+.calendar-weekdays {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    text-align: center;
+    font-weight: 600;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border-glass);
+    margin-bottom: 10px;
+}
+
+.calendar-days {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 8px;
+}
+
+.calendar-day {
+    aspect-ratio: 1.2;
+    background: rgba(255, 255, 255, 0.01);
+    border: 1px solid var(--border-glass);
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 8px;
+    cursor: pointer;
+    position: relative;
+    transition: var(--transition-smooth);
+}
+
+.calendar-day:hover {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.15);
+    transform: translateY(-1px);
+}
+
+.calendar-day.prev-next {
+    opacity: 0.3;
+    cursor: default;
+}
+
+.calendar-day.prev-next:hover {
+    background: transparent;
+    border-color: var(--border-glass);
+    transform: none;
+}
+
+.calendar-day.today {
+    border-color: var(--accent-blue);
+    background: rgba(59, 130, 246, 0.05);
+}
+
+.calendar-day.today .day-number {
+    color: #60a5fa;
+    font-weight: bold;
+}
+
+.calendar-day.active {
+    background: rgba(59, 130, 246, 0.12);
+    border-color: #60a5fa;
+    box-shadow: 0 0 10px rgba(59, 130, 246, 0.2);
+}
+
+.day-number {
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.calendar-day-events {
+    display: flex;
+    gap: 3px;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-top: 4px;
+}
+
+.calendar-day-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+}
+
+.calendar-day-dot.deadline {
+    background: var(--accent-yellow);
+    box-shadow: 0 0 4px var(--accent-yellow);
+}
+
+.calendar-day-dot.hearing {
+    background: var(--accent-blue);
+    box-shadow: 0 0 4px var(--accent-blue);
+}
+
+.calendar-day-dot.completed {
+    background: var(--accent-green);
+}
+
+/* Event List Card */
+.calendar-event-item {
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border-glass);
+    background: rgba(255, 255, 255, 0.01);
+    transition: var(--transition-smooth);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.calendar-event-item:hover {
+    background: rgba(255, 255, 255, 0.03);
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+.calendar-event-item.hearing {
+    border-left: 3px solid var(--accent-blue);
+}
+
+.calendar-event-item.deadline {
+    border-left: 3px solid var(--accent-yellow);
+}
+
+.calendar-event-item.completed {
+    border-left: 3px solid var(--accent-green);
+    opacity: 0.6;
+}
+
+/* Timeline Styling */
+.timeline-item {
+    display: flex;
+    gap: 15px;
+    position: relative;
+    padding-left: 10px;
+}
+.timeline-item::before {
+    content: '';
+    position: absolute;
+    left: 23px;
+    top: 28px;
+    bottom: -20px;
+    width: 2px;
+    background: var(--border-glass);
+}
+.timeline-item:last-child::before {
+    display: none;
+}
+.timeline-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border-glass);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.95rem;
+    flex-shrink: 0;
+    z-index: 2;
+}
+.timeline-content {
+    flex-grow: 1;
+    background: rgba(255,255,255,0.015);
+    border: 1px solid var(--border-glass);
+    border-radius: 8px;
+    padding: 10px 14px;
+}
+
+/* ==========================================================================
+   🕵️‍♂️ Redesigned AI Assistants Tab Styles
+   ========================================================================== */
+.agents-container {
+    background: rgba(255, 255, 255, 0.015);
+    border: 1px solid var(--border-glass);
+    border-radius: 16px;
+    padding: 24px;
+    box-shadow: var(--shadow-premium);
+}
+
+.agents-sidebar {
+    background: rgba(0, 0, 0, 0.1);
+    padding: 10px;
+    border-radius: 12px;
+}
+
+.agents-editor {
+    padding: 10px;
+    background: rgba(255, 255, 255, 0.01);
+    border-radius: 12px;
+}
+
+.agent-form {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.agent-form .form-control {
+    background: rgba(0, 0, 0, 0.25) !important;
+    border: 1px solid var(--border-glass) !important;
+    border-radius: 8px !important;
+    color: white !important;
+    padding: 10px 14px !important;
+    transition: var(--transition-smooth);
+    outline: none;
+}
+
+.agent-form .form-control:focus {
+    border-color: var(--accent-blue) !important;
+    box-shadow: 0 0 8px rgba(37, 99, 235, 0.2) !important;
+    background: rgba(0, 0, 0, 0.4) !important;
+}
+
+/* monospaced prompt editor style */
+.code-editor-style {
+    font-family: 'JetBrains Mono', monospace !important;
+    color: #a7f3d0 !important; /* soft emerald glow */
+    line-height: 1.5;
+    tab-size: 4;
+}
+
+/* Model recommendation badge */
+.recommendation-badge {
+    display: inline-block;
+    padding: 2px 6px;
+    font-size: 0.65rem;
+    font-weight: 600;
+    border-radius: 4px;
+    background: rgba(16, 185, 129, 0.12);
+    color: #34d399;
+    border: 1px solid rgba(16, 185, 129, 0.25);
+    margin-top: 3px;
+    width: fit-content;
+}
+
+/* ==========================================================================
+   ⏳ Floating Action Button (FAB) for Time-Tracking
+   ========================================================================== */
+.floating-timelog-btn {
+    position: fixed;
+    bottom: 30px;
+    right: 30px;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #fbbf24, #d97706);
+    border: 1px solid rgba(245, 158, 11, 0.4);
+    box-shadow: 0 4px 20px rgba(217, 119, 6, 0.4);
+    color: black;
+    font-size: 1.6rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 1000;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.floating-timelog-btn:hover {
+    transform: scale(1.1) rotate(15deg);
+    box-shadow: 0 6px 24px rgba(217, 119, 6, 0.6), 0 0 15px rgba(251, 191, 36, 0.4);
+}
+
+.floating-timelog-btn .fab-tooltip {
+    position: absolute;
+    right: 70px;
+    background: rgba(19, 21, 26, 0.95);
+    border: 1px solid var(--border-glass);
+    color: white;
+    font-size: 0.78rem;
+    font-family: 'Outfit', sans-serif;
+    font-weight: 500;
+    padding: 8px 12px;
+    border-radius: 8px;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateX(10px);
+    transition: all 0.3s ease;
+    box-shadow: var(--shadow-premium);
+}
+
+.floating-timelog-btn:hover .fab-tooltip {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+/* ==========================================================================
+   📁 Collapsible Inline Case Timeline history
+   ========================================================================== */
+.case-timeline-collapse {
+    transition: max-height 0.4s ease-out;
+    overflow: hidden;
+}
+
+.inline-timeline-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.inline-timeline-title {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--accent-blue);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+
+
+

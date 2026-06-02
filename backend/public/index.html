@@ -39,10 +39,10 @@
                     <span class="icon">🤖</span> Správce Modelů
                 </button>
                 <button class="nav-btn" data-tab="agents">
-                    <span class="icon">🕵️‍♂️</span> AI Agenti Swarmu
+                    <span class="icon">🕵️‍♂️</span> AI Asistenti
                 </button>
                 <button class="nav-btn" data-tab="chat">
-                    <span class="icon">💬</span> Chat Swarmu
+                    <span class="icon">💬</span> Konzultace s AI
                 </button>
                 <button class="nav-btn" data-tab="workflow">
                     <span class="icon">📅</span> Workflow & Lhůty
@@ -60,7 +60,7 @@
                     <span class="icon">📜</span> Auditní logy
                 </button>
                 <button class="nav-btn" data-tab="manual">
-                    <span class="icon">📖</span> Návod & Agenti
+                    <span class="icon">📖</span> Návod & Nápověda
                 </button>
             </nav>
             <div class="sidebar-footer">
@@ -171,7 +171,7 @@
                         </div>
                     </div>
 
-                    <h3 class="section-title">🤖 Tým specializovaných AI agentů (Swarm)</h3>
+                    <h3 class="section-title">🤖 Tým specializovaných AI asistentů</h3>
                     <div class="agents-grid" id="agents-list">
                         <!-- Loaded dynamically -->
                     </div>
@@ -184,6 +184,7 @@
                             <button class="filter-btn active" data-filter="all">Všechny spisy</button>
                             <button class="filter-btn" data-filter="unread">Nové podání</button>
                             <button class="filter-btn" data-filter="read">Zpracované</button>
+                            <button class="filter-btn" data-filter="emails">📧 E-mailové úkoly</button>
                         </div>
                         <span class="inbox-count" id="inbox-count-text">Načítám spisy...</span>
                     </div>
@@ -268,7 +269,7 @@
                         <!-- Chat Sidebar Config -->
                         <div class="chat-config-bar" style="display: flex; gap: 15px; flex-wrap: wrap; align-items: flex-end; padding: 15px 20px; border-bottom: 1px solid var(--border-glass);">
                             <div class="config-item">
-                                <label for="chat-agent-select" id="lbl-agent-1">Aktivní AI Agent:</label>
+                                <label for="chat-agent-select" id="lbl-agent-1">Aktivní AI asistent:</label>
                                 <select id="chat-agent-select" class="glass-select" style="min-width: 160px;">
                                     <option value="resersnik">📚 Rešeršník</option>
                                     <option value="stylista">✍️ Stylista</option>
@@ -281,7 +282,7 @@
                             <!-- Toggle for Swarm Debate Mode -->
                             <div class="config-item" style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
                                 <input type="checkbox" id="toggle-swarm-debate" style="width: 18px; height: 18px; accent-color: var(--accent-blue); cursor: pointer;">
-                                <label for="toggle-swarm-debate" style="margin: 0; cursor: pointer; font-weight: bold; color: var(--accent-blue);">👥 Swarm Debata</label>
+                                <label for="toggle-swarm-debate" style="margin: 0; cursor: pointer; font-weight: bold; color: var(--accent-blue);">👥 Oponentní diskuse</label>
                             </div>
 
                             <!-- Second Agent Dropdown (Only visible in Swarm Debate Mode) -->
@@ -309,14 +310,14 @@
                             <div class="chat-message agent">
                                 <div class="message-avatar">🤖</div>
                                 <div class="message-content">
-                                    <p>Vítejte v testovacím playgroundu lokálního AI Swarmu! Vyberte si agenta a model, napište dotaz a stiskněte odeslat. Všechna data zůstávají v bezpečí Vašeho počítače.</p>
+                                    <p>Vítejte v testovacím prostředí lokálních AI asistentů! Zvolte si specializovaný profil a model, zadejte svůj dotaz. Veškerá data jsou zpracovávána lokálně a bezpečně ve Vaší síti.</p>
                                 </div>
                             </div>
                         </div>
 
                         <!-- Chat Input Area -->
                         <div class="chat-input-bar">
-                            <textarea id="chat-textarea" placeholder="Zeptejte se vybraného agenta (stiskněte Enter pro odeslání)..." rows="1"></textarea>
+                            <textarea id="chat-textarea" placeholder="Zeptejte se vybraného asistenta (stiskněte Enter pro odeslání)..." rows="1"></textarea>
                             <button class="btn btn-primary" id="btn-chat-send">Odeslat 🚀</button>
                         </div>
                     </div>
@@ -326,7 +327,7 @@
                 <section class="tab-pane" id="tab-manual">
                     <div class="glass manual-card">
                         <h3>📖 Manuál na zprovoznění lokální AI (Ollama & apfel)</h3>
-                        <p>Tento průvodce Vám pomůže nastavit a plně ovládnout 100% offline umělou inteligenci přímo v LexisEditoru a LexisLocal Swarmu.</p>
+                        <p>Tento průvodce Vám pomůže nastavit a plně ovládnout 100% offline umělou inteligenci přímo v LexisEditoru a LexisLocal.</p>
                         
                         <div class="manual-section">
                             <h4>🦙 Krok 1: Instalace lokálního AI motoru (Ollama)</h4>
@@ -341,12 +342,12 @@
                         </div>
                         
                         <div class="manual-section">
-                            <h4>🤖 Krok 2: Jak fungují a jak nastavit agenty ve Swarmu?</h4>
-                            <p>LexisLocal obsahuje specializovaný tým AI botů (Swarm), které mají v backendu přesně definované role a instrukce.</p>
+                            <h4>🤖 Krok 2: Jak fungují a jak nastavit AI asistenty?</h4>
+                            <p>LexisLocal obsahuje specializovaný tým lokálních AI asistentů, kteří mají přesně definované role a instrukce.</p>
                             <table class="manual-table">
                                 <thead>
                                     <tr>
-                                        <th>Agent</th>
+                                        <th>Asistent / Role</th>
                                         <th>Hlavní Funkce</th>
                                         <th>Jak se dotazovat (Ukázkový prompt)</th>
                                     </tr>
@@ -382,12 +383,12 @@
                         </div>
 
                         <div class="manual-section">
-                            <h4>🛠️ Krok 3: Konfigurace instrukcí agentů (Pro vývojáře)</h4>
-                            <p>Instrukce a chování jednotlivých agentů (tzv. System Prompts) můžete snadno měnit a upravovat přímo v kódu backendu:</p>
+                            <h4>🛠️ Krok 3: Konfigurace instrukcí asistentů (Pro vývojáře)</h4>
+                            <p>Instrukce a chování jednotlivých asistentů (tzv. System Prompts) můžete snadno měnit a upravovat přímo v kódu backendu:</p>
                             <ul>
                                 <li>Otevřete soubor <code>backend/server.js</code>.</li>
                                 <li>Najděte objekt <code>const AGENTS = { ... }</code> (kolem řádku 25).</li>
-                                <li>Zde můžete u každého agenta přepsat jeho <code>systemPrompt</code> podle Vašich vlastních specifických potřeb a tónu!</li>
+                                <li>Zde můžete u každého asistenta přepsat jeho <code>systemPrompt</code> podle Vašich vlastních specifických potřeb a tónu!</li>
                             </ul>
                         </div>
 
@@ -413,58 +414,82 @@
                 <!-- TAB: AI AGENTS CUSTOMIZER -->
                 <section class="tab-pane" id="tab-agents">
                     <div class="glass agents-container" style="display: flex; gap: 20px; height: calc(100vh - 200px); min-height: 550px;">
-                        <!-- Left pane: Agents List -->
+                        <!-- Left pane: Assistants List -->
                         <div class="agents-sidebar" style="flex: 0 0 280px; display: flex; flex-direction: column; border-right: 1px solid rgba(255, 255, 255, 0.1); padding-right: 20px;">
                             <div class="sidebar-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                                <h3 style="margin: 0; font-size: 1.1rem;">🤖 AI Swarm</h3>
-                                <button class="btn btn-primary btn-sm" id="btn-add-agent" style="font-size: 0.8rem; padding: 5px 10px;">➕ Nový</button>
+                                <h3 style="margin: 0; font-size: 1.1rem;">🤖 AI Asistenti</h3>
+                                <button class="btn btn-primary btn-sm" id="btn-add-agent" style="font-size: 0.8rem; padding: 5px 10px;">➕ Nová role</button>
                             </div>
                             <div class="agents-list" id="agents-list-container" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 5px;">
                                 <!-- Dynamically loaded list of agents -->
                             </div>
                         </div>
                         
-                        <!-- Right pane: Agent Editor Form -->
+                        <!-- Right pane: Assistant Editor Form -->
                         <div class="agents-editor" style="flex: 1; display: flex; flex-direction: column; justify-content: center; position: relative;">
                             <div class="editor-placeholder" id="agent-editor-placeholder" style="text-align: center; opacity: 0.6; padding: 40px;">
                                 <span class="placeholder-icon" style="font-size: 3rem; display: block; margin-bottom: 15px;">🕵️‍♂️</span>
-                                <h4 style="margin: 0 0 10px 0;">Vyberte agenta ze seznamu</h4>
-                                <p style="margin: 0; font-size: 0.9rem;">Zvolte stávajícího agenta nebo klikněte na "Nový" pro přidání nového specializovaného bota.</p>
+                                <h4 style="margin: 0 0 10px 0;">Vyberte roli ze seznamu</h4>
+                                <p style="margin: 0; font-size: 0.9rem;">Zvolte stávajícího asistenta nebo přidejte novou specializaci pro Váš lokální právní tým.</p>
                             </div>
                             
-                            <form class="agent-form" id="agent-editor-form" style="display: none; flex-direction: column; gap: 15px; text-align: left;">
+                            <form class="agent-form" id="agent-editor-form" style="display: none; flex-direction: column; gap: 15px; text-align: left; overflow-y: auto; padding-right: 5px;">
                                 <input type="hidden" id="agent-form-is-system" value="false">
                                 
                                 <div class="form-group" id="agent-form-id-group" style="display: none;">
-                                    <label style="display: block; font-size: 0.85rem; margin-bottom: 5px; opacity: 0.9;">Jedinečné ID agenta (pouze malá písmena a podtržítka, např. <code>financnik</code>)</label>
+                                    <label style="display: block; font-size: 0.85rem; margin-bottom: 5px; opacity: 0.9;">Kód specializace (pouze malá písmena a podtržítka, např. <code>financnik</code>)</label>
                                     <input type="text" id="agent-form-id" class="form-control" placeholder="Např. financnik" style="width: 100%; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: #fff;">
                                 </div>
-
-                                <div class="form-row" style="display: flex; gap: 15px;">
-                                    <div class="form-group" style="flex: 0 0 100px;">
+ 
+                                <div class="form-row" style="display: flex; gap: 15px; flex-wrap: wrap;">
+                                    <div class="form-group" style="flex: 0 0 70px;">
                                         <label style="display: block; font-size: 0.85rem; margin-bottom: 5px; opacity: 0.9;">Emoji</label>
-                                        <input type="text" id="agent-form-emoji" class="form-control" placeholder="🤖" required style="width: 100%; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: #fff; font-size: 1.5rem; text-align: center;">
+                                        <input type="text" id="agent-form-emoji" class="form-control" placeholder="🤖" required style="width: 100%; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: #fff; font-size: 1.3rem; text-align: center;">
                                     </div>
-                                    <div class="form-group" style="flex: 1;">
-                                        <label style="display: block; font-size: 0.85rem; margin-bottom: 5px; opacity: 0.9;">Název Agenta</label>
+                                    <div class="form-group" style="flex: 1.5; min-width: 180px;">
+                                        <label style="display: block; font-size: 0.85rem; margin-bottom: 5px; opacity: 0.9;">Název asistenta / Specializace</label>
                                         <input type="text" id="agent-form-name" class="form-control" placeholder="Např. Finanční Analytik" required style="width: 100%; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: #fff;">
+                                    </div>
+                                    <div class="form-group" style="flex: 1.2; min-width: 180px;">
+                                        <label style="display: block; font-size: 0.85rem; margin-bottom: 5px; opacity: 0.9;">Doporučený AI model</label>
+                                        <select id="agent-form-model" class="glass-select" style="width: 100%; padding: 10px; background: #0f172a; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: #fff; height: 41px; outline: none; cursor: pointer;">
+                                            <option value="llama3">Llama 3 (Doporučeno pro stylistiku)</option>
+                                            <option value="mistral">Mistral (Doporučeno pro audit)</option>
+                                            <option value="gemma">Gemma (Rychlé kratší texty)</option>
+                                            <option value="phi3">Phi 3 (Úsporný model)</option>
+                                        </select>
                                     </div>
                                 </div>
                                 
                                 <div class="form-group">
-                                    <label style="display: block; font-size: 0.85rem; margin-bottom: 5px; opacity: 0.9;">Popis / Hlavní role</label>
-                                    <input type="text" id="agent-form-role" class="form-control" placeholder="Stručný popisek k čemu agent slouží..." required style="width: 100%; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: #fff;">
+                                    <label style="display: block; font-size: 0.85rem; margin-bottom: 5px; opacity: 0.9;">Popis expertízy a úkolů</label>
+                                    <input type="text" id="agent-form-role" class="form-control" placeholder="Stručný popisek k čemu asistent slouží..." required style="width: 100%; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: #fff;">
+                                </div>
+ 
+                                <div class="form-group">
+                                    <label style="display: block; font-size: 0.85rem; margin-bottom: 8px; opacity: 0.9;">Systémová oprávnění asistenta</label>
+                                    <div style="display: flex; gap: 20px; flex-wrap: wrap; background: rgba(0,0,0,0.2); padding: 12px 15px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
+                                        <label style="display: flex; align-items: center; gap: 8px; margin: 0; font-size: 0.82rem; cursor: pointer; color: #e2e8f0; font-weight: 500;">
+                                            <input type="checkbox" id="agent-form-perm-files" style="width: 16px; height: 16px; accent-color: var(--accent-blue); cursor: pointer;"> 📂 Přístup ke spisům RAG
+                                        </label>
+                                        <label style="display: flex; align-items: center; gap: 8px; margin: 0; font-size: 0.82rem; cursor: pointer; color: #e2e8f0; font-weight: 500;">
+                                            <input type="checkbox" id="agent-form-perm-registries" style="width: 16px; height: 16px; accent-color: var(--accent-blue); cursor: pointer;"> 🔍 Dotazy do rejstříků
+                                        </label>
+                                        <label style="display: flex; align-items: center; gap: 8px; margin: 0; font-size: 0.82rem; cursor: pointer; color: #e2e8f0; font-weight: 500;">
+                                            <input type="checkbox" id="agent-form-perm-desktop" style="width: 16px; height: 16px; accent-color: var(--accent-blue); cursor: pointer;"> 💻 Ukládání na plochu
+                                        </label>
+                                    </div>
                                 </div>
                                 
-                                <div class="form-group" style="flex: 1; display: flex; flex-direction: column;">
-                                    <label style="display: block; font-size: 0.85rem; margin-bottom: 5px; opacity: 0.9;">Systémové instrukce (System Prompt)</label>
-                                    <textarea id="agent-form-prompt" class="form-control" placeholder="Popište přesně chování a styl, jakým má agent odpovídat klientské dotazy..." required style="flex: 1; width: 100%; min-height: 220px; padding: 12px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: #fff; font-family: monospace; font-size: 0.9rem; line-height: 1.5; resize: vertical;"></textarea>
+                                <div class="form-group" style="flex: 1; display: flex; flex-direction: column; min-height: 200px;">
+                                    <label style="display: block; font-size: 0.85rem; margin-bottom: 5px; opacity: 0.9;">Systémové instrukce chování (System Prompt)</label>
+                                    <textarea id="agent-form-prompt" class="form-control code-editor-style" placeholder="Popište přesně chování, styl, odborný tón a pravidla, jakými se má asistent řídit..." required style="flex: 1; width: 100%; min-height: 180px; padding: 12px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: #a7f3d0; font-family: 'JetBrains Mono', monospace; font-size: 0.88rem; line-height: 1.5; resize: vertical; box-shadow: inset 0 2px 4px rgba(0,0,0,0.5);"></textarea>
                                 </div>
                                 
-                                <div class="form-actions" style="display: flex; gap: 10px; margin-top: 10px;">
-                                    <button type="submit" class="btn btn-primary" id="btn-save-agent-submit" style="padding: 10px 20px;">Uložit agenta 💾</button>
-                                    <button type="button" class="btn btn-warning" id="btn-reset-agent" style="display: none; padding: 10px 15px; background: #e67e22; border: none; color: #fff; border-radius: 6px; cursor: pointer;">Obnovit výchozí 🔄</button>
-                                    <button type="button" class="btn btn-danger" id="btn-delete-agent" style="display: none; padding: 10px 15px; background: #e74c3c; border: none; color: #fff; border-radius: 6px; cursor: pointer;">Smazat 🗑️</button>
+                                <div class="form-actions" style="display: flex; gap: 10px; margin-top: 5px;">
+                                    <button type="submit" class="btn btn-primary" id="btn-save-agent-submit" style="padding: 10px 20px;">Uložit profil asistenta 💾</button>
+                                    <button type="button" class="btn btn-warning" id="btn-reset-agent" style="display: none; padding: 10px 15px; background: #e67e22; border: none; color: #fff; border-radius: 6px; cursor: pointer; font-family: inherit;">Obnovit tovární nastavení 🔄</button>
+                                    <button type="button" class="btn btn-danger" id="btn-delete-agent" style="display: none; padding: 10px 15px; background: #e74c3c; border: none; color: #fff; border-radius: 6px; cursor: pointer; font-family: inherit;">Odstranit z týmu 🗑️</button>
                                 </div>
                             </form>
                         </div>
@@ -844,6 +869,88 @@
             </div>
         </div>
     </div>
+
+    <!-- Dialog for Quick Time Log -->
+    <dialog id="dialog-quick-timelog" class="glass" style="border: 1px solid var(--border-glass); border-radius: 16px; padding: 25px; max-width: 450px; width: 90%; color: white; background: rgba(19, 21, 26, 0.98); box-shadow: 0 10px 40px rgba(0,0,0,0.6); margin: auto; outline: none; border-color: rgba(245,158,11,0.35);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h3 style="margin: 0; display: flex; align-items: center; gap: 8px; font-family: 'Outfit', sans-serif;">
+                <span>⏱️</span> Rychlý výkaz činnosti
+            </h3>
+            <button onclick="document.getElementById('dialog-quick-timelog').close()" style="background: transparent; border: none; color: white; cursor: pointer; font-size: 1.2rem; opacity: 0.7;">✕</button>
+        </div>
+        <form id="form-quick-timelog" onsubmit="window.appInstance.saveQuickTimeLog(event)" style="display: flex; flex-direction: column; gap: 15px;">
+            <div>
+                <label style="font-size: 0.8rem; opacity: 0.8; display: block; margin-bottom: 5px;">Název spisu / Klient</label>
+                <input type="text" id="qtl-case" placeholder="Např. Černý vs. Bílá (2026/001)" required style="width: 100%; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-glass); border-radius: 8px; color: white; outline: none;" />
+            </div>
+            <div style="display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 15px;">
+                <div>
+                    <label style="font-size: 0.8rem; opacity: 0.8; display: block; margin-bottom: 5px;">Datum úkonu</label>
+                    <input type="date" id="qtl-date" required style="width: 100%; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-glass); border-radius: 8px; color: white; outline: none;" />
+                </div>
+                <div>
+                    <label style="font-size: 0.8rem; opacity: 0.8; display: block; margin-bottom: 5px;">Čas (hodiny)</label>
+                    <input type="number" id="qtl-hours" step="0.25" min="0.25" placeholder="Např. 1.5" required style="width: 100%; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-glass); border-radius: 8px; color: white; outline: none;" />
+                </div>
+            </div>
+            <div>
+                <label style="font-size: 0.8rem; opacity: 0.8; display: block; margin-bottom: 5px;">Popis provedené práce</label>
+                <textarea id="qtl-description" placeholder="Např. Studium soudního spisu, příprava podání k soudu..." required style="width: 100%; height: 80px; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-glass); border-radius: 8px; color: white; outline: none; resize: none; font-family: inherit; font-size: 0.85rem;"></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary" style="background: var(--accent-yellow); color: black; font-weight: 700; width: 100%; justify-content: center; padding: 12px; margin-top: 5px; border: none;">Uložit úkon 💾</button>
+        </form>
+    </dialog>
+
+    <!-- Dialog for Case Timeline & History (Backup modal) -->
+    <dialog id="dialog-case-timeline" class="glass" style="border: 1px solid var(--border-glass); border-radius: 16px; padding: 25px; max-width: 600px; width: 90%; color: white; background: rgba(19, 21, 26, 0.98); box-shadow: 0 10px 40px rgba(0,0,0,0.6); margin: auto; outline: none; border-color: rgba(59,130,246,0.35);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h3 style="margin: 0; display: flex; align-items: center; gap: 8px; font-family: 'Outfit', sans-serif;">
+                <span>⏱️</span> Časová osa spisu
+            </h3>
+            <button onclick="document.getElementById('dialog-case-timeline').close()" style="background: transparent; border: none; color: white; cursor: pointer; font-size: 1.2rem; opacity: 0.7;">✕</button>
+        </div>
+        <div style="margin-bottom: 15px;">
+            <span style="font-size: 0.8rem; opacity: 0.6; display: block;">Spisová značka</span>
+            <strong id="timeline-case-number" style="font-size: 1.1rem; color: var(--accent-blue);">sp. zn. ...</strong>
+        </div>
+        <!-- Scrollable Timeline List -->
+        <div id="timeline-events-list" style="display: flex; flex-direction: column; gap: 15px; max-height: 400px; overflow-y: auto; padding-right: 5px; scrollbar-gutter: stable;">
+            <!-- Populate via JS -->
+        </div>
+    </dialog>
+
+    <!-- Dialog for Email Simulation -->
+    <dialog id="dialog-email-simulation" class="glass" style="border: 1px solid var(--border-glass); border-radius: 16px; padding: 25px; max-width: 500px; width: 90%; color: white; background: rgba(19, 21, 26, 0.98); box-shadow: 0 10px 40px rgba(0,0,0,0.6); margin: auto; outline: none; border-color: rgba(59,130,246,0.35);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h3 style="margin: 0; display: flex; align-items: center; gap: 8px; font-family: 'Outfit', sans-serif;">
+                <span>📧</span> Simulace e-mailu od Advokáta
+            </h3>
+            <button onclick="document.getElementById('dialog-email-simulation').close()" style="background: transparent; border: none; color: white; cursor: pointer; font-size: 1.2rem; opacity: 0.7;">✕</button>
+        </div>
+        <form id="form-email-simulation" onsubmit="window.appInstance.submitEmailSimulation(event)" style="display: flex; flex-direction: column; gap: 15px;">
+            <div>
+                <label style="font-size: 0.8rem; opacity: 0.8; display: block; margin-bottom: 5px;">Odesílatel (Advokát)</label>
+                <input type="text" id="ems-sender" placeholder="advokat@dias.cz" value="advokat@dias.cz" required style="width: 100%; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-glass); border-radius: 8px; color: white; outline: none;" />
+            </div>
+            <div>
+                <label style="font-size: 0.8rem; opacity: 0.8; display: block; margin-bottom: 5px;">Předmět e-mailu</label>
+                <input type="text" id="ems-subject" placeholder="Např. [Spisovatel] Darovací smlouva nebo [Kontrolor] Kontrola doložky" required style="width: 100%; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-glass); border-radius: 8px; color: white; outline: none;" />
+            </div>
+            <div>
+                <label style="font-size: 0.8rem; opacity: 0.8; display: block; margin-bottom: 5px;">Obsah zprávy (Zadání úkolu pro asistenta)</label>
+                <textarea id="ems-body" placeholder="Např. Ahoj, prosím sepiš darovací smlouvu na auto... nebo @kontrolor zkontroluj smluvní pokutu..." required style="width: 100%; height: 120px; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-glass); border-radius: 8px; color: white; outline: none; resize: none; font-family: inherit; font-size: 0.85rem;"></textarea>
+            </div>
+            <div style="font-size: 0.75rem; opacity: 0.7; color: var(--accent-blue);">
+                💡 Tip: V předmětu uveďte roli asistenta v hranatých závorkách (např. [Spisovatel]) nebo v textu napište na začátek tag (např. @kontrolor). Jinak systém provede automatické přiřazení podle obsahu textu.
+            </div>
+            <button type="submit" class="btn btn-primary" style="background: var(--accent-blue); color: white; font-weight: 700; width: 100%; justify-content: center; padding: 12px; margin-top: 5px; border: none;">Odeslat úkol asistentovi 🚀</button>
+        </form>
+    </dialog>
+
+    <!-- Floating Action Button for Time Tracking -->
+    <button class="floating-timelog-btn" onclick="window.appInstance.openQuickTimeLogModal()" title="Vykázat činnost (Alt+T)">
+        ⏱️ <span class="fab-tooltip">Vykázat činnost (Alt+T)</span>
+    </button>
 
     <!-- Core App Logic -->
     <script src="app.js"></script>

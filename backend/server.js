@@ -16,6 +16,10 @@ const WorkflowEngine = require('./lib/workflow');
 const ConflictDetector = require('./lib/conflicts');
 const JudikaturaWatcher = require('./lib/judikatura');
 const ManagerialIntelligence = require('./lib/managerial');
+const HearingsWatcher = require('./lib/hearings');
+const { writeToSystemCalendar } = require('./lib/calendar');
+
+
 
 // Robust Ollama module import supporting both CommonJS and ESM default exports
 const ollamaLib = require('ollama');
@@ -374,6 +378,23 @@ app.post('/api/activity/log', (req, res) => {
     }
 });
 
+// POST /api/activity/custom - Add manual custom time-tracking entry
+app.post('/api/activity/custom', (req, res) => {
+    const { documentName, hours, actionType, date } = req.body;
+    if (!documentName || !hours || !date) {
+        return res.status(400).json({ error: "Spis, počet hodin a datum jsou povinné parametry." });
+    }
+    try {
+        const activeSeconds = parseFloat(hours) * 3600;
+        const isoDate = new Date(date).toISOString();
+        const entry = TimeTracker.logActivity(documentName, activeSeconds, actionType || 'write', isoDate);
+        res.json({ success: true, entry });
+    } catch (err) {
+        res.status(500).json({ error: `Nelze zapsat ruční úkon: ${err.message}` });
+    }
+});
+
+
 // GET /api/activity/today - Get aggregated activities for today
 app.get('/api/activity/today', (req, res) => {
     try {
@@ -617,6 +638,39 @@ app.post('/api/managerial/settings', (req, res) => {
     }
 });
 
+// --- FEE SCHEDULE (CENÍK ODMĚN) ENDPOINTS ---
+
+// GET /api/managerial/fees - Retrieve all fee items
+app.get('/api/managerial/fees', (req, res) => {
+    try {
+        const fees = ManagerialIntelligence.getFees();
+        res.json({ success: true, fees });
+    } catch (err) {
+        res.status(500).json({ error: `Nelze načíst ceník odměn: ${err.message}` });
+    }
+});
+
+// POST /api/managerial/fees - Create or update a fee item
+app.post('/api/managerial/fees', (req, res) => {
+    try {
+        const fee = ManagerialIntelligence.saveFee(req.body);
+        res.json({ success: true, fee });
+    } catch (err) {
+        res.status(500).json({ error: `Nelze uložit položku ceníku: ${err.message}` });
+    }
+});
+
+// DELETE /api/managerial/fees/:id - Delete a fee item
+app.delete('/api/managerial/fees/:id', (req, res) => {
+    const { id } = req.params;
+    try {
+        const deleted = ManagerialIntelligence.deleteFee(id);
+        res.json({ success: true, deleted });
+    } catch (err) {
+        res.status(500).json({ error: `Nelze smazat položku ceníku: ${err.message}` });
+    }
+});
+
 // GET /api/inbox - Retrieve unread parsed documents
 app.get('/api/inbox', (req, res) => {
     try {
@@ -662,6 +716,91 @@ app.get('/api/inbox/all', (req, res) => {
         res.status(500).json({ error: `Chyba při načítání kompletní doručené pošty: ${err.message}` });
     }
 });
+
+// GET /api/inbox/case/:caseNum/timeline - Retrieve a timeline of activities for a specific case
+app.get('/api/inbox/case/:caseNum/timeline', async (req, res) => {
+    const { caseNum } = req.params;
+    try {
+        const timeline = [];
+        
+        // 1. Get files belonging to this case in the inbox
+        const inboxData = loadInbox() || { files: {} };
+        const filesArray = Object.values(inboxData.files || {});
+        const caseFiles = filesArray.filter(f => f.caseNumber === caseNum);
+        
+        caseFiles.forEach(file => {
+            timeline.push({
+                timestamp: file.timestamp || new Date().toISOString(),
+                type: 'document_added',
+                title: `Přidán dokument do spisu`,
+                description: `${file.fileName} (${file.wasOcr ? 'Provedeno OCR' : 'Textový formát'})`,
+                icon: file.wasOcr ? '🔍' : '📄'
+            });
+        });
+        
+        // 2. Get activities from TimeTracker for this case
+        const activities = db.get('activities') || [];
+        const caseFileNames = caseFiles.map(f => f.fileName);
+        const caseActivities = activities.filter(act => 
+            (act.documentName && caseFileNames.includes(act.documentName)) || 
+            (act.documentName && act.documentName.includes(caseNum))
+        );
+        
+        caseActivities.forEach(act => {
+            const hours = (act.activeSeconds / 3600).toFixed(2);
+            timeline.push({
+                timestamp: act.timestamp,
+                type: 'work_logged',
+                title: `Odpracovaná práce`,
+                description: `Záznam práce (${hours} hod) - úkon: ${act.actionType || 'úprava'}`,
+                icon: '🕒'
+            });
+        });
+        
+        // 3. Get hearings / calendar events matching this case
+        const hearings = HearingsWatcher.loadMonitoredHearings(WATCH_DIR) || [];
+        const caseHearings = hearings.filter(h => {
+            if (!h.spisovaZnacka) return false;
+            const spznStr = `${h.spisovaZnacka.cisloSenatu} ${h.spisovaZnacka.druhVeci} ${h.spisovaZnacka.bcVec}/${h.spisovaZnacka.rocnik}`;
+            return spznStr.includes(caseNum) || caseNum.includes(spznStr);
+        });
+        
+        caseHearings.forEach(h => {
+            timeline.push({
+                timestamp: h.dueDate ? `${h.dueDate}T${h.time || '10:00'}:00` : new Date().toISOString(),
+                type: 'hearing',
+                title: `Soudní jednání`,
+                description: `${h.title} (${h.location || 'soud'}) - Stav: ${h.status.toUpperCase()}`,
+                icon: '⚖️'
+            });
+        });
+        
+        // 4. Get audit logs for this case (where target matches file names or caseNum)
+        const auditLogs = require('./lib/audit').loadAuditLogs() || [];
+        const caseAuditLogs = auditLogs.filter(log => 
+            log.target === caseNum || 
+            (log.target && caseFileNames.includes(log.target))
+        );
+        
+        caseAuditLogs.forEach(log => {
+            timeline.push({
+                timestamp: log.timestamp,
+                type: 'audit',
+                title: log.operation,
+                description: `${log.user}: ${log.target}`,
+                icon: '📜'
+            });
+        });
+        
+        // Sort timeline descending by timestamp
+        timeline.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+        
+        res.json({ success: true, timeline });
+    } catch (err) {
+        res.status(500).json({ error: `Nelze načíst timeline spisu: ${err.message}` });
+    }
+});
+
 
 // POST /api/inbox/delete - Delete document from index and physically from disk
 app.post('/api/inbox/delete', async (req, res) => {
@@ -816,6 +955,155 @@ app.get('/api/registry/check', async (req, res) => {
     }
 });
 
+
+// POST /api/campaigns/validate-recipients - Validate a list of ICOs
+app.post('/api/campaigns/validate-recipients', async (req, res) => {
+    const { icos } = req.body;
+    if (!icos || !Array.isArray(icos)) {
+        return res.status(400).json({ error: "Parametr 'icos' musí být pole." });
+    }
+    
+    try {
+        const results = await Promise.all(icos.map(async (ico) => {
+            const cleanIco = ico.replace(/\s+/g, '').replace(/[^0-9]/g, '').trim();
+            if (!cleanIco || cleanIco.length !== 8) {
+                return { ico, error: "Neplatný formát IČO (musí mít 8 číslic)." };
+            }
+            try {
+                const checked = await checkSubject(cleanIco);
+                if (checked.error) {
+                    return { ico: cleanIco, error: checked.error };
+                }
+                // Generate a mock ISDS data box ID if not returned or found
+                const cleanName = checked.name.toLowerCase();
+                let isdsId = "";
+                if (cleanName.includes("banka") || cleanName.includes("spořitelna")) {
+                    isdsId = `b${cleanIco.substring(0, 6)}`;
+                } else if (cleanName.includes("exekut")) {
+                    isdsId = `e${cleanIco.substring(0, 6)}`;
+                } else {
+                    isdsId = `d${cleanIco.substring(0, 6)}`;
+                }
+                return {
+                    ...checked,
+                    isdsId
+                };
+            } catch (err) {
+                return { ico: cleanIco, error: err.message };
+            }
+        }));
+        res.json({ results });
+    } catch (err) {
+        res.status(500).json({ error: `Chyba při hromadné lustraci: ${err.message}` });
+    }
+});
+
+// POST /api/campaigns/send - Mock sending data messages and schedule calendar reminders
+app.post('/api/campaigns/send', async (req, res) => {
+    const { clientName, caseNumber, recipients } = req.body;
+    if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
+        return res.status(400).json({ error: "Příjemci jsou povinní." });
+    }
+    
+    try {
+        const CALENDAR_DIR = path.join(WATCH_DIR, 'Kalendar');
+        if (!fs.existsSync(CALENDAR_DIR)) {
+            fs.mkdirSync(CALENDAR_DIR, { recursive: true });
+        }
+        
+        const results = [];
+        
+        for (const recipient of recipients) {
+            const { ico, name, isdsId, text } = recipient;
+            
+            // 1. Log simulation in audit
+            logEvent('LexisEditor', `Hromadné obesílání - Odesláno přes ISDS`, 'Datová zpráva', {
+                klient: clientName,
+                spis: caseNumber,
+                prijemce: name,
+                ico: ico,
+                isdsId: isdsId,
+                status: 'Odesláno (Simulace)',
+                textLength: text ? text.length : 0
+            });
+            
+            // 2. Add alert in local database for tracking (10 days from now)
+            const deadlineDate = new Date();
+            deadlineDate.setDate(deadlineDate.getDate() + 10);
+            
+            const alertTitle = `Sledování doručenky výzvy pro: ${name}`;
+            const alertDetails = `Hromadná kampaň obesílání pro klienta ${clientName || 'Neznámý'} (Spis: ${caseNumber || 'Neznámý'}). Příjemce: ${name} (IČO: ${ico}, Datová schránka: ${isdsId}).`;
+            
+            const alert = db.insert('alerts', {
+                title: alertTitle,
+                triggerRule: "Hromadné obesílání",
+                status: 'pending',
+                deadline: deadlineDate.toISOString(),
+                payloadDetails: JSON.stringify({
+                    clientName,
+                    caseNumber,
+                    ico,
+                    name,
+                    isdsId
+                })
+            });
+            
+            // 3. Generate ICS calendar file in Kalendar directory
+            const cleanId = 'camp_dl_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
+            const dtstamp = new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+            const startDate = deadlineDate.toISOString().split('T')[0].replace(/-/g, '');
+            
+            const endD = new Date(deadlineDate);
+            endD.setDate(endD.getDate() + 1);
+            const endDate = endD.toISOString().split('T')[0].replace(/-/g, '');
+            
+            const cleanTitle = `⚠️ LHŮTA: ${alertTitle}`;
+            
+            const icsContent = [
+                'BEGIN:VCALENDAR',
+                'VERSION:2.0',
+                'PRODID:-//LexisLocal//NONSGML iCalendar Generator//CS',
+                'CALSCALE:GREGORIAN',
+                'BEGIN:VEVENT',
+                `UID:${cleanId}@lexislocal`,
+                `DTSTAMP:${dtstamp}`,
+                `DTSTART;VALUE=DATE:${startDate}`,
+                `DTEND;VALUE=DATE:${endDate}`,
+                `SUMMARY:${cleanTitle}`,
+                `DESCRIPTION:${alertDetails}`,
+                'BEGIN:VALARM',
+                'TRIGGER:-P1D', // Alert 1 day before
+                'ACTION:DISPLAY',
+                'DESCRIPTION:Připomenutí blížící se lhůty Lexis',
+                'END:VALARM',
+                'END:VEVENT',
+                'END:VCALENDAR'
+            ].join('\r\n');
+            
+            const safeName = sanitizeFileName(alertTitle);
+            const filePath = path.join(CALENDAR_DIR, `${safeName}.ics`);
+            fs.writeFileSync(filePath, icsContent, 'utf-8');
+            
+            results.push({
+                ico,
+                name,
+                isdsId,
+                status: 'Odesláno',
+                alertId: alert.id,
+                calendarFile: filePath
+            });
+        }
+        
+        res.json({
+            success: true,
+            results,
+            message: `Hromadné obesílání dokončeno. Úspěšně odesláno ${results.length} zpráv, zapsáno do logů a naplánováno v kalendáři.`
+        });
+    } catch (err) {
+        res.status(500).json({ error: `Chyba při hromadném odesílání: ${err.message}` });
+    }
+});
+
 // Helper function to sanitize calendar file names
 function sanitizeFileName(name) {
     return name.replace(/[^a-zA-Z0-9_á-žÁ-Ž]/g, '_').substring(0, 100);
@@ -823,7 +1111,7 @@ function sanitizeFileName(name) {
 
 // POST /api/calendar/add - Generate standard .ics file inside LexisSpisy/Kalendar folder
 app.post('/api/calendar/add', async (req, res) => {
-    const { id, title, dueDate, context } = req.body;
+    const { id, title, dueDate, context, time, location, isHearing, courtCode, spisovaZnacka } = req.body;
     if (!title || !dueDate) {
         return res.status(400).json({ error: "Název a datum splatnosti jsou povinné parametry." });
     }
@@ -838,14 +1126,31 @@ app.post('/api/calendar/add', async (req, res) => {
         const dtstamp = new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
         const startDate = dueDate.replace(/-/g, '');
         
-        const endD = new Date(dueDate);
-        endD.setDate(endD.getDate() + 1);
-        const endDate = endD.toISOString().split('T')[0].replace(/-/g, '');
+        let startLine, endLine;
+        if (time) {
+            const timeClean = time.replace(/:/g, '').substring(0, 4) + '00';
+            startLine = `DTSTART;TZID=Europe/Prague:${startDate}T${timeClean}`;
+            
+            // Assume 1 hour
+            const [h, m] = time.split(':');
+            const startD = new Date(`${dueDate}T${h}:${m}:00`);
+            const endD = new Date(startD.getTime() + 60 * 60 * 1000);
+            const endDateStr = endD.toISOString().split('T')[0].replace(/-/g, '');
+            const endTimeClean = endD.toTimeString().split(' ')[0].replace(/:/g, '');
+            endLine = `DTEND;TZID=Europe/Prague:${endDateStr}T${endTimeClean}`;
+        } else {
+            startLine = `DTSTART;VALUE=DATE:${startDate}`;
+            const endD = new Date(dueDate);
+            endD.setDate(endD.getDate() + 1);
+            const endDateStr = endD.toISOString().split('T')[0].replace(/-/g, '');
+            endLine = `DTEND;VALUE=DATE:${endDateStr}`;
+        }
         
-        const cleanTitle = `⚠️ LHŮTA: ${title}`;
-        const cleanDesc = context ? context.replace(/\r?\n/g, ' ') : `Detekovaná procesní lhůta v systému Lexis.`;
+        const prefix = isHearing ? '⚖️ JEDNÁNÍ' : '⚠️ LHŮTA';
+        const cleanTitle = `${prefix}: ${title}`;
+        const cleanDesc = context ? context.replace(/\r?\n/g, ' ') : `Detekovaná událost v systému Lexis.`;
         
-        const icsContent = [
+        const lines = [
             'BEGIN:VCALENDAR',
             'VERSION:2.0',
             'PRODID:-//LexisLocal//NONSGML iCalendar Generator//CS',
@@ -853,18 +1158,20 @@ app.post('/api/calendar/add', async (req, res) => {
             'BEGIN:VEVENT',
             `UID:${cleanId}@lexislocal`,
             `DTSTAMP:${dtstamp}`,
-            `DTSTART;VALUE=DATE:${startDate}`,
-            `DTEND;VALUE=DATE:${endDate}`,
+            startLine,
+            endLine,
             `SUMMARY:${cleanTitle}`,
-            `DESCRIPTION:${cleanDesc}`,
-            'BEGIN:VALARM',
-            'TRIGGER:-P2D', // Alert 2 days before
-            'ACTION:DISPLAY',
-            'DESCRIPTION:Připomenutí blížící se lhůty Lexis',
-            'END:VALARM',
-            'END:VEVENT',
-            'END:VCALENDAR'
-        ].join('\r\n');
+            `DESCRIPTION:${cleanDesc}`
+        ];
+        
+        if (location) {
+            lines.push(`LOCATION:${location}`);
+        }
+        
+        lines.push('END:VEVENT');
+        lines.push('END:VCALENDAR');
+        
+        const icsContent = lines.join('\r\n');
         
         const safeName = sanitizeFileName(title);
         const filePath = path.join(CALENDAR_DIR, `${safeName}.ics`);
@@ -872,11 +1179,114 @@ app.post('/api/calendar/add', async (req, res) => {
         fs.writeFileSync(filePath, icsContent, 'utf-8');
         console.log(`📅 ICS Kalendářová událost vygenerována: ${filePath}`);
         
-        res.json({ success: true, filePath, message: "ICS soubor byl úspěšně vygenerován na plochu." });
+        // Write directly to local system calendar (Apple Calendar / Outlook)
+        let syncStatus = 'unsupported';
+        try {
+            syncStatus = await writeToSystemCalendar({
+                title: cleanTitle,
+                date: dueDate,
+                time: time,
+                location: location,
+                description: cleanDesc
+            });
+        } catch (syncErr) {
+            console.error(`⚠️ Nepodařilo se zapsat do systémového kalendáře: ${syncErr.message}`);
+        }
+        
+        // Register the hearing for background tracking if isHearing is true
+        if (isHearing && courtCode && spisovaZnacka) {
+            const hearings = HearingsWatcher.loadMonitoredHearings(WATCH_DIR);
+            
+            // Remove any existing record with the same ID or same sp.zn + date
+            const filtered = hearings.filter(h => h.id !== cleanId && !(h.courtCode === courtCode && h.dueDate === dueDate && h.spisovaZnacka.cisloSenatu === spisovaZnacka.cisloSenatu && h.spisovaZnacka.druhVeci === spisovaZnacka.druhVeci && h.spisovaZnacka.bcVec === spisovaZnacka.bcVec && h.spisovaZnacka.rocnik === spisovaZnacka.rocnik));
+            
+            filtered.push({
+                id: cleanId,
+                title: title,
+                dueDate: dueDate,
+                time: time,
+                location: location,
+                courtCode: courtCode,
+                courtName: location ? location.split(',')[0] : 'Soud',
+                spisovaZnacka: spisovaZnacka,
+                icsFilePath: filePath,
+                status: 'scheduled',
+                lastChecked: new Date().toISOString()
+            });
+            
+            HearingsWatcher.saveMonitoredHearings(WATCH_DIR, filtered);
+            console.log(`⚖️ Registrováno soudní jednání pro sledování změn: sp. zn. ${spisovaZnacka.cisloSenatu} ${spisovaZnacka.druhVeci} ${spisovaZnacka.bcVec}/${spisovaZnacka.rocnik}`);
+        }
+        
+        res.json({ success: true, filePath, syncStatus, message: "ICS soubor byl úspěšně vygenerován a synchronizován do kalendáře." });
     } catch (err) {
+        console.error(err);
         res.status(500).json({ error: `Chyba při generování ICS kalendáře: ${err.message}` });
     }
 });
+
+// GET /api/calendar/events - Retrieve all events (deadlines & hearings) for dashboard calendar
+app.get('/api/calendar/events', async (req, res) => {
+    try {
+        const alerts = db.get('alerts') || [];
+        const hearings = HearingsWatcher.loadMonitoredHearings(WATCH_DIR) || [];
+        
+        const events = [];
+        
+        // Add alerts (procedural tasks/deadlines)
+        alerts.forEach(alert => {
+            let dateVal = null;
+            let timeVal = null;
+            if (alert.deadline) {
+                const parts = alert.deadline.split('T');
+                dateVal = parts[0];
+                if (parts[1]) {
+                    timeVal = parts[1].substring(0, 5); // HH:MM
+                }
+            }
+            events.push({
+                id: alert.id,
+                type: 'deadline',
+                title: alert.title,
+                date: dateVal,
+                time: timeVal,
+                status: alert.status,
+                description: alert.triggerRule || 'Procesní lhůta',
+                location: ''
+            });
+        });
+        
+        // Add monitored hearings
+        hearings.forEach(hearing => {
+            events.push({
+                id: hearing.id,
+                type: 'hearing',
+                title: hearing.title,
+                date: hearing.dueDate,
+                time: hearing.time || '',
+                status: hearing.status,
+                description: `Soudní jednání - sp. zn. ${hearing.spisovaZnacka ? (hearing.spisovaZnacka.cisloSenatu + ' ' + hearing.spisovaZnacka.druhVeci + ' ' + hearing.spisovaZnacka.bcVec + '/' + hearing.spisovaZnacka.rocnik) : ''}`,
+                location: hearing.location || ''
+            });
+        });
+        
+        res.json({ success: true, events });
+    } catch (err) {
+        res.status(500).json({ error: `Nelze načíst kalendářní události: ${err.message}` });
+    }
+});
+
+
+// POST /api/calendar/sync - Manually trigger check of all monitored hearings
+app.post('/api/calendar/sync', async (req, res) => {
+    try {
+        const result = await HearingsWatcher.checkAllHearings(WATCH_DIR);
+        res.json({ success: true, ...result });
+    } catch (err) {
+        res.status(500).json({ error: `Chyba při synchronizaci jednání: ${err.message}` });
+    }
+});
+
 
 // Resilient Fallback Engine
 function generateAgentFallback(agentId, prompt) {
@@ -1119,9 +1529,9 @@ app.get('/api/agents', (req, res) => {
 // POST /api/agents/:agentId - Update an agent
 app.post('/api/agents/:agentId', (req, res) => {
     const { agentId } = req.params;
-    const { name, emoji, role, systemPrompt } = req.body;
+    const { name, emoji, role, systemPrompt, preferredModel, permissions } = req.body;
     try {
-        const updated = saveAgent(agentId, { name, emoji, role, systemPrompt });
+        const updated = saveAgent(agentId, { name, emoji, role, systemPrompt, preferredModel, permissions });
         logEvent('LexisLocal Dashboard', `Úprava agenta (${updated.name})`, 'AI Konfigurace', { agentId });
         res.json({ success: true, agent: updated });
     } catch (err) {
@@ -1131,7 +1541,7 @@ app.post('/api/agents/:agentId', (req, res) => {
 
 // POST /api/agents - Create a new custom agent
 app.post('/api/agents', (req, res) => {
-    const { id, name, emoji, role, systemPrompt } = req.body;
+    const { id, name, emoji, role, systemPrompt, preferredModel, permissions } = req.body;
     if (!id || !name) {
         return res.status(400).json({ error: "ID a název agenta jsou povinné údaje." });
     }
@@ -1141,7 +1551,7 @@ app.post('/api/agents', (req, res) => {
         if (agents[cleanId]) {
             return res.status(400).json({ error: `Agent s ID "${cleanId}" již existuje.` });
         }
-        const created = saveAgent(cleanId, { name, emoji, role, systemPrompt });
+        const created = saveAgent(cleanId, { name, emoji, role, systemPrompt, preferredModel, permissions });
         logEvent('LexisLocal Dashboard', `Vytvoření agenta (${created.name})`, 'AI Konfigurace', { agentId: cleanId });
         res.json({ success: true, agent: created });
     } catch (err) {
@@ -1173,7 +1583,232 @@ app.post('/api/agents/:agentId/reset', (req, res) => {
     }
 });
 
+// ─── E-mailové úkoly a AI Asistenti ──────────────────────────────────────────────
+
+// GET /api/email/settings - Načíst nastavení IMAP/SMTP a autorizovaného odesílatele
+app.get('/api/email/settings', (req, res) => {
+    try {
+        const settingsList = db.get('email_settings') || [];
+        const currentSettings = settingsList.length > 0 ? settingsList[0] : {
+            authorized_sender: 'advokat@dias.cz',
+            recipient_filter: 'dias+asistenti@advokatnikancelar.cz',
+            imap_host: 'imap.advokatnikancelar.cz',
+            imap_port: '993',
+            imap_user: 'dias@advokatnikancelar.cz',
+            imap_ssl: true,
+            smtp_host: 'smtp.advokatnikancelar.cz',
+            smtp_port: '465',
+            smtp_user: 'dias@advokatnikancelar.cz',
+            smtp_ssl: true
+        };
+        res.json({ success: true, settings: currentSettings });
+    } catch (err) {
+        res.status(500).json({ error: `Nelze načíst nastavení e-mailu: ${err.message}` });
+    }
+});
+
+// POST /api/email/settings - Uložit nastavení
+app.post('/api/email/settings', (req, res) => {
+    try {
+        const newSettings = req.body;
+        const settingsList = db.get('email_settings') || [];
+        if (settingsList.length > 0) {
+            db.update('email_settings', settingsList[0].id, newSettings);
+        } else {
+            db.insert('email_settings', newSettings);
+        }
+        logEvent('LexisLocal Dashboard', 'Uložení nastavení e-mailu', 'AI Konfigurace');
+        res.json({ success: true, message: "Nastavení e-mailu bylo uloženo." });
+    } catch (err) {
+        res.status(500).json({ error: `Nelze uložit nastavení e-mailu: ${err.message}` });
+    }
+});
+
+// GET /api/email/tasks - Seznam všech doručených/zpracovaných úkolů
+app.get('/api/email/tasks', (req, res) => {
+    try {
+        const tasks = db.get('email_tasks') || [];
+        const sorted = [...tasks].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        res.json({ success: true, tasks: sorted });
+    } catch (err) {
+        res.status(500).json({ error: `Nelze načíst e-mailové úkoly: ${err.message}` });
+    }
+});
+
+// DELETE /api/email/tasks/:id - Smazat úkol z historie
+app.delete('/api/email/tasks/:id', (req, res) => {
+    const { id } = req.params;
+    try {
+        db.delete('email_tasks', id);
+        logEvent('LexisLocal Dashboard', 'Smazání e-mailového úkolu', 'E-mailové úkoly', { id });
+        res.json({ success: true, message: "E-mailový úkol byl smazán." });
+    } catch (err) {
+        res.status(500).json({ error: `Nelze smazat úkol: ${err.message}` });
+    }
+});
+
+// POST /api/email/simulate - Simulace příchozího e-mailu od advokáta
+app.post('/api/email/simulate', async (req, res) => {
+    const { sender, subject, body } = req.body;
+    
+    if (!sender || !subject || !body) {
+        return res.status(400).json({ error: "Odesílatel, předmět a obsah e-mailu jsou povinné." });
+    }
+    
+    try {
+        // 1. Ověření autorizovaného odesílatele
+        const settingsList = db.get('email_settings') || [];
+        const settings = settingsList.length > 0 ? settingsList[0] : {
+            authorized_sender: 'advokat@dias.cz'
+        };
+        
+        if (settings && settings.authorized_sender) {
+            const cleanSender = sender.trim().toLowerCase();
+            const cleanAuthorized = settings.authorized_sender.trim().toLowerCase();
+            if (cleanSender !== cleanAuthorized) {
+                return res.status(403).json({ 
+                    error: `❌ Přístup odepřen: Odesílatel "${sender}" není autorizovaným e-mailem advokáta (${settings.authorized_sender}).` 
+                });
+            }
+        }
+        
+        // 2. Výběr příslušného asistenta
+        const agents = loadAgents();
+        let selectedAgentId = null;
+        
+        // A. Detekce podle předmětu v hranatých závorkách (např. [Spisovatel] nebo [Kontrolor])
+        const subjectMatch = subject.match(/\[([^\]]+)\]/);
+        if (subjectMatch) {
+            const agentNameOrId = subjectMatch[1].trim().toLowerCase();
+            const foundAgent = Object.values(agents).find(a => 
+                a.id.toLowerCase() === agentNameOrId || 
+                a.name.toLowerCase() === agentNameOrId
+            );
+            if (foundAgent) {
+                selectedAgentId = foundAgent.id;
+            }
+        }
+        
+        // B. Detekce podle tagu na začátku těla zprávy (např. @kontrolor nebo @spisovatel)
+        if (!selectedAgentId) {
+            const bodyMention = body.trim().match(/^@([a-zA-Z0-9_ěščřžýáíéúůóďťňĎŤŇ]+)/);
+            if (bodyMention) {
+                const agentNameOrId = bodyMention[1].trim().toLowerCase();
+                const foundAgent = Object.values(agents).find(a => 
+                    a.id.toLowerCase() === agentNameOrId || 
+                    a.name.toLowerCase() === agentNameOrId
+                );
+                if (foundAgent) {
+                    selectedAgentId = foundAgent.id;
+                }
+            }
+        }
+        
+        // C. Detekce podle klíčových slov v obsahu
+        if (!selectedAgentId) {
+            const normalizedText = (subject + ' ' + body).toLowerCase();
+            
+            if (/oponent|kontrola|revize|posouzen|audit|chyb|rizik/i.test(normalizedText)) {
+                selectedAgentId = 'kontrolor';
+            } else if (/smlouv|dopis|sepsat|žalob|podán|draft|vytvoř/i.test(normalizedText)) {
+                selectedAgentId = 'spisovatel';
+            } else if (/rešerš|judikat|vyhled|analýz|paragraf|zákon/i.test(normalizedText)) {
+                selectedAgentId = 'resersnik';
+            } else if (/styl|přeps|úprav|formul/i.test(normalizedText)) {
+                selectedAgentId = 'stylista';
+            } else {
+                selectedAgentId = 'sekretarka'; // Výchozí
+            }
+        }
+        
+        // Získat objekt asistenta (pokud neexistuje, fallback na sekretářku)
+        const agent = agents[selectedAgentId] || agents['sekretarka'];
+        const selectedModel = agent.preferredModel || "llama3";
+        
+        console.log(`📧 E-mail doručen. Zpracovává asistent: [${agent.name}] přes model [${selectedModel}]`);
+        
+        // 3. Generování odpovědi od asistenta
+        let replyText = "";
+        const cleanBody = body.replace(/^@[a-zA-Z0-9_ěščřžýáíéúůóďťňĎŤŇ]+\s*/, ''); // Odstranit případný tag z těla
+        
+        try {
+            const response = await ollama.chat({
+                model: selectedModel,
+                messages: [
+                    { role: 'system', content: agent.systemPrompt },
+                    { role: 'user', content: cleanBody }
+                ],
+                options: {
+                    temperature: 0.3
+                }
+            });
+            replyText = response.message.content;
+        } catch (ollamaErr) {
+            console.warn(`⚠️ E-mail: Selhalo spojení s Ollama (${ollamaErr.message}). Používám robustní fallback.`);
+            replyText = generateAgentFallback(agent.id, cleanBody);
+        }
+        
+        // Formátování kompletní e-mailové odpovědi advokátovi
+        const dateStr = new Date().toLocaleDateString('cs-CZ', { 
+            hour: '2-digit', 
+            minute: '2-digit' 
+        });
+        
+        const fullReply = `Vážený pane doktore,
+
+k Vašemu e-mailovému zadání ze dne ${dateStr} ohledně předmětu "${subject.replace(/\[[^\]]+\]\s*/g, '')}" Vám zasílám požadovaný výstup.
+
+S úctou,
+Vaše AI asistentka (${agent.name} ${agent.emoji})
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+VÝSTUP ASISTENTA:
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+${replyText}`;
+
+        // 4. Uložení do databáze
+        const taskItem = {
+            sender: sender.trim(),
+            subject: subject.trim(),
+            body: body.trim(),
+            assignedAgentId: agent.id,
+            assignedAgentName: agent.name,
+            assignedAgentEmoji: agent.emoji,
+            responseSent: fullReply,
+            status: 'completed'
+        };
+        
+        const createdTask = db.insert('email_tasks', taskItem);
+        
+        // Logování do historie dashboardu
+        logEvent('LexisLocal Dashboard', `E-mailový úkol pro asistenta: ${agent.name}`, 'E-mailové úkoly', { 
+            id: createdTask.id,
+            agentId: agent.id,
+            subject: subject 
+        });
+        
+        res.json({ 
+            success: true, 
+            task: createdTask, 
+            message: "E-mail byl úspěšně zpracován asistentem a odpověď odeslána zpět." 
+        });
+        
+    } catch (err) {
+        console.error("Chyba zpracování e-mailového úkolu:", err);
+        res.status(500).json({ error: `Chyba při zpracování úkolu: ${err.message}` });
+    }
+});
+
+// Spouštět kontrolu změn soudních jednání na pozadí (každou hodinu)
+setInterval(() => {
+    HearingsWatcher.checkAllHearings(WATCH_DIR).catch(err => {
+        console.error("⚠️ Background monitored hearings check error:", err.message);
+    });
+}, 60 * 60 * 1000);
+
 const USE_HTTPS = process.env.USE_HTTPS === 'true';
+
 const SSL_KEY_PATH = process.env.SSL_KEY_PATH || 'key.pem';
 const SSL_CERT_PATH = process.env.SSL_CERT_PATH || 'cert.pem';
 

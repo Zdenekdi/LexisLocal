@@ -3,31 +3,70 @@
 /**
  * LexisLocal – Electron Tray Application
  * ==========================================
- * Spouští LexisLocal Express backend jako podproces a spravuje
- * ikonu v systémové liště (macOS Menu Bar / Windows System Tray).
- * 
- * Uživatel nepotřebuje terminál ani technické znalosti – aplikaci
- * stačí nainstalovat a vše běží automaticky na pozadí.
+ * Spouští LexisLocal Express backend jako podproces v lokálním režimu,
+ * nebo se připojuje k centrálnímu serveru (např. Mac Mini) v síťovém režimu.
+ * Spravuje ikonu v systémové liště (macOS Menu Bar / Windows System Tray).
  */
 
-const { app, Tray, Menu, shell, dialog, nativeImage, BrowserWindow } = require('electron');
+const { app, Tray, Menu, shell, dialog, nativeImage, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const { fork } = require('child_process');
 const fs = require('fs');
 
-// ─── Konfigurace ───────────────────────────────────────────────────────────────
-const PORT = 4000;
-const DASHBOARD_URL = `http://localhost:${PORT}`;
+// ─── Cesty a Konfigurace ───────────────────────────────────────────────────────
+const configPath = path.join(app.getPath('userData'), 'config.json');
 const SERVER_ENTRY = path.join(__dirname, '..', 'backend', 'server.js');
 
-// Složka spisy – výchozí je ~/Desktop/LexisSpisy, lze přepsat v .env
-const WATCH_DIR = process.env.WATCH_DIR || path.join(require('os').homedir(), 'Desktop', 'LexisSpisy');
+const defaults = {
+    mode: 'local', // 'local' | 'server'
+    serverUrl: 'http://localhost:4000',
+    watchDir: path.join(require('os').homedir(), 'Desktop', 'LexisSpisy'),
+    port: '4000',
+    autostart: true,
+    https: false,
+    token: false
+};
+
+let config = { ...defaults };
+
+function loadConfig() {
+    if (fs.existsSync(configPath)) {
+        try {
+            const fileData = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+            return { ...defaults, ...fileData };
+        } catch (e) {
+            console.error('Chyba při načítání config.json:', e);
+        }
+    }
+    return { ...defaults };
+}
+
+function saveConfig(newConfig) {
+    try {
+        fs.mkdirSync(path.dirname(configPath), { recursive: true });
+        fs.writeFileSync(configPath, JSON.stringify(newConfig, null, 2), 'utf8');
+        config = { ...newConfig };
+        return true;
+    } catch (e) {
+        console.error('Chyba při ukládání config.json:', e);
+        return false;
+    }
+}
+
+// Načtení konfigurace před spuštěním
+config = loadConfig();
+
+// Dynamické proměnné
+let PORT = parseInt(config.port) || 4000;
+let DASHBOARD_URL = config.mode === 'server' ? config.serverUrl : `http://localhost:${PORT}`;
+let WATCH_DIR = config.watchDir;
 
 // ─── Globální stav ─────────────────────────────────────────────────────────────
 let tray = null;
 let serverProcess = null;
 let serverStatus = 'starting'; // 'starting' | 'running' | 'error' | 'stopped'
 let watcherPaused = false;
+let healthCheckInterval = null;
 
 // ─── Zabránit vytváření více oken v doku (macOS) ───────────────────────────────
 app.dock && app.dock.hide();
@@ -38,11 +77,23 @@ if (!gotLock) {
     app.quit();
 }
 
-// ─── Spuštění Express serveru jako podproces ───────────────────────────────────
+// ─── Spuštění Express serveru ──────────────────────────────────────────────────
 function startServer() {
+    if (healthCheckInterval) {
+        clearInterval(healthCheckInterval);
+        healthCheckInterval = null;
+    }
+
     serverStatus = 'starting';
     updateTrayMenu();
 
+    if (config.mode === 'server') {
+        console.log(`🔗 Režim Síťový server: Připojuji se k ${DASHBOARD_URL}`);
+        checkHealth();
+        return;
+    }
+
+    console.log(`🚀 Režim Lokální: Spouštím backend na portu ${PORT}`);
     const env = {
         ...process.env,
         PORT: String(PORT),
@@ -52,7 +103,7 @@ function startServer() {
 
     serverProcess = fork(SERVER_ENTRY, [], {
         env,
-        silent: false // Výstup serveru jde do konzole (viditelný přes Electron DevTools)
+        silent: false // Výstup serveru jde do konzole
     });
 
     serverProcess.on('message', (msg) => {
@@ -73,25 +124,34 @@ function startServer() {
         }
     });
 
-    // Ověřit dostupnost serveru po nastartování (max 10 sekund)
+    checkHealth();
+}
+
+// ─── Kontrola zdraví (Health Check) ────────────────────────────────────────────
+function checkHealth() {
     let attempts = 0;
-    const healthCheck = setInterval(async () => {
+    healthCheckInterval = setInterval(async () => {
         attempts++;
         try {
             const http = require('http');
-            const req = http.get(`${DASHBOARD_URL}/api/status`, (res) => {
-                if (res.statusCode === 200 || res.statusCode === 404) {
-                    // Server odpovídá – je živý
-                    clearInterval(healthCheck);
+            const https = require('https');
+            const client = DASHBOARD_URL.startsWith('https') ? https : http;
+            
+            const req = client.get(`${DASHBOARD_URL}/api/status`, (res) => {
+                if (res.statusCode === 200 || res.statusCode === 404 || res.statusCode === 401) {
+                    // Server odpovídá (i 401 Unauthorized je úspěch, server žije)
+                    clearInterval(healthCheckInterval);
+                    healthCheckInterval = null;
                     serverStatus = 'running';
                     updateTrayMenu();
                 }
             });
-            req.on('error', () => {}); // Tiché selhání – ještě startuje
+            req.on('error', () => {}); // Tiché selhání
         } catch (e) {}
 
         if (attempts >= 20) {
-            clearInterval(healthCheck);
+            clearInterval(healthCheckInterval);
+            healthCheckInterval = null;
             if (serverStatus !== 'running') {
                 serverStatus = 'error';
                 updateTrayMenu();
@@ -102,12 +162,13 @@ function startServer() {
 
 // ─── Tray Menu ─────────────────────────────────────────────────────────────────
 function getStatusLabel() {
+    const modeSuffix = config.mode === 'server' ? ' (síťový)' : ' (lokální)';
     switch (serverStatus) {
-        case 'starting': return '🟡 LexisLocal se spouští...';
-        case 'running':  return '🟢 LexisLocal je aktivní';
-        case 'error':    return '🔴 LexisLocal – chyba serveru';
-        case 'stopped':  return '⏸️ LexisLocal je pozastaven';
-        default:         return '⚪ LexisLocal';
+        case 'starting': return `🟡 LexisLocal${modeSuffix} se spouští...`;
+        case 'running':  return `🟢 LexisLocal${modeSuffix} je aktivní`;
+        case 'error':    return `🔴 LexisLocal${modeSuffix} – chyba připojení`;
+        case 'stopped':  return `⏸️ LexisLocal${modeSuffix} je pozastaven`;
+        default:         return `⚪ LexisLocal${modeSuffix}`;
     }
 }
 
@@ -116,21 +177,23 @@ function updateTrayMenu() {
 
     const isRunning = serverStatus === 'running';
 
-    const contextMenu = Menu.buildFromTemplate([
+    const menuTemplate = [
         {
             label: getStatusLabel(),
             enabled: false
         },
         { type: 'separator' },
-        {
+        config.mode === 'local' ? {
             label: '📂 Otevřít složku Spisy',
             click: () => {
-                // Vytvoří složku, pokud neexistuje
                 if (!fs.existsSync(WATCH_DIR)) {
                     fs.mkdirSync(WATCH_DIR, { recursive: true });
                 }
                 shell.openPath(WATCH_DIR);
             }
+        } : {
+            label: '📂 Složka Spisy (připojte síťový disk)',
+            enabled: false
         },
         {
             label: '📊 Otevřít Dashboard',
@@ -140,20 +203,20 @@ function updateTrayMenu() {
             }
         },
         { type: 'separator' },
-        {
+        config.mode === 'local' ? {
             label: watcherPaused ? '▶️ Obnovit sledování složky' : '⏸️ Pozastavit sledování složky',
             enabled: isRunning,
             click: () => {
                 watcherPaused = !watcherPaused;
-                // Odešle příkaz do Express serveru
                 const http = require('http');
                 const req = http.get(`${DASHBOARD_URL}/api/watcher/toggle?active=${!watcherPaused}`);
                 req.on('error', () => {});
                 updateTrayMenu();
             }
-        },
+        } : null,
+        config.mode === 'local' ? { type: 'separator' } : null,
         {
-            label: '🔄 Restartovat server',
+            label: '🔄 Restartovat server / připojení',
             click: () => {
                 restartServer();
             }
@@ -179,24 +242,28 @@ function updateTrayMenu() {
                 app.quit();
             }
         }
-    ]);
+    ].filter(Boolean);
 
+    const contextMenu = Menu.buildFromTemplate(menuTemplate);
     tray.setContextMenu(contextMenu);
     tray.setToolTip(getStatusLabel());
 }
 
-// ─── Restartování serveru ──────────────────────────────────────────────────────
+// ─── Restartování a Zastavení ──────────────────────────────────────────────────
 function restartServer() {
     stopServer();
     setTimeout(() => startServer(), 1000);
 }
 
-// ─── Zastavení serveru ─────────────────────────────────────────────────────────
 function stopServer() {
     serverStatus = 'stopped';
     if (serverProcess) {
         serverProcess.kill('SIGTERM');
         serverProcess = null;
+    }
+    if (healthCheckInterval) {
+        clearInterval(healthCheckInterval);
+        healthCheckInterval = null;
     }
     updateTrayMenu();
 }
@@ -211,7 +278,7 @@ function openSettingsWindow() {
 
     settingsWindow = new BrowserWindow({
         width: 480,
-        height: 400,
+        height: 480, // Zvětšeno pro dropdown a serverUrl
         resizable: false,
         title: 'LexisLocal – Nastavení',
         webPreferences: {
@@ -226,11 +293,40 @@ function openSettingsWindow() {
     settingsWindow.on('closed', () => { settingsWindow = null; });
 }
 
+// ─── IPC Komunikace ─────────────────────────────────────────────────────────────
+ipcMain.on('get-settings', (event) => {
+    event.reply('settings-data', config);
+});
+
+ipcMain.on('save-settings', (event, newSettings) => {
+    if (newSettings.autostart !== config.autostart) {
+        app.setLoginItemSettings({
+            openAtLogin: newSettings.autostart,
+            name: 'LexisLocal'
+        });
+    }
+
+    saveConfig(newSettings);
+
+    PORT = parseInt(config.port) || 4000;
+    DASHBOARD_URL = config.mode === 'server' ? config.serverUrl : `http://localhost:${PORT}`;
+    WATCH_DIR = config.watchDir;
+
+    restartServer();
+});
+
 // ─── Inicializace Tray ────────────────────────────────────────────────────────
 app.whenReady().then(() => {
-    // Nastavit automatický start po přihlášení
+    // Vytvořit výchozí konfiguraci, pokud chybí
+    if (!fs.existsSync(configPath)) {
+        saveConfig(defaults);
+    } else {
+        config = loadConfig();
+    }
+
+    // Nastavit autostart podle konfigurace
     app.setLoginItemSettings({
-        openAtLogin: true,
+        openAtLogin: config.autostart,
         name: 'LexisLocal'
     });
 
@@ -239,27 +335,25 @@ app.whenReady().then(() => {
     let trayIcon;
     if (fs.existsSync(iconPath)) {
         trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 22, height: 22 });
-        trayIcon.setTemplateImage(true); // Správné chování na macOS (tmavý/světlý mód)
+        trayIcon.setTemplateImage(true);
     } else {
-        // Záložní generovaná ikona (malý čtverec), pokud chybí soubor
         trayIcon = nativeImage.createEmpty();
     }
 
     tray = new Tray(trayIcon);
     tray.setToolTip('LexisLocal se spouští...');
 
-    // Spustit server
     startServer();
     updateTrayMenu();
 
     console.log('🚀 LexisLocal Tray App spuštěna.');
 });
 
-// ─── Cleanup při ukončení ──────────────────────────────────────────────────────
+// ─── Cleanup ──────────────────────────────────────────────────────────────────
 app.on('will-quit', () => {
     stopServer();
 });
 
 app.on('window-all-closed', () => {
-    // Záměrně NE app.quit() – aplikace má zůstat v liště i bez otevřených oken
+    // Záměrně prázdné – aplikace běží v liště
 });

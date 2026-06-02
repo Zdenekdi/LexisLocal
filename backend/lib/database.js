@@ -19,7 +19,9 @@ class LexisDatabase {
             timesheets: [],
             workflows: [],
             conflicts: [],
-            alerts: []
+            alerts: [],
+            email_settings: [],
+            email_tasks: []
         };
         this.encryptionKey = null;
         this.init();
@@ -127,7 +129,9 @@ class LexisDatabase {
                 timesheets: [],
                 workflows: [],
                 conflicts: [],
-                alerts: []
+                alerts: [],
+                email_settings: [],
+                email_tasks: []
             };
             this.save();
         }
