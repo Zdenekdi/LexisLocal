@@ -362,8 +362,8 @@ app.post('/api/agent-swarm/orchestrate', async (req, res) => {
     }
 });
 
-// POST /api/activity/log - Log active heartbeat from LexisEditor
-app.post('/api/activity/log', (req, res) => {
+// POST /api/activity/log - Log active heartbeat from LexisEditor (supports /api/activity/heartbeat alias)
+app.post(['/api/activity/log', '/api/activity/heartbeat'], (req, res) => {
     const { documentName, activeSeconds, actionType } = req.body;
     try {
         const entry = TimeTracker.logActivity(documentName, activeSeconds, actionType);
