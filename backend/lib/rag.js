@@ -47,64 +47,21 @@ function saveIndex(index) {
 }
 
 /**
- * Generate deterministic pseudo-embedding (768 dimensions) for offline development.
- * Provides deterministic float vector normalized to length of 1.
- */
-function generatePseudoEmbedding(text) {
-    const vector = new Array(768).fill(0);
-    
-    // Hash text to a stable numeric seed
-    let hash = 0;
-    for (let i = 0; i < text.length; i++) {
-        hash = (hash << 5) - hash + text.charCodeAt(i);
-        hash |= 0; // Convert to 32bit integer
-    }
-    
-    let seed = Math.abs(hash) || 99;
-    
-    // Deterministic pseudo-random number generator (LCG-like)
-    function random() {
-        const x = Math.sin(seed++) * 10000;
-        return x - Math.floor(x);
-    }
-    
-    // Generate components
-    for (let i = 0; i < 768; i++) {
-        vector[i] = random() * 2 - 1;
-    }
-    
-    // Normalize to unit magnitude for accurate cosine similarity
-    const mag = Math.sqrt(vector.reduce((sum, val) => sum + val * val, 0));
-    if (mag > 0) {
-        for (let i = 0; i < 768; i++) {
-            vector[i] /= mag;
-        }
-    }
-    
-    return vector;
-}
-
-/**
- * Fetch embeddings from local Ollama service, or fallback to pseudo-embeddings.
+ * Fetch embeddings from local Ollama service.
+ * Throws an error if the model is unreachable to prevent index corruption.
  */
 async function getEmbedding(text) {
-    try {
-        // Query local Ollama API
-        const response = await ollama.embeddings({
-            model: EMBEDDING_MODEL,
-            prompt: text
-        });
-        
-        if (response && response.embedding) {
-            return response.embedding;
-        }
-    } catch (err) {
-        // Log once or quietly fallback
-        // console.warn(`ℹ️ Ollama embedding fail: ${err.message}. Using offline pseudo-vector.`);
+    // Query local Ollama API
+    const response = await ollama.embeddings({
+        model: EMBEDDING_MODEL,
+        prompt: text
+    });
+
+    if (response && response.embedding) {
+        return response.embedding;
     }
     
-    // Graceful offline fallback
-    return generatePseudoEmbedding(text);
+    throw new Error("Ollama returned an empty embedding.");
 }
 
 /**
@@ -184,22 +141,28 @@ async function indexDocument(fileName, text) {
     const index = loadIndex();
     
     // 2. Generate embedding for each chunk
-    for (let i = 0; i < chunks.length; i++) {
-        const chunkTextContent = chunks[i];
-        const vector = await getEmbedding(chunkTextContent);
+    try {
+        for (let i = 0; i < chunks.length; i++) {
+            const chunkTextContent = chunks[i];
+            const vector = await getEmbedding(chunkTextContent);
+
+            index.chunks.push({
+                id: `chk_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+                fileName: fileName,
+                text: chunkTextContent,
+                vector: vector,
+                chunkIndex: i,
+                totalChunks: chunks.length
+            });
+        }
         
-        index.chunks.push({
-            id: `chk_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-            fileName: fileName,
-            text: chunkTextContent,
-            vector: vector,
-            chunkIndex: i,
-            totalChunks: chunks.length
-        });
+        saveIndex(index);
+        console.log(`✅ RAG: Soubor ${fileName} úspěšně indexován (${chunks.length} odstavců uloženo).`);
+    } catch (e) {
+        console.error(`❌ RAG: Chyba při generování embeddings pro ${fileName}:`, e.message);
+        // Do not save the partially generated chunks if generating embedding fails
+        throw e;
     }
-    
-    saveIndex(index);
-    console.log(`✅ RAG: Soubor ${fileName} úspěšně indexován (${chunks.length} odstavců uloženo).`);
 }
 
 /**
@@ -225,7 +188,14 @@ async function deleteDocumentIndex(fileName) {
 async function searchSimilar(query, limit = 5) {
     if (!query || !query.trim()) return [];
     
-    const queryVector = await getEmbedding(query);
+    let queryVector;
+    try {
+        queryVector = await getEmbedding(query);
+    } catch (e) {
+        console.error(`❌ RAG: Vyhledávání selhalo, model nedostupný:`, e.message);
+        throw e;
+    }
+
     const index = loadIndex();
     
     const results = index.chunks.map(chunk => {
