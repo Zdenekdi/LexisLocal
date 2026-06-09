@@ -9,6 +9,17 @@ document.addEventListener('DOMContentLoaded', () => {
     window.appInstance = app;
 });
 
+function escapeHtml(unsafe) {
+    if (!unsafe) return '';
+    return unsafe
+         .toString()
+         .replace(/&/g, "&amp;")
+         .replace(/</g, "&lt;")
+         .replace(/>/g, "&gt;")
+         .replace(/"/g, "&quot;")
+         .replace(/'/g, "&#039;");
+}
+
 class LexisLocalApp {
     constructor() {
         // Dynamically adjust API base to current location host (Tailscale / remote IP / VPN)
@@ -1127,7 +1138,7 @@ class LexisLocalApp {
             <div class="chat-message user">
                 <div class="message-avatar">👤</div>
                 <div class="message-content">
-                    <p>${userText}</p>
+                    <p>${escapeHtml(userText)}</p>
                 </div>
             </div>
         `;
@@ -1228,7 +1239,7 @@ class LexisLocalApp {
             } catch (e) {
                 const typingEl = document.getElementById(typingId);
                 if (typingEl) typingEl.remove();
-                output.innerHTML += `<div class="chat-message agent"><div class="message-content"><p style="color:var(--accent-red);">❌ Chyba připojení: ${e.message}</p></div></div>`;
+                output.innerHTML += `<div class="chat-message agent"><div class="message-content"><p style="color:var(--accent-red);">❌ Chyba připojení: ${escapeHtml(e.message)}</p></div></div>`;
                 output.scrollTop = output.scrollHeight;
             }
             return;
@@ -1278,7 +1289,7 @@ class LexisLocalApp {
                 <div class="chat-message agent">
                     <div class="message-avatar">⚠️</div>
                     <div class="message-content">
-                        <p style="color:var(--accent-red);">Chyba spojení s lokálním serverem: ${e.message}</p>
+                        <p style="color:var(--accent-red);">Chyba spojení s lokálním serverem: ${escapeHtml(e.message)}</p>
                     </div>
                 </div>
             `;
@@ -1356,7 +1367,7 @@ class LexisLocalApp {
         } catch (e) {
             loaderEl.style.display = 'none';
             resultsEl.style.display = 'flex';
-            resultsEl.innerHTML = `<div class="no-results" style="color: var(--accent-red); border-color: rgba(239, 68, 68, 0.2);">❌ Chyba sémantického vyhledávání: ${e.message}</div>`;
+            resultsEl.innerHTML = `<div class="no-results" style="color: var(--accent-red); border-color: rgba(239, 68, 68, 0.2);">❌ Chyba sémantického vyhledávání: ${escapeHtml(e.message)}</div>`;
         }
     }
 
@@ -3248,10 +3259,10 @@ Generováno systémem LexisLocal. 100% soukromé a šifrované.`;
                     `;
                 }).join('');
             } else {
-                listEl.innerHTML = `<div style="text-align: center; padding: 15px; color: var(--accent-red); font-size: 0.8rem;">❌ Chyba načítání: ${data.error}</div>`;
+                listEl.innerHTML = `<div style="text-align: center; padding: 15px; color: var(--accent-red); font-size: 0.8rem;">❌ Chyba načítání: ${escapeHtml(data.error)}</div>`;
             }
         } catch (err) {
-            listEl.innerHTML = `<div style="text-align: center; padding: 15px; color: var(--accent-red); font-size: 0.8rem;">❌ Síťová chyba: ${err.message}</div>`;
+            listEl.innerHTML = `<div style="text-align: center; padding: 15px; color: var(--accent-red); font-size: 0.8rem;">❌ Síťová chyba: ${escapeHtml(err.message)}</div>`;
         }
     }
 
@@ -3296,10 +3307,10 @@ Generováno systémem LexisLocal. 100% soukromé a šifrované.`;
                             `;
                         }).join('');
                     } else {
-                        dialogListEl.innerHTML = `<div style="text-align: center; padding: 20px; color: var(--accent-red); font-size: 0.85rem;">❌ Chyba: ${data.error}</div>`;
+                        dialogListEl.innerHTML = `<div style="text-align: center; padding: 20px; color: var(--accent-red); font-size: 0.85rem;">❌ Chyba: ${escapeHtml(data.error)}</div>`;
                     }
                 } catch (err) {
-                    dialogListEl.innerHTML = `<div style="text-align: center; padding: 20px; color: var(--accent-red); font-size: 0.85rem;">❌ Síťová chyba: ${err.message}</div>`;
+                    dialogListEl.innerHTML = `<div style="text-align: center; padding: 20px; color: var(--accent-red); font-size: 0.85rem;">❌ Síťová chyba: ${escapeHtml(err.message)}</div>`;
                 }
             }
             return;
@@ -3519,30 +3530,30 @@ Generováno systémem LexisLocal. 100% soukromé a šifrované.`;
         } else {
             tasksHtml = this.emailTasks.map(task => {
                 const dateStr = new Date(task.createdAt).toLocaleString('cs-CZ');
-                const safeSubject = task.subject.replace(/"/g, '&quot;');
-                const escapedResponse = task.responseSent.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n');
+                const safeSubject = escapeHtml(task.subject).replace(/"/g, '&quot;');
+                const escapedResponse = escapeHtml(task.responseSent).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n');
                 
                 return `
                     <div class="glass email-task-card" style="border: 1px solid var(--border-glass); border-radius: 12px; padding: 18px; display: flex; flex-direction: column; gap: 12px; background: rgba(15, 23, 42, 0.35); transition: border-color 0.2s;">
                         <div style="display: flex; justify-content: space-between; align-items: start;">
                             <div>
                                 <span style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-bottom: 2px;">Doručeno: ${dateStr}</span>
-                                <strong style="color: white; font-size: 0.95rem; font-family: 'Outfit', sans-serif;">${task.subject}</strong>
-                                <span style="font-size: 0.75rem; color: #94a3b8; display: block; margin-top: 2px;">Od: ${task.sender}</span>
+                                <strong style="color: white; font-size: 0.95rem; font-family: 'Outfit', sans-serif;">${escapeHtml(task.subject)}</strong>
+                                <span style="font-size: 0.75rem; color: #94a3b8; display: block; margin-top: 2px;">Od: ${escapeHtml(task.sender)}</span>
                             </div>
                             <span style="background: rgba(59,130,246,0.12); border: 1px solid rgba(59,130,246,0.25); padding: 4px 10px; border-radius: 20px; font-size: 0.75rem; color: #93c5fd; font-weight: 600; display: flex; align-items: center; gap: 4px;">
-                                ${task.assignedAgentEmoji} ${task.assignedAgentName}
+                                ${escapeHtml(task.assignedAgentEmoji)} ${escapeHtml(task.assignedAgentName)}
                             </span>
                         </div>
                         
                         <div style="background: rgba(0,0,0,0.2); padding: 10px 14px; border-radius: 8px; font-size: 0.82rem; color: #cbd5e1; border-left: 3px solid var(--accent-blue);">
                             <strong style="color: white;">Zadání v e-mailu:</strong><br/>
-                            <span style="display: block; margin-top: 4px; line-height: 1.4;">${task.body}</span>
+                            <span style="display: block; margin-top: 4px; line-height: 1.4;">${escapeHtml(task.body)}</span>
                         </div>
                         
                         <div style="margin-top: 5px;">
                             <span style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 5px;">Odpověď odeslaná advokátovi:</span>
-                            <div style="background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(255,255,255,0.06); padding: 12px; border-radius: 8px; font-family: 'Fira Code', 'Courier New', monospace; font-size: 0.78rem; color: #e2e8f0; max-height: 200px; overflow-y: auto; white-space: pre-wrap; line-height: 1.4; scrollbar-gutter: stable;">${task.responseSent}</div>
+                            <div style="background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(255,255,255,0.06); padding: 12px; border-radius: 8px; font-family: 'Fira Code', 'Courier New', monospace; font-size: 0.78rem; color: #e2e8f0; max-height: 200px; overflow-y: auto; white-space: pre-wrap; line-height: 1.4; scrollbar-gutter: stable;">${escapeHtml(task.responseSent)}</div>
                         </div>
                         
                         <div style="display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 10px; margin-top: 5px;">

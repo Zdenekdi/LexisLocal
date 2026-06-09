@@ -24,9 +24,9 @@ const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.tiff', '.tif', '.bmp', '.we
  */
 function extractTextFromDocx(filePath) {
     try {
-        const { execSync } = require('child_process');
+        const { execFileSync } = require('child_process');
         // Run native unzip -p to print word/document.xml directly to stdout
-        const documentXml = execSync(`unzip -p "${filePath}" word/document.xml`, { 
+        const documentXml = execFileSync('unzip', ['-p', filePath, 'word/document.xml'], {
             encoding: 'utf-8', 
             maxBuffer: 50 * 1024 * 1024, // 50MB buffer safety
             stdio: ['pipe', 'pipe', 'ignore'] // ignore stderr to prevent warnings
