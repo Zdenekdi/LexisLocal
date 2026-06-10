@@ -1812,27 +1812,31 @@ const USE_HTTPS = process.env.USE_HTTPS === 'true';
 const SSL_KEY_PATH = process.env.SSL_KEY_PATH || 'key.pem';
 const SSL_CERT_PATH = process.env.SSL_CERT_PATH || 'cert.pem';
 
-if (USE_HTTPS && fs.existsSync(SSL_KEY_PATH) && fs.existsSync(SSL_CERT_PATH)) {
-    try {
-        const https = require('https');
-        const sslOptions = {
-            key: fs.readFileSync(SSL_KEY_PATH),
-            cert: fs.readFileSync(SSL_CERT_PATH)
-        };
-        https.createServer(sslOptions, app).listen(PORT, () => {
-            console.log(`🚀🔒 LexisLocal AI ZABEZPEČENÝ backend (HTTPS) běží na https://localhost:${PORT}`);
-        });
-    } catch (httpsErr) {
-        console.error("❌ Nepodařilo se spustit HTTPS server, padám zpět na HTTP:", httpsErr.message);
+if (require.main === module) {
+    if (USE_HTTPS && fs.existsSync(SSL_KEY_PATH) && fs.existsSync(SSL_CERT_PATH)) {
+        try {
+            const https = require('https');
+            const sslOptions = {
+                key: fs.readFileSync(SSL_KEY_PATH),
+                cert: fs.readFileSync(SSL_CERT_PATH)
+            };
+            https.createServer(sslOptions, app).listen(PORT, () => {
+                console.log(`🚀🔒 LexisLocal AI ZABEZPEČENÝ backend (HTTPS) běží na https://localhost:${PORT}`);
+            });
+        } catch (httpsErr) {
+            console.error("❌ Nepodařilo se spustit HTTPS server, padám zpět na HTTP:", httpsErr.message);
+            app.listen(PORT, () => {
+                console.log(`🚀 LexisLocal AI backend běží na http://localhost:${PORT}`);
+            });
+        }
+    } else {
+        if (USE_HTTPS) {
+            console.warn(`⚠️ V konfiguraci je vyžadováno HTTPS, ale chybí soubory certifikátu (${SSL_KEY_PATH} / ${SSL_CERT_PATH}). Spouštím na HTTP.`);
+        }
         app.listen(PORT, () => {
             console.log(`🚀 LexisLocal AI backend běží na http://localhost:${PORT}`);
         });
     }
-} else {
-    if (USE_HTTPS) {
-        console.warn(`⚠️ V konfiguraci je vyžadováno HTTPS, ale chybí soubory certifikátu (${SSL_KEY_PATH} / ${SSL_CERT_PATH}). Spouštím na HTTP.`);
-    }
-    app.listen(PORT, () => {
-        console.log(`🚀 LexisLocal AI backend běží na http://localhost:${PORT}`);
-    });
 }
+
+module.exports = app;
