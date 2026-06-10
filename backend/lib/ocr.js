@@ -22,14 +22,17 @@ const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.tiff', '.tif', '.bmp', '.we
  * Extract clean plaintext from a Word .docx document using native Mac unzip and XML matching.
  * Requires no external NPM zip libraries, works out of the box and is extremely fast!
  */
-function extractTextFromDocx(filePath) {
+async function extractTextFromDocx(filePath) {
+    const { execFile } = require('child_process');
+    const util = require('util');
+    const execFileAsync = util.promisify(execFile);
+
     try {
-        const { execFileSync } = require('child_process');
         // Run native unzip -p to print word/document.xml directly to stdout
-        const documentXml = execFileSync('unzip', ['-p', filePath, 'word/document.xml'], {
+        // Passed carefully as an array to prevent command injection
+        const { stdout: documentXml } = await execFileAsync('unzip', ['-p', filePath, 'word/document.xml'], {
             encoding: 'utf-8', 
-            maxBuffer: 50 * 1024 * 1024, // 50MB buffer safety
-            stdio: ['pipe', 'pipe', 'ignore'] // ignore stderr to prevent warnings
+            maxBuffer: 50 * 1024 * 1024 // 50MB buffer safety
         });
         
         // Find all paragraph blocks
@@ -200,7 +203,7 @@ async function extractTextFromFile(filePath) {
     // === Word .docx files (using native unzip + XML parsing) ===
     if (ext === '.docx') {
         try {
-            const text = extractTextFromDocx(filePath);
+            const text = await extractTextFromDocx(filePath);
             return { text, ocr: false };
         } catch (err) {
             console.error(`❌ Word: Selhala extrakce z .docx souboru ${path.basename(filePath)}:`, err.message);
