@@ -175,14 +175,10 @@
     <div class="status-bar" id="status-bar">Nastavení načtena.</div>
 
     <script>
-        const { ipcRenderer } = require('electron');
-        const os = require('os');
-        const path = require('path');
-
         const defaults = {
             mode: 'local',
             serverUrl: 'http://localhost:4000',
-            watchDir: path.join(os.homedir(), 'Desktop', 'LexisSpisy'),
+            watchDir: 'Spisy', // Bude přepsáno skutečnou hodnotou z backendu
             port: '4000',
             autostart: true,
             https: false,
@@ -192,9 +188,9 @@
         let settings = { ...defaults };
 
         // Vyžádat si nastavení z hlavního procesu
-        ipcRenderer.send('get-settings');
+        window.api.send('get-settings');
 
-        ipcRenderer.on('settings-data', (event, data) => {
+        window.api.on('settings-data', (data) => {
             settings = { ...defaults, ...data };
             
             document.getElementById('mode').value = settings.mode;
@@ -252,7 +248,7 @@
             settings.port = document.getElementById('port').value.trim() || defaults.port;
             
             // Odeslat nastavení k uložení do hlavního procesu
-            ipcRenderer.send('save-settings', settings);
+            window.api.send('save-settings', settings);
             
             document.getElementById('status-bar').textContent = '✅ Nastavení uložena. Aplikace se restartuje...';
             setTimeout(() => window.close(), 1200);
