@@ -1,0 +1,55 @@
+version: "3.8"
+
+services:
+  broker:
+    image: docker.io/library/redis:7-alpine
+    container_name: lexis-paperless-redis
+    restart: unless-stopped
+    volumes:
+      - redisdata:/data
+
+  db:
+    image: docker.io/library/postgres:16-alpine
+    container_name: lexis-paperless-db
+    restart: unless-stopped
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: paperless
+      POSTGRES_USER: paperless
+      POSTGRES_PASSWORD: paperless_secure_password_123
+
+  webserver:
+    image: ghcr.io/paperless-ngx/paperless-ngx:latest
+    container_name: lexis-paperless-webserver
+    restart: unless-stopped
+    depends_on:
+      - broker
+      - db
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./docker/paperless/data:/usr/src/paperless/data
+      - ./docker/paperless/media:/usr/src/paperless/media
+      - ./docker/paperless/consume:/usr/src/paperless/consume
+      - ./docker/paperless/export:/usr/src/paperless/export
+    environment:
+      PAPERLESS_REDIS: redis://broker:6379
+      PAPERLESS_DBHOST: db
+      PAPERLESS_DBPORT: 5432
+      PAPERLESS_DBNAME: paperless
+      PAPERLESS_DBUSER: paperless
+      PAPERLESS_DBPASS: paperless_secure_password_123
+      PAPERLESS_SECRET_KEY: lexis_local_secret_key_change_me_in_prod
+      PAPERLESS_TIME_ZONE: Europe/Prague
+      PAPERLESS_OCR_LANGUAGE: ces+eng
+      PAPERLESS_OCR_LANGUAGES: ces eng
+      # Auto-matching, tagging and machine learning settings
+      PAPERLESS_FILENAME_FORMAT: "{created_year}/{correspondent}/{title}"
+      # Allow local webhooks to access host (for communicate back to LexisLocal API)
+      PAPERLESS_WEBHOOKS_ALLOWED_SCHEMES: http,https
+      PAPERLESS_WEBHOOKS_ALLOWED_PORTS: 4000,3000,80,443
+
+volumes:
+  redisdata:
+  pgdata:

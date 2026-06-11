@@ -1800,6 +1800,20 @@ ${replyText}`;
     }
 });
 
+// --- PAPERLESS-NGX INTEGRATION WEBHOOK ---
+const { handlePaperlessWebhook } = require('./lib/paperless');
+
+app.post('/api/paperless/webhook', async (req, res) => {
+    try {
+        const payload = req.body;
+        const result = await handlePaperlessWebhook(payload);
+        res.json({ success: true, file: result });
+    } catch (err) {
+        console.error("❌ Paperless Webhook Error:", err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // Spouštět kontrolu změn soudních jednání na pozadí (každou hodinu)
 setInterval(() => {
     HearingsWatcher.checkAllHearings(WATCH_DIR).catch(err => {
