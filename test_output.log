@@ -1,0 +1,152 @@
+
+> lexis-local@1.1.2 test
+> jest
+
+PASS backend/tests/agents.test.js
+PASS backend/tests/workflow.test.js
+  ● Console
+
+    console.log
+      🔑 Vygenerován nový lokální šifrovací klíč .lexis.key
+
+      at LexisDatabase.log [as loadOrCreateKey] (backend/lib/database.js:65:25)
+
+    console.log
+      ⚡ Workflow Engine: Zpracovávám událost [test_event]...
+
+      at WorkflowEngine.log [as triggerEvent] (backend/lib/workflow.js:58:17)
+
+    console.log
+      ⚡ Workflow Engine: Aktivováno pravidlo "Match All Rule"
+
+      at WorkflowEngine.log [as triggerEvent] (backend/lib/workflow.js:76:25)
+
+    console.log
+      ⚡ Workflow Engine: Zpracovávám událost [test_event]...
+
+      at WorkflowEngine.log [as triggerEvent] (backend/lib/workflow.js:58:17)
+
+    console.log
+      ⚡ Workflow Engine: Aktivováno pravidlo "Specific Rule"
+
+      at WorkflowEngine.log [as triggerEvent] (backend/lib/workflow.js:76:25)
+
+    console.log
+      ⚡ Workflow Engine: Zpracovávám událost [test_event]...
+
+      at WorkflowEngine.log [as triggerEvent] (backend/lib/workflow.js:58:17)
+
+    console.log
+      ⚡ Workflow Engine: Aktivováno pravidlo "Case Rule"
+
+      at WorkflowEngine.log [as triggerEvent] (backend/lib/workflow.js:76:25)
+
+    console.log
+      ⚡ Workflow Engine: Zpracovávám událost [test_event]...
+
+      at WorkflowEngine.log [as triggerEvent] (backend/lib/workflow.js:58:17)
+
+    console.log
+      ⚡ Workflow Engine: Zpracovávám událost [test_event]...
+
+      at WorkflowEngine.log [as triggerEvent] (backend/lib/workflow.js:58:17)
+
+    console.log
+      ⚡ Workflow Engine: Zpracovávám událost [test_event]...
+
+      at WorkflowEngine.log [as triggerEvent] (backend/lib/workflow.js:58:17)
+
+    console.log
+      ⚡ Workflow Engine: Aktivováno pravidlo "Deadline Rule"
+
+      at WorkflowEngine.log [as triggerEvent] (backend/lib/workflow.js:76:25)
+
+PASS backend/tests/database.test.js
+  ● Console
+
+    console.log
+      🔑 Vygenerován nový lokální šifrovací klíč .lexis.key
+
+      at LexisDatabase.log [as loadOrCreateKey] (backend/lib/database.js:65:25)
+
+PASS backend/tests/api.test.js
+  ● Console
+
+    console.log
+      👀 Spouštím sledování složky: /home/jules/Desktop/LexisSpisy
+
+      at Object.log (backend/lib/watcher.js:32:9)
+
+FAIL backend/tests/registries.test.js (5.335 s)
+  ● Console
+
+    console.log
+      🔍 Lustruji subjekt: 12345678 (ARES + ISIR)...
+
+      at log (backend/lib/registries.js:162:13)
+
+    console.log
+      🔍 Lustruji subjekt: 88888888 (ARES + ISIR)...
+
+      at log (backend/lib/registries.js:162:13)
+
+    console.log
+      🔍 Lustruji subjekt: 45274649 (ARES + ISIR)...
+
+      at log (backend/lib/registries.js:162:13)
+
+    console.warn
+      ⚠️ Chyba ARES pro IČO 45274649: Požadavek vypršel (Timeout)
+
+      89 |         };
+      90 |     } catch (e) {
+    > 91 |         console.warn(`⚠️ Chyba ARES pro IČO ${ico}:`, e.message);
+         |                 ^
+      92 |         return null;
+      93 |     }
+      94 | }
+
+      at warn (backend/lib/registries.js:91:17)
+          at async Promise.all (index 0)
+      at checkSubject (backend/lib/registries.js:165:26)
+      at Object.<anonymous> (backend/tests/registries.test.js:37:24)
+
+    console.warn
+      ⚠️ Chyba ISIR pro IČO 45274649: Požadavek vypršel (Timeout)
+
+      146 |         return { inInsolvency: false };
+      147 |     } catch (e) {
+    > 148 |         console.warn(`⚠️ Chyba ISIR pro IČO ${ico}:`, e.message);
+          |                 ^
+      149 |         return { inInsolvency: false, error: e.message };
+      150 |     }
+      151 | }
+
+      at warn (backend/lib/registries.js:148:17)
+          at async Promise.all (index 1)
+      at checkSubject (backend/lib/registries.js:165:26)
+      at Object.<anonymous> (backend/tests/registries.test.js:37:24)
+
+  ● Registries Utility › should fetch real data from ARES and ISIR for a valid ICO (integration test)
+
+    expect(received).toContain(expected) // indexOf
+
+    Expected substring: "ČEZ"
+    Received string:    "ARES nedostupný / Selhal dotaz"
+
+      39 |         expect(result.error).toBeUndefined();
+      40 |         expect(result.ico).toBe('45274649');
+    > 41 |         expect(result.name).toContain('ČEZ');
+         |                             ^
+      42 |         expect(result.seat).toBeDefined();
+      43 |
+      44 |         // It shouldn't be in insolvency
+
+      at Object.toContain (backend/tests/registries.test.js:41:29)
+
+A worker process has failed to exit gracefully and has been force exited. This is likely caused by tests leaking due to improper teardown. Try running with --detectOpenHandles to find leaks. Active timers can also cause this, ensure that .unref() was called on them.
+Test Suites: 1 failed, 4 passed, 5 total
+Tests:       1 failed, 23 passed, 24 total
+Snapshots:   0 total
+Time:        6.187 s
+Ran all test suites.

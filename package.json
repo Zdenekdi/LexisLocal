@@ -109,7 +109,7 @@
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "ollama": "^0.5.0",
-    "pdf-parse": "^1.1.1",
+    "pdf-parse": "^1.1.4",
     "pdfjs-dist": "^5.7.284",
     "tesseract.js": "^7.0.0"
   },
