@@ -672,9 +672,9 @@ app.delete('/api/managerial/fees/:id', (req, res) => {
 });
 
 // GET /api/inbox - Retrieve unread parsed documents
-app.get('/api/inbox', (req, res) => {
+app.get('/api/inbox', async (req, res) => {
     try {
-        const inbox = loadInbox();
+        const inbox = await loadInbox();
         const unreadFiles = Object.values(inbox.files).filter(f => f.status === 'unread');
         res.json({
             inbox: unreadFiles
@@ -685,17 +685,17 @@ app.get('/api/inbox', (req, res) => {
 });
 
 // POST /api/inbox/mark-read - Mark parsed document as read
-app.post('/api/inbox/mark-read', (req, res) => {
+app.post('/api/inbox/mark-read', async (req, res) => {
     const { fileName } = req.body;
     if (!fileName) {
         return res.status(400).json({ error: "Název souboru je povinný." });
     }
     
     try {
-        const inbox = loadInbox();
+        const inbox = await loadInbox();
         if (inbox.files[fileName]) {
             inbox.files[fileName].status = 'read';
-            saveInbox(inbox);
+            await saveInbox(inbox);
             res.json({ success: true, message: `Soubor ${fileName} byl označen za vyřízený.` });
         } else {
             res.status(404).json({ error: "Soubor nebyl nalezen." });
@@ -706,9 +706,9 @@ app.post('/api/inbox/mark-read', (req, res) => {
 });
 
 // GET /api/inbox/all - Retrieve all parsed documents (both read and unread)
-app.get('/api/inbox/all', (req, res) => {
+app.get('/api/inbox/all', async (req, res) => {
     try {
-        const inbox = loadInbox();
+        const inbox = await loadInbox();
         res.json({
             inbox: Object.values(inbox.files)
         });
@@ -724,7 +724,7 @@ app.get('/api/inbox/case/:caseNum/timeline', async (req, res) => {
         const timeline = [];
         
         // 1. Get files belonging to this case in the inbox
-        const inboxData = loadInbox() || { files: {} };
+        const inboxData = (await loadInbox()) || { files: {} };
         const filesArray = Object.values(inboxData.files || {});
         const caseFiles = filesArray.filter(f => f.caseNumber === caseNum);
         
@@ -810,7 +810,7 @@ app.post('/api/inbox/delete', async (req, res) => {
     }
     
     try {
-        const inbox = loadInbox();
+        const inbox = await loadInbox();
         if (inbox.files[fileName]) {
             const fileData = inbox.files[fileName];
             
@@ -832,7 +832,7 @@ app.post('/api/inbox/delete', async (req, res) => {
             }
             
             delete inbox.files[fileName];
-            saveInbox(inbox);
+            await saveInbox(inbox);
             res.json({ success: true, message: `Soubor ${fileName} byl kompletně smazán z indexu i disku.` });
         } else {
             res.status(404).json({ error: "Soubor nebyl nalezen v indexu." });
@@ -880,7 +880,7 @@ app.get('/api/inbox/content', async (req, res) => {
     }
     
     try {
-        const inbox = loadInbox();
+        const inbox = await loadInbox();
         const fileData = inbox.files[fileName];
         if (!fileData) {
             return res.status(404).json({ error: "Soubor nebyl nalezen v indexu." });
@@ -1382,9 +1382,9 @@ app.post('/api/registries/save-report', (req, res) => {
 });
 
 // GET /api/alerts - Retrieve active insolvency alerts
-app.get('/api/alerts', (req, res) => {
+app.get('/api/alerts', async (req, res) => {
     try {
-        const inbox = loadInbox();
+        const inbox = await loadInbox();
         const activeAlerts = (inbox.alerts || []).filter(a => a.status === 'active');
         res.json({ alerts: activeAlerts });
     } catch (err) {
@@ -1403,10 +1403,10 @@ app.post('/api/alerts/check', async (req, res) => {
 });
 
 // POST /api/alerts/dismiss/:alertId - Dismiss/mute an active alert
-app.post('/api/alerts/dismiss/:alertId', (req, res) => {
+app.post('/api/alerts/dismiss/:alertId', async (req, res) => {
     const { alertId } = req.params;
     try {
-        const inbox = loadInbox();
+        const inbox = await loadInbox();
         if (inbox.alerts) {
             inbox.alerts = inbox.alerts.map(a => {
                 if (a.id === alertId) {
@@ -1414,7 +1414,7 @@ app.post('/api/alerts/dismiss/:alertId', (req, res) => {
                 }
                 return a;
             });
-            saveInbox(inbox);
+            await saveInbox(inbox);
         }
         res.json({ success: true });
     } catch (err) {
@@ -1441,7 +1441,7 @@ app.get('/api/rag/status', (req, res) => {
 app.post('/api/rag/reindex-all', async (req, res) => {
     console.log("⚡ RAG: Spouštím kompletní re-indexaci všech souborů...");
     try {
-        const inbox = loadInbox();
+        const inbox = await loadInbox();
         const files = Object.values(inbox.files);
         
         let successCount = 0;

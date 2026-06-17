@@ -74,7 +74,7 @@ async function handlePaperlessWebhook(payload) {
     }
 
     // 3. Save to LexisLocal Inbox
-    const inbox = loadInbox();
+    const inbox = await loadInbox();
     const fileName = `paperless_${document_id}_${title.replace(/[^a-zA-Z0-9-_.]/g, '_')}`;
     
     inbox.files[fileName] = {
@@ -94,7 +94,7 @@ async function handlePaperlessWebhook(payload) {
         wasOcr: true,
         processedAt: new Date().toISOString()
     };
-    saveInbox(inbox);
+    await saveInbox(inbox);
     console.log(`✅ Paperless: Dokument ${title} byl zapsán do lokálního inboxu.`);
 
     logEvent('PaperlessWebhook', 'Zpracování dokumentu', title, {
