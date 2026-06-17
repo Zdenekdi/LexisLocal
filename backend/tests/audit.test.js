@@ -10,6 +10,10 @@ const audit = require('../lib/audit');
 const AUDIT_LOG_FILE = path.join(tempWatchDir, '.audit_log.json');
 
 describe('Audit Utility', () => {
+    let consoleErrorSpy;
+    let consoleLogSpy;
+    let originalDateNow;
+
     beforeAll(() => {
         if (!fs.existsSync(tempWatchDir)) {
             fs.mkdirSync(tempWatchDir, { recursive: true });
@@ -23,10 +27,20 @@ describe('Audit Utility', () => {
     });
 
     beforeEach(() => {
+        consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+        consoleLogSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+        originalDateNow = Date.now;
+
         // Clear the audit log file before each test
         if (fs.existsSync(AUDIT_LOG_FILE)) {
             fs.rmSync(AUDIT_LOG_FILE);
         }
+    });
+
+    afterEach(() => {
+        consoleErrorSpy.mockRestore();
+        consoleLogSpy.mockRestore();
+        Date.now = originalDateNow;
     });
 
     describe('loadAuditLogs', () => {
@@ -39,6 +53,10 @@ describe('Audit Utility', () => {
             fs.writeFileSync(AUDIT_LOG_FILE, 'invalid-json', 'utf-8');
             const logs = audit.loadAuditLogs();
             expect(logs).toEqual([]);
+            expect(consoleErrorSpy).toHaveBeenCalledWith(
+                expect.stringContaining("❌ Nepodařilo se načíst auditní log:"),
+                expect.any(String)
+            );
         });
 
         it('should return parsed logs if the audit log file is valid JSON', () => {
@@ -50,6 +68,26 @@ describe('Audit Utility', () => {
     });
 
     describe('logEvent', () => {
+        it('should successfully log an event', () => {
+            audit.logEvent('TestUser', 'TestOp', 'TestTarget');
+            expect(consoleLogSpy).toHaveBeenCalledWith(
+                expect.stringContaining('📜 Audit: Zaznamenán úkon [TestOp] pro [TestTarget]')
+            );
+        });
+
+        it('should catch errors and log them via console.error', () => {
+            Date.now = jest.fn(() => {
+                throw new Error('Mocked Date.now error');
+            });
+
+            audit.logEvent('TestUser', 'TestOp', 'TestTarget');
+
+            expect(consoleErrorSpy).toHaveBeenCalledWith(
+                '❌ Chyba logování:',
+                'Mocked Date.now error'
+            );
+        });
+
         it('should log a new event and save it to the file', () => {
             audit.logEvent('TestUser', 'TestOperation', 'TestTarget', { testDetail: true });
 
