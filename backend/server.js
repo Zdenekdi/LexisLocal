@@ -928,7 +928,7 @@ USNESENÍ
 
 Soud vyzývá žalovaného, aby se ve lhůtě 15 dnů od doručení tohoto usnesení písemně vyjádřil k podané žalobě. Pokud se bez vážného důvodu nevyjádříte, má se za to, že nárok žalobce uznáváte.`;
         
-        fs.writeFileSync(testFilePath, sampleContent, 'utf-8');
+        await fs.promises.writeFile(testFilePath, sampleContent, 'utf-8');
         await processDocument(testFilePath);
         
         res.json({ success: true, message: "Testovací dokument byl úspěšně vygenerován a naimportován do schránky." });
