@@ -896,11 +896,11 @@ app.get('/api/inbox/content', async (req, res) => {
         
         if (ext === '.pdf') {
             const pdf = require('pdf-parse');
-            const dataBuffer = fs.readFileSync(filePath);
+            const dataBuffer = await fs.promises.readFile(filePath);
             const parsedPdf = await pdf(dataBuffer);
             content = parsedPdf.text;
         } else {
-            content = fs.readFileSync(filePath, 'utf-8');
+            content = await fs.promises.readFile(filePath, 'utf-8');
         }
         
         res.json({
