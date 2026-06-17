@@ -193,5 +193,6 @@ async function writeToSystemCalendar({ title, date, time, location, description 
 }
 
 module.exports = {
+    generateAppleScriptDate,
     writeToSystemCalendar
 };
