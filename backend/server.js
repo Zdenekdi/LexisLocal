@@ -856,7 +856,7 @@ app.post('/api/inbox/upload', async (req, res) => {
         const base64Data = base64.replace(/^data:.*?;base64,/, "");
         
         const buffer = Buffer.from(base64Data, 'base64');
-        fs.writeFileSync(filePath, buffer);
+        await fs.promises.writeFile(filePath, buffer);
         console.log(`📥 Nahraný soubor uložen na disk: ${filePath}`);
         
         // Trigger manual file processing immediately
