@@ -1492,14 +1492,14 @@ app.get('/api/audit/logs', (req, res) => {
 });
 
 // POST /api/audit/clear - Clear all audit trail log events
-app.post('/api/audit/clear', (req, res) => {
+app.post('/api/audit/clear', async (req, res) => {
     const fs = require('fs');
     const path = require('path');
     try {
         const WATCH_DIR = process.env.WATCH_DIR || path.join(require('os').homedir(), 'Desktop', 'LexisSpisy');
         const AUDIT_LOG_FILE = path.join(WATCH_DIR, '.audit_log.json');
         if (fs.existsSync(AUDIT_LOG_FILE)) {
-            fs.writeFileSync(AUDIT_LOG_FILE, JSON.stringify([], null, 2), 'utf-8');
+            await fs.promises.writeFile(AUDIT_LOG_FILE, JSON.stringify([], null, 2), 'utf-8');
         }
         logEvent('LexisLocal Dashboard', 'Pročištění logů', 'Audit Trail', { cleared: true });
         res.json({ success: true, message: "Auditní logy byly vyčištěny." });
