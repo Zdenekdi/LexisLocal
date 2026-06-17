@@ -18,18 +18,18 @@ const RAG_INDEX_PATH = path.join(WATCH_DIR, '.rag_index.json');
 const EMBEDDING_MODEL = process.env.EMBEDDING_MODEL || 'nomic-embed-text';
 
 // Ensure index file exists
-function initIndex() {
+async function initIndex() {
     if (!fs.existsSync(RAG_INDEX_PATH)) {
-        fs.writeFileSync(RAG_INDEX_PATH, JSON.stringify({ chunks: [] }, null, 2), 'utf-8');
+        await fs.promises.writeFile(RAG_INDEX_PATH, JSON.stringify({ chunks: [] }, null, 2), 'utf-8');
     }
 }
 
 // Load RAG index from disk
-function loadIndex() {
+async function loadIndex() {
     try {
-        initIndex();
+        await initIndex();
         if (fs.existsSync(RAG_INDEX_PATH)) {
-            return JSON.parse(fs.readFileSync(RAG_INDEX_PATH, 'utf-8'));
+            return JSON.parse(await fs.promises.readFile(RAG_INDEX_PATH, 'utf-8'));
         }
     } catch (e) {
         console.error("⚠️ Nepodařilo se načíst .rag_index.json:", e.message);
@@ -38,9 +38,9 @@ function loadIndex() {
 }
 
 // Save RAG index to disk
-function saveIndex(index) {
+async function saveIndex(index) {
     try {
-        fs.writeFileSync(RAG_INDEX_PATH, JSON.stringify(index, null, 2), 'utf-8');
+        await fs.promises.writeFile(RAG_INDEX_PATH, JSON.stringify(index, null, 2), 'utf-8');
     } catch (e) {
         console.error("⚠️ Nepodařilo se uložit .rag_index.json:", e.message);
     }
@@ -138,7 +138,7 @@ async function indexDocument(fileName, text) {
         return;
     }
     
-    const index = loadIndex();
+    const index = await loadIndex();
     
     // 2. Generate embedding for each chunk
     try {
@@ -156,7 +156,7 @@ async function indexDocument(fileName, text) {
             });
         }
         
-        saveIndex(index);
+        await saveIndex(index);
         console.log(`✅ RAG: Soubor ${fileName} úspěšně indexován (${chunks.length} odstavců uloženo).`);
     } catch (e) {
         console.error(`❌ RAG: Chyba při generování embeddings pro ${fileName}:`, e.message);
@@ -169,14 +169,14 @@ async function indexDocument(fileName, text) {
  * API: Removes indexed chunks belonging to the specified file.
  */
 async function deleteDocumentIndex(fileName) {
-    const index = loadIndex();
+    const index = await loadIndex();
     const originalCount = index.chunks.length;
     
     // Filter out chunks belonging to this file
     index.chunks = index.chunks.filter(chunk => chunk.fileName !== fileName);
     
     if (index.chunks.length !== originalCount) {
-        saveIndex(index);
+        await saveIndex(index);
         console.log(`🗑️ RAG: Odstraněno ${originalCount - index.chunks.length} indexovaných odstavců pro soubor ${fileName}.`);
     }
 }
@@ -196,7 +196,7 @@ async function searchSimilar(query, limit = 5) {
         throw e;
     }
 
-    const index = loadIndex();
+    const index = await loadIndex();
     
     const results = index.chunks.map(chunk => {
         const score = cosineSimilarity(queryVector, chunk.vector);
