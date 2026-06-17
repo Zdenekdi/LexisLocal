@@ -887,7 +887,9 @@ app.get('/api/inbox/content', async (req, res) => {
         }
         
         const filePath = fileData.filePath;
-        if (!fs.existsSync(filePath)) {
+        try {
+            await fs.promises.access(filePath, fs.constants.F_OK);
+        } catch (accessErr) {
             return res.status(404).json({ error: "Fyzický soubor na disku neexistuje." });
         }
         
@@ -896,11 +898,11 @@ app.get('/api/inbox/content', async (req, res) => {
         
         if (ext === '.pdf') {
             const pdf = require('pdf-parse');
-            const dataBuffer = fs.readFileSync(filePath);
+            const dataBuffer = await fs.promises.readFile(filePath);
             const parsedPdf = await pdf(dataBuffer);
             content = parsedPdf.text;
         } else {
-            content = fs.readFileSync(filePath, 'utf-8');
+            content = await fs.promises.readFile(filePath, 'utf-8');
         }
         
         res.json({
@@ -1446,24 +1448,29 @@ app.post('/api/rag/reindex-all', async (req, res) => {
         
         let successCount = 0;
         for (const file of files) {
-            if (file.filePath && fs.existsSync(file.filePath)) {
-                let content = "";
-                const ext = path.extname(file.filePath).toLowerCase();
+            if (file.filePath) {
                 try {
-                    if (ext === '.pdf') {
-                        const pdfParser = require('pdf-parse');
-                        const dataBuffer = fs.readFileSync(file.filePath);
-                        const parsedPdf = await pdfParser(dataBuffer);
-                        content = parsedPdf.text;
-                    } else {
-                        content = fs.readFileSync(file.filePath, 'utf-8');
+                    await fs.promises.access(file.filePath, fs.constants.F_OK);
+                    let content = "";
+                    const ext = path.extname(file.filePath).toLowerCase();
+                    try {
+                        if (ext === '.pdf') {
+                            const pdfParser = require('pdf-parse');
+                            const dataBuffer = await fs.promises.readFile(file.filePath);
+                            const parsedPdf = await pdfParser(dataBuffer);
+                            content = parsedPdf.text;
+                        } else {
+                            content = await fs.promises.readFile(file.filePath, 'utf-8');
+                        }
+                        if (content && content.trim()) {
+                            await indexDocument(file.fileName, content);
+                            successCount++;
+                        }
+                    } catch (parseErr) {
+                        console.warn(`⚠️ RAG: Přeskakuji soubor ${file.fileName} kvůli chybě:`, parseErr.message);
                     }
-                    if (content && content.trim()) {
-                        await indexDocument(file.fileName, content);
-                        successCount++;
-                    }
-                } catch (parseErr) {
-                    console.warn(`⚠️ RAG: Přeskakuji soubor ${file.fileName} kvůli chybě:`, parseErr.message);
+                } catch (accessErr) {
+                    // File doesn't exist or is inaccessible, skip it
                 }
             }
         }

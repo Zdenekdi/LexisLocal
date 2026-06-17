@@ -45,3 +45,6 @@ release-builds/
 *.exe
 *.zip
 *.blockmap
+watch_dir_bench/
+scratch/bench_files/
+scratch/mock_bench/
