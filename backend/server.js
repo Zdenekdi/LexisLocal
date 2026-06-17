@@ -1452,11 +1452,11 @@ app.post('/api/rag/reindex-all', async (req, res) => {
                 try {
                     if (ext === '.pdf') {
                         const pdfParser = require('pdf-parse');
-                        const dataBuffer = fs.readFileSync(file.filePath);
+                        const dataBuffer = await fs.promises.readFile(file.filePath);
                         const parsedPdf = await pdfParser(dataBuffer);
                         content = parsedPdf.text;
                     } else {
-                        content = fs.readFileSync(file.filePath, 'utf-8');
+                        content = await fs.promises.readFile(file.filePath, 'utf-8');
                     }
                     if (content && content.trim()) {
                         await indexDocument(file.fileName, content);
