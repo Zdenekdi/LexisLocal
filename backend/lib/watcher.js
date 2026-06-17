@@ -11,6 +11,7 @@ const { checkSubject } = require('./registries');
 const { indexDocument, deleteDocumentIndex } = require('./rag');
 const { extractTextFromFile, isImageFile, IMAGE_EXTENSIONS } = require('./ocr');
 const { logEvent } = require('./audit');
+const Mutex = require('./mutex');
 
 // Robust Ollama module import supporting both CommonJS and ESM default exports
 const ollamaLib = require('ollama');
@@ -57,7 +58,7 @@ watcher.on('add', async (filePath) => {
         console.log(`📥 Detekován nový dokument: ${path.basename(filePath)}`);
         
         // Skip if already parsed and present in .inbox.json
-        const inbox = loadInbox();
+        const inbox = await loadInbox();
         if (inbox.files[path.basename(filePath)]) {
             console.log(`ℹ️ Soubor ${path.basename(filePath)} již byl v minulosti zpracován.`);
             return;
@@ -71,24 +72,36 @@ watcher.on('add', async (filePath) => {
     }
 });
 
+const inboxMutex = new Mutex();
+
 // Load inbox data helper
-function loadInbox() {
+async function loadInbox() {
+    await inboxMutex.acquire();
     try {
-        if (fs.existsSync(INBOX_PATH)) {
-            return JSON.parse(fs.readFileSync(INBOX_PATH, 'utf-8'));
-        }
+        const data = await fs.promises.readFile(INBOX_PATH, 'utf-8');
+        return JSON.parse(data);
     } catch (e) {
-        console.error("⚠️ Nepodařilo se přečíst .inbox.json:", e.message);
+        if (e.code !== 'ENOENT') {
+            console.error("⚠️ Nepodařilo se přečíst .inbox.json:", e.message);
+        }
+    } finally {
+        inboxMutex.release();
     }
     return { files: {} };
 }
 
 // Save inbox data helper
-function saveInbox(inbox) {
+async function saveInbox(inbox) {
+    await inboxMutex.acquire();
     try {
-        fs.writeFileSync(INBOX_PATH, JSON.stringify(inbox, null, 2), 'utf-8');
+        // Use a temporary file to prevent partial writes
+        const tempPath = `${INBOX_PATH}.tmp`;
+        await fs.promises.writeFile(tempPath, JSON.stringify(inbox, null, 2), 'utf-8');
+        await fs.promises.rename(tempPath, INBOX_PATH);
     } catch (e) {
         console.error("⚠️ Nepodařilo se uložit .inbox.json:", e.message);
+    } finally {
+        inboxMutex.release();
     }
 }
 
@@ -158,7 +171,7 @@ async function processDocument(filePath) {
     }
     
     // 3. Save to inbox
-    const inbox = loadInbox();
+    const inbox = await loadInbox();
     inbox.files[fileName] = {
         fileName: fileName,
         filePath: filePath,
@@ -176,7 +189,7 @@ async function processDocument(filePath) {
         wasOcr: wasOcr,
         processedAt: new Date().toISOString()
     };
-    saveInbox(inbox);
+    await saveInbox(inbox);
     console.log(`✅ Dokument ${fileName} byl úspěšně analyzován a uložen do lokálního indexu.`);
     
     logEvent('FileWatcher', wasOcr ? 'Zpracování OCR' : 'Zpracování dokumentu', fileName, {
@@ -299,7 +312,7 @@ ${text.substring(0, 3000)}`;
 // Hlídač insolvencí (ISIR Watcher) - Runs active insolvency check on all monitored IČOs
 async function checkAllInsolvencies() {
     console.log("🚨 Hlídač insolvencí: Spouštím periodickou kontrolu sledovaných subjektů...");
-    const inbox = loadInbox();
+    const inbox = await loadInbox();
     if (!inbox.files) return { checkedCount: 0, newAlertsCount: 0 };
     if (!inbox.alerts) inbox.alerts = [];
     
@@ -355,7 +368,7 @@ async function checkAllInsolvencies() {
     }
     
     if (newAlertsCount > 0) {
-        saveInbox(inbox);
+        await saveInbox(inbox);
     }
     
     return { checkedCount, newAlertsCount };
