@@ -1176,7 +1176,7 @@ app.post('/api/calendar/add', async (req, res) => {
         const safeName = sanitizeFileName(title);
         const filePath = path.join(CALENDAR_DIR, `${safeName}.ics`);
         
-        fs.writeFileSync(filePath, icsContent, 'utf-8');
+        await fs.promises.writeFile(filePath, icsContent, 'utf-8');
         console.log(`📅 ICS Kalendářová událost vygenerována: ${filePath}`);
         
         // Write directly to local system calendar (Apple Calendar / Outlook)
