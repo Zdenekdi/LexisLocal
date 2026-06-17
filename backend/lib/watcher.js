@@ -9,7 +9,7 @@ const path = require('path');
 const fs = require('fs');
 const { checkSubject } = require('./registries');
 const { indexDocument, deleteDocumentIndex } = require('./rag');
-const { extractTextFromFile, isImageFile, IMAGE_EXTENSIONS } = require('./ocr');
+const { extractTextFromFile, IMAGE_EXTENSIONS } = require('./ocr');
 const { logEvent } = require('./audit');
 
 // Robust Ollama module import supporting both CommonJS and ESM default exports
