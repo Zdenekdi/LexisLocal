@@ -685,7 +685,7 @@ app.get('/api/inbox', (req, res) => {
 });
 
 // POST /api/inbox/mark-read - Mark parsed document as read
-app.post('/api/inbox/mark-read', (req, res) => {
+app.post('/api/inbox/mark-read', async (req, res) => {
     const { fileName } = req.body;
     if (!fileName) {
         return res.status(400).json({ error: "Název souboru je povinný." });
@@ -695,7 +695,7 @@ app.post('/api/inbox/mark-read', (req, res) => {
         const inbox = loadInbox();
         if (inbox.files[fileName]) {
             inbox.files[fileName].status = 'read';
-            saveInbox(inbox);
+            await saveInbox(inbox);
             res.json({ success: true, message: `Soubor ${fileName} byl označen za vyřízený.` });
         } else {
             res.status(404).json({ error: "Soubor nebyl nalezen." });
@@ -832,7 +832,7 @@ app.post('/api/inbox/delete', async (req, res) => {
             }
             
             delete inbox.files[fileName];
-            saveInbox(inbox);
+            await saveInbox(inbox);
             res.json({ success: true, message: `Soubor ${fileName} byl kompletně smazán z indexu i disku.` });
         } else {
             res.status(404).json({ error: "Soubor nebyl nalezen v indexu." });
@@ -1403,7 +1403,7 @@ app.post('/api/alerts/check', async (req, res) => {
 });
 
 // POST /api/alerts/dismiss/:alertId - Dismiss/mute an active alert
-app.post('/api/alerts/dismiss/:alertId', (req, res) => {
+app.post('/api/alerts/dismiss/:alertId', async (req, res) => {
     const { alertId } = req.params;
     try {
         const inbox = loadInbox();
@@ -1414,7 +1414,7 @@ app.post('/api/alerts/dismiss/:alertId', (req, res) => {
                 }
                 return a;
             });
-            saveInbox(inbox);
+            await saveInbox(inbox);
         }
         res.json({ success: true });
     } catch (err) {

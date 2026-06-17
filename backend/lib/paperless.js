@@ -94,7 +94,7 @@ async function handlePaperlessWebhook(payload) {
         wasOcr: true,
         processedAt: new Date().toISOString()
     };
-    saveInbox(inbox);
+    await saveInbox(inbox);
     console.log(`✅ Paperless: Dokument ${title} byl zapsán do lokálního inboxu.`);
 
     logEvent('PaperlessWebhook', 'Zpracování dokumentu', title, {
