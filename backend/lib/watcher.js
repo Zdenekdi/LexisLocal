@@ -8,7 +8,7 @@ const chokidar = require('chokidar');
 const path = require('path');
 const fs = require('fs');
 const { checkSubject } = require('./registries');
-const { indexDocument, deleteDocumentIndex } = require('./rag');
+const { indexDocument } = require('./rag');
 const { extractTextFromFile, isImageFile, IMAGE_EXTENSIONS } = require('./ocr');
 const { logEvent } = require('./audit');
 
