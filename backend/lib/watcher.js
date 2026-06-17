@@ -11,10 +11,13 @@ const { checkSubject } = require('./registries');
 const { indexDocument, deleteDocumentIndex } = require('./rag');
 const { extractTextFromFile, isImageFile, IMAGE_EXTENSIONS } = require('./ocr');
 const { logEvent } = require('./audit');
+const Mutex = require('./mutex');
 
 // Robust Ollama module import supporting both CommonJS and ESM default exports
 const ollamaLib = require('ollama');
 const ollama = ollamaLib.default || ollamaLib;
+
+const inboxMutex = new Mutex();
 
 const WATCH_DIR = process.env.WATCH_DIR || path.join(process.env.HOME || process.env.USERPROFILE, 'Desktop', 'LexisSpisy');
 const INBOX_PATH = path.join(WATCH_DIR, '.inbox.json');
@@ -84,11 +87,14 @@ function loadInbox() {
 }
 
 // Save inbox data helper
-function saveInbox(inbox) {
+async function saveInbox(inbox) {
+    await inboxMutex.acquire();
     try {
-        fs.writeFileSync(INBOX_PATH, JSON.stringify(inbox, null, 2), 'utf-8');
+        await fs.promises.writeFile(INBOX_PATH, JSON.stringify(inbox, null, 2), 'utf-8');
     } catch (e) {
         console.error("⚠️ Nepodařilo se uložit .inbox.json:", e.message);
+    } finally {
+        inboxMutex.release();
     }
 }
 
@@ -176,7 +182,7 @@ async function processDocument(filePath) {
         wasOcr: wasOcr,
         processedAt: new Date().toISOString()
     };
-    saveInbox(inbox);
+    await saveInbox(inbox);
     console.log(`✅ Dokument ${fileName} byl úspěšně analyzován a uložen do lokálního indexu.`);
     
     logEvent('FileWatcher', wasOcr ? 'Zpracování OCR' : 'Zpracování dokumentu', fileName, {
@@ -355,7 +361,7 @@ async function checkAllInsolvencies() {
     }
     
     if (newAlertsCount > 0) {
-        saveInbox(inbox);
+        await saveInbox(inbox);
     }
     
     return { checkedCount, newAlertsCount };
