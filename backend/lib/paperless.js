@@ -351,4 +351,4 @@ async function getOrCreateCustomFieldIds() {
     return customFieldIdsCache;
 }
 
-module.exports = { handlePaperlessWebhook };
+module.exports = { handlePaperlessWebhook, runRegexExtractor };
