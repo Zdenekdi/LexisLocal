@@ -45,3 +45,4 @@ release-builds/
 *.exe
 *.zip
 *.blockmap
+.rag_index.json
