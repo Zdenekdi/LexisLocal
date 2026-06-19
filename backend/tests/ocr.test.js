@@ -1,4 +1,9 @@
-const { isScannedPdf } = require('../lib/ocr');
+const { isScannedPdf, ocrImageFile } = require('../lib/ocr');
+
+// Mock tesseract.js to test error handling logic without needing real OCR execution
+jest.mock('tesseract.js', () => ({
+    createWorker: jest.fn().mockRejectedValue(new Error('Mocked Tesseract Error'))
+}), { virtual: true });
 
 describe('isScannedPdf', () => {
     it('should return true for an empty string', () => {
@@ -28,5 +33,20 @@ describe('isScannedPdf', () => {
 
         const stringWithOptionsOfWhitespaceLong = '  a  \n \t'.repeat(80) + '  '; // 80 non-whitespace chars, lots of whitespace
         expect(isScannedPdf(stringWithOptionsOfWhitespaceLong)).toBe(false);
+    });
+});
+
+describe('ocrImageFile', () => {
+    it('should handle tesseract initialization failure', async () => {
+        const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+        const consoleLogSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+
+        const result = await ocrImageFile('corrupted-image.png');
+
+        expect(result).toBe('');
+        expect(consoleErrorSpy).toHaveBeenCalledWith('❌ OCR: Tesseract.js selhal:', 'Mocked Tesseract Error');
+
+        consoleErrorSpy.mockRestore();
+        consoleLogSpy.mockRestore();
     });
 });
