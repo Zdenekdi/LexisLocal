@@ -104,6 +104,28 @@ describe('Workflow Engine', () => {
         expect(alerts.length).toBe(0);
     });
 
+    it('should not match if conditionField is not a string', async () => {
+        db.insert('workflows', {
+            name: "Non-String Field Rule",
+            triggerType: "test_event",
+            conditionField: "status",
+            conditionValue: "123",
+            actionTitle: "Non-String Priority"
+        });
+
+        // Test with integer
+        let alerts = await workflowEngine.triggerEvent('test_event', { status: 123 });
+        expect(alerts.length).toBe(0);
+
+        // Test with array
+        alerts = await workflowEngine.triggerEvent('test_event', { status: ["123"] });
+        expect(alerts.length).toBe(0);
+
+        // Test with object
+        alerts = await workflowEngine.triggerEvent('test_event', { status: { value: "123" } });
+        expect(alerts.length).toBe(0);
+    });
+
     it('should set the correct deadline (+15 days)', async () => {
         db.insert('workflows', {
             name: "Deadline Rule",
