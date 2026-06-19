@@ -1082,7 +1082,7 @@ app.post('/api/campaigns/send', async (req, res) => {
             
             const safeName = sanitizeFileName(alertTitle);
             const filePath = path.join(CALENDAR_DIR, `${safeName}.ics`);
-            fs.writeFileSync(filePath, icsContent, 'utf-8');
+            await fs.promises.writeFile(filePath, icsContent, 'utf-8');
             
             results.push({
                 ico,
