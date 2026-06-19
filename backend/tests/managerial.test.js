@@ -102,4 +102,156 @@ describe('Managerial Intelligence', () => {
             expect(advokat.status).toBe('overloaded');
         });
     });
+
+    describe('getProfitabilityReport', () => {
+        beforeEach(() => {
+            // Setup default setting for hourly rate
+            db.insert('settings', { key: 'default_hourly_rate', value: '2500' });
+        });
+
+        it('should return an empty report when there are no budgets and no activities', () => {
+            const report = managerial.getProfitabilityReport();
+            expect(report).toEqual([]);
+        });
+
+        it('should correctly calculate profitability for an existing budget with activities', () => {
+            db.insert('budgets', {
+                documentName: "Smlouva.docx",
+                budgetType: "hourly_cap",
+                limitHours: 10,
+                hourlyRate: 3000
+            });
+
+            // 5 hours = 18000 seconds
+            db.insert('activities', { documentName: "Smlouva.docx", activeSeconds: 18000 });
+
+            const report = managerial.getProfitabilityReport();
+
+            expect(report.length).toBe(1);
+            expect(report[0].documentName).toBe("Smlouva.docx");
+            expect(report[0].budgetType).toBe("hourly_cap");
+            expect(report[0].limitHours).toBe(10);
+            expect(report[0].actualHours).toBe(5);
+            expect(report[0].spentPercentage).toBe(50);
+            expect(report[0].hourlyRate).toBe(3000);
+            expect(report[0].estimatedCost).toBe(15000);
+            expect(report[0].status).toBe('profitable');
+        });
+
+        it('should mark status as warning if spent percentage is > 80 and <= 100', () => {
+            db.insert('budgets', {
+                documentName: "Smlouva.docx",
+                limitHours: 10,
+                hourlyRate: 3000
+            });
+
+            // 9 hours = 32400 seconds
+            db.insert('activities', { documentName: "Smlouva.docx", activeSeconds: 32400 });
+
+            const report = managerial.getProfitabilityReport();
+
+            expect(report.length).toBe(1);
+            expect(report[0].spentPercentage).toBe(90);
+            expect(report[0].status).toBe('warning');
+        });
+
+        it('should mark status as unprofitable if spent percentage is > 100', () => {
+            db.insert('budgets', {
+                documentName: "Smlouva.docx",
+                limitHours: 10,
+                hourlyRate: 3000
+            });
+
+            // 11 hours = 39600 seconds
+            db.insert('activities', { documentName: "Smlouva.docx", activeSeconds: 39600 });
+
+            const report = managerial.getProfitabilityReport();
+
+            expect(report.length).toBe(1);
+            expect(report[0].spentPercentage).toBe(110);
+            expect(report[0].status).toBe('unprofitable');
+        });
+
+        it('should aggregate multiple activities for the same document', () => {
+            db.insert('budgets', {
+                documentName: "Smlouva.docx",
+                limitHours: 10,
+                hourlyRate: 3000
+            });
+
+            // 2 hours
+            db.insert('activities', { documentName: "Smlouva.docx", activeSeconds: 7200 });
+            // 3 hours
+            db.insert('activities', { documentName: "Smlouva.docx", activeSeconds: 10800 });
+
+            const report = managerial.getProfitabilityReport();
+
+            expect(report.length).toBe(1);
+            expect(report[0].actualHours).toBe(5);
+            expect(report[0].spentPercentage).toBe(50);
+        });
+
+        it('should handle budgets with no activities', () => {
+            db.insert('budgets', {
+                documentName: "Smlouva.docx",
+                limitHours: 10,
+                hourlyRate: 3000
+            });
+
+            const report = managerial.getProfitabilityReport();
+
+            expect(report.length).toBe(1);
+            expect(report[0].actualHours).toBe(0);
+            expect(report[0].spentPercentage).toBe(0);
+            expect(report[0].status).toBe('profitable');
+            expect(report[0].estimatedCost).toBe(0);
+        });
+
+        it('should create unassigned budget entries for activities with no explicitly defined budget', () => {
+            // 4 hours = 14400 seconds
+            db.insert('activities', { documentName: "Unknown.docx", activeSeconds: 14400 });
+
+            const report = managerial.getProfitabilityReport();
+
+            expect(report.length).toBe(1);
+            expect(report[0].documentName).toBe("Unknown.docx");
+            expect(report[0].budgetType).toBe("unassigned");
+            expect(report[0].limitHours).toBe(0);
+            expect(report[0].actualHours).toBe(4);
+            expect(report[0].spentPercentage).toBe(0);
+            expect(report[0].hourlyRate).toBe(2500); // Default rate from settings
+            expect(report[0].estimatedCost).toBe(10000);
+            expect(report[0].status).toBe('profitable');
+        });
+
+        it('should use default hourly rate and limit for budget if not specified', () => {
+            // Insert budget with missing optional fields
+            db.insert('budgets', {
+                documentName: "Smlouva.docx"
+            });
+
+            // 5 hours = 18000 seconds
+            db.insert('activities', { documentName: "Smlouva.docx", activeSeconds: 18000 });
+
+            const report = managerial.getProfitabilityReport();
+
+            expect(report.length).toBe(1);
+            expect(report[0].documentName).toBe("Smlouva.docx");
+            expect(report[0].limitHours).toBe(10); // default fallback
+            expect(report[0].hourlyRate).toBe(2500); // default fallback from settings
+            expect(report[0].actualHours).toBe(5);
+            expect(report[0].spentPercentage).toBe(50);
+            expect(report[0].estimatedCost).toBe(12500);
+        });
+
+        it('should fall back to 30 activeSeconds if activeSeconds is missing in activity', () => {
+            db.insert('activities', { documentName: "Short.docx" }); // no activeSeconds
+
+            const report = managerial.getProfitabilityReport();
+
+            expect(report.length).toBe(1);
+            // 30 seconds = 30 / 3600 = 0.008333... rounded to 2 decimal places = 0.01
+            expect(report[0].actualHours).toBe(0.01);
+        });
+    });
 });
