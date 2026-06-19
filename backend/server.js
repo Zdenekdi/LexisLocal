@@ -1423,9 +1423,9 @@ app.post('/api/alerts/dismiss/:alertId', async (req, res) => {
 });
 
 // GET /api/rag/status - Retrieve vector database size and metrics
-app.get('/api/rag/status', (req, res) => {
+app.get('/api/rag/status', async (req, res) => {
     try {
-        const index = loadIndex();
+        const index = await loadIndex();
         const uniqueFiles = new Set(index.chunks.map(c => c.fileName));
         res.json({
             chunksCount: index.chunks.length,
