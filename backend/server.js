@@ -1361,7 +1361,7 @@ app.get('/api/registries/check', async (req, res) => {
 });
 
 // POST /api/registries/save-report - Save structured registry audit to Desktop case directory
-app.post('/api/registries/save-report', (req, res) => {
+app.post('/api/registries/save-report', async (req, res) => {
     const { ico, name, reportText, caseNumber } = req.body;
     if (!ico || !name || !reportText) {
         return res.status(400).json({ error: "Chybí povinná data pro uložení prověrky." });
@@ -1372,7 +1372,7 @@ app.post('/api/registries/save-report', (req, res) => {
         const fileName = `Proverka_${cleanName}_${ico}.txt`;
         const filePath = path.join(WATCH_DIR, fileName);
         
-        fs.writeFileSync(filePath, reportText, 'utf-8');
+        await fs.promises.writeFile(filePath, reportText, 'utf-8');
         console.log(`📥 Lustrační centrum: Uložena nová prověrka do: ${filePath}`);
         
         res.json({ success: true, fileName, filePath });
