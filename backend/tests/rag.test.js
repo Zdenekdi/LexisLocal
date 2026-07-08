@@ -9,9 +9,6 @@ if (!fs.existsSync(tempWatchDir)) {
 }
 process.env.WATCH_DIR = tempWatchDir;
 
-// We need to require rag.js after setting process.env.WATCH_DIR
-const RAG_INDEX_PATH = path.join(tempWatchDir, '.rag_index.json');
-
 const rag = require('../lib/rag');
 
 describe('RAG Document Index Deletion', () => {
@@ -22,14 +19,14 @@ describe('RAG Document Index Deletion', () => {
     });
 
     beforeEach(() => {
-        // Clear index if exists
-        if (fs.existsSync(RAG_INDEX_PATH)) {
-            fs.rmSync(RAG_INDEX_PATH, { force: true });
+        // Clear all files in watch directory
+        const files = fs.readdirSync(tempWatchDir);
+        for (const file of files) {
+            fs.unlinkSync(path.join(tempWatchDir, file));
         }
     });
 
     it('should remove all chunks for the specified file', async () => {
-        // Create an initial index
         const initialIndex = {
             chunks: [
                 { id: '1', fileName: 'file1.txt', text: 'chunk 1' },
@@ -37,12 +34,11 @@ describe('RAG Document Index Deletion', () => {
                 { id: '3', fileName: 'file2.txt', text: 'chunk 3' }
             ]
         };
-        fs.writeFileSync(RAG_INDEX_PATH, JSON.stringify(initialIndex));
+        rag.savePartition('root', initialIndex);
 
         await rag.deleteDocumentIndex('file1.txt');
 
-        const rawData = fs.readFileSync(RAG_INDEX_PATH, 'utf8');
-        const index = JSON.parse(rawData);
+        const index = rag.loadPartition('root');
 
         expect(index.chunks).toHaveLength(1);
         expect(index.chunks[0].fileName).toBe('file2.txt');
@@ -56,33 +52,27 @@ describe('RAG Document Index Deletion', () => {
                 { id: '3', fileName: 'file2.txt', text: 'chunk 3' }
             ]
         };
-        fs.writeFileSync(RAG_INDEX_PATH, JSON.stringify(initialIndex));
+        rag.savePartition('root', initialIndex);
 
         await rag.deleteDocumentIndex('file3.txt');
 
-        const rawData = fs.readFileSync(RAG_INDEX_PATH, 'utf8');
-        const index = JSON.parse(rawData);
+        const index = rag.loadPartition('root');
 
         expect(index.chunks).toHaveLength(3);
     });
 
     it('should handle an empty index gracefully', async () => {
-        fs.writeFileSync(RAG_INDEX_PATH, JSON.stringify({ chunks: [] }));
+        rag.savePartition('root', { chunks: [] });
 
         await rag.deleteDocumentIndex('file1.txt');
 
-        const rawData = fs.readFileSync(RAG_INDEX_PATH, 'utf8');
-        const index = JSON.parse(rawData);
+        const index = rag.loadPartition('root');
 
         expect(index.chunks).toHaveLength(0);
     });
 
     it('should handle a missing index gracefully without throwing errors', async () => {
-        if (fs.existsSync(RAG_INDEX_PATH)) {
-            fs.rmSync(RAG_INDEX_PATH, { force: true });
-        }
-
-        // Should resolve cleanly without error
+        // Should resolve cleanly without error when no partition exists
         await expect(rag.deleteDocumentIndex('file1.txt')).resolves.toBeUndefined();
     });
 });

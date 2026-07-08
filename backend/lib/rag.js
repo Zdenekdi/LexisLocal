@@ -1,12 +1,14 @@
 /**
  * LexisLocal RAG & Embedded Vector Database Module
  * Implements a lightweight, zero-dependency, pure JavaScript vector storage.
- * Stores chunked text and vectors in WATCH_DIR/.rag_index.json.
+ * Stores chunked text and vectors in WATCH_DIR/ under encrypted partitions.
  * Uses Ollama for embedding generation with a robust deterministic offline fallback.
  */
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
+const db = require('./database');
 
 // Robust Ollama module import supporting both CommonJS and ESM default exports
 const ollamaLib = require('ollama');
@@ -14,45 +16,206 @@ const ollama = ollamaLib.default || ollamaLib;
 
 // WATCH_DIR resolution (matches watcher.js)
 const WATCH_DIR = process.env.WATCH_DIR || path.join(process.env.HOME || process.env.USERPROFILE, 'Desktop', 'LexisSpisy');
-const RAG_INDEX_PATH = path.join(WATCH_DIR, '.rag_index.json');
 const EMBEDDING_MODEL = process.env.EMBEDDING_MODEL || 'nomic-embed-text';
 
-// Ensure index file exists
-async function initIndex() {
-    if (!fs.existsSync(RAG_INDEX_PATH)) {
-        await fs.promises.writeFile(RAG_INDEX_PATH, JSON.stringify({ chunks: [] }, null, 2), 'utf-8');
-    }
-}
-
-// Load RAG index from disk
-async function loadIndex() {
+/**
+ * Lists all active subdirectories in WATCH_DIR to determine partition boundaries.
+ */
+function getActiveDirectories() {
+    const dirs = ['root'];
     try {
-        await initIndex();
-        if (fs.existsSync(RAG_INDEX_PATH)) {
-            const data = await fs.promises.readFile(RAG_INDEX_PATH, 'utf-8');
-            return JSON.parse(data);
+        if (fs.existsSync(WATCH_DIR)) {
+            const entries = fs.readdirSync(WATCH_DIR, { withFileTypes: true });
+            for (const entry of entries) {
+                if (entry.isDirectory() && !entry.name.startsWith('.')) {
+                    dirs.push(entry.name);
+                }
+            }
         }
     } catch (e) {
-        console.error("⚠️ Nepodařilo se načíst .rag_index.json:", e.message);
+        console.error("⚠️ RAG: Selhal výpis aktivních složek:", e.message);
     }
-    return { chunks: [] };
+    return dirs;
 }
 
-// Save RAG index to disk
+/**
+ * Derives a cryptographic partition key from master key and directory name.
+ */
+function getPartitionKey(directoryName) {
+    const masterKey = db.encryptionKey || crypto.pbkdf2Sync('default_lexis_master_key', 'salt', 100, 32, 'sha256');
+    return crypto.pbkdf2Sync(masterKey, directoryName, 1000, 32, 'sha256');
+}
+
+/**
+ * Saves a partition index file encrypted with a key derived for the specific directory.
+ */
+function savePartition(directoryName, index) {
+    const partitionId = crypto.createHash('sha256').update(directoryName).digest('hex').substring(0, 16);
+    const partitionPath = path.join(WATCH_DIR, `.rag_${partitionId}.json`);
+    
+    try {
+        const key = getPartitionKey(directoryName);
+        const iv = crypto.randomBytes(16);
+        const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
+        
+        const rawText = JSON.stringify(index);
+        let encrypted = cipher.update(rawText, 'utf8', 'hex');
+        encrypted += cipher.final('hex');
+        
+        const payload = JSON.stringify({
+            iv: iv.toString('hex'),
+            data: encrypted
+        });
+        
+        fs.writeFileSync(partitionPath, payload, 'utf8');
+    } catch (e) {
+        console.error(`⚠️ RAG: Nepodařilo se uložit partition pro ${directoryName}:`, e.message);
+    }
+}
+
+/**
+ * Loads and decrypts a partition index file.
+ */
+function loadPartition(directoryName) {
+    const partitionId = crypto.createHash('sha256').update(directoryName).digest('hex').substring(0, 16);
+    const partitionPath = path.join(WATCH_DIR, `.rag_${partitionId}.json`);
+    
+    if (!fs.existsSync(partitionPath)) {
+        const RAG_INDEX_PATH = path.join(WATCH_DIR, '.rag_index.json');
+        if (fs.existsSync(RAG_INDEX_PATH)) {
+            try {
+                const data = fs.readFileSync(RAG_INDEX_PATH, 'utf-8');
+                const index = JSON.parse(data);
+                const filteredChunks = (index.chunks || []).filter(c => {
+                    const dir = c.fileName.includes('/') ? c.fileName.split('/')[0] : 'root';
+                    return dir === directoryName;
+                });
+                return { chunks: filteredChunks };
+            } catch (e) {}
+        }
+        return { chunks: [] };
+    }
+    
+    try {
+        const rawPayload = fs.readFileSync(partitionPath, 'utf8');
+        const payload = JSON.parse(rawPayload);
+        
+        const iv = Buffer.from(payload.iv, 'hex');
+        const key = getPartitionKey(directoryName);
+        const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
+        
+        let decrypted = decipher.update(payload.data, 'hex', 'utf8');
+        decrypted += decipher.final('utf8');
+        
+        return JSON.parse(decrypted);
+    } catch (e) {
+        console.error(`⚠️ RAG: Nepodařilo se dešifrovat partition pro ${directoryName}:`, e.message);
+        return { chunks: [] };
+    }
+}
+
+/**
+ * Re-encrypts all partitions when the master key is rotated.
+ */
+function reencryptAllPartitions(oldMasterKey, newMasterKey) {
+    const dirs = getActiveDirectories();
+    for (const dir of dirs) {
+        const partitionId = crypto.createHash('sha256').update(dir).digest('hex').substring(0, 16);
+        const partitionPath = path.join(WATCH_DIR, `.rag_${partitionId}.json`);
+        if (!fs.existsSync(partitionPath)) continue;
+        
+        try {
+            const rawPayload = fs.readFileSync(partitionPath, 'utf8');
+            const payload = JSON.parse(rawPayload);
+            
+            const iv = Buffer.from(payload.iv, 'hex');
+            const oldKey = crypto.pbkdf2Sync(oldMasterKey, dir, 1000, 32, 'sha256');
+            const decipher = crypto.createDecipheriv('aes-256-cbc', oldKey, iv);
+            
+            let decrypted = decipher.update(payload.data, 'hex', 'utf8');
+            decrypted += decipher.final('utf8');
+            
+            const index = JSON.parse(decrypted);
+            
+            const newKey = crypto.pbkdf2Sync(newMasterKey, dir, 1000, 32, 'sha256');
+            const newIv = crypto.randomBytes(16);
+            const cipher = crypto.createCipheriv('aes-256-cbc', newKey, newIv);
+            
+            let encrypted = cipher.update(JSON.stringify(index), 'utf8', 'hex');
+            encrypted += cipher.final('hex');
+            
+            const newPayload = JSON.stringify({
+                iv: newIv.toString('hex'),
+                data: encrypted
+            });
+            fs.writeFileSync(partitionPath, newPayload, 'utf8');
+        } catch (e) {
+            console.error(`❌ RAG: Selhal přepisy klíče pro partition ${dir}:`, e.message);
+        }
+    }
+}
+
+// Load RAG index from disk (merges all partitions for backward compatibility)
+async function loadIndex() {
+    const dirs = getActiveDirectories();
+    const allChunks = [];
+    for (const dir of dirs) {
+        const part = loadPartition(dir);
+        if (part.chunks) {
+            allChunks.push(...part.chunks);
+        }
+    }
+    
+    // BACKWARD COMPATIBILITY: Merge chunks from monolithic index if it exists
+    const RAG_INDEX_PATH = path.join(WATCH_DIR, '.rag_index.json');
+    if (fs.existsSync(RAG_INDEX_PATH)) {
+        try {
+            const data = fs.readFileSync(RAG_INDEX_PATH, 'utf-8');
+            const index = JSON.parse(data);
+            if (index.chunks) {
+                const loadedIds = new Set(allChunks.map(c => c.id));
+                for (const chunk of index.chunks) {
+                    if (!loadedIds.has(chunk.id)) {
+                        allChunks.push(chunk);
+                    }
+                }
+            }
+        } catch (e) {}
+    }
+    
+    return { chunks: allChunks };
+}
+
+// Save RAG index to disk (splits chunks back to correct partitions)
 function saveIndex(index) {
+    const RAG_INDEX_PATH = path.join(WATCH_DIR, '.rag_index.json');
     try {
         fs.writeFileSync(RAG_INDEX_PATH, JSON.stringify(index, null, 2), 'utf-8');
-    } catch (e) {
-        console.error("⚠️ Nepodařilo se uložit .rag_index.json:", e.message);
+    } catch (e) {}
+
+    const groups = {};
+    const dirs = getActiveDirectories();
+    for (const dir of dirs) {
+        groups[dir] = [];
+    }
+    
+    for (const chunk of index.chunks || []) {
+        const dir = chunk.fileName.includes('/') ? chunk.fileName.split('/')[0] : 'root';
+        if (!groups[dir]) {
+            groups[dir] = [];
+        }
+        groups[dir].push(chunk);
+    }
+    
+    for (const dir of Object.keys(groups)) {
+        savePartition(dir, { chunks: groups[dir] });
     }
 }
 
 /**
  * Fetch embeddings from local Ollama service.
- * Throws an error if the model is unreachable to prevent index corruption.
  */
 async function getEmbedding(text) {
-    // Query local Ollama API
     const response = await ollama.embeddings({
         model: EMBEDDING_MODEL,
         prompt: text
@@ -67,12 +230,10 @@ async function getEmbedding(text) {
 
 /**
  * Intelligently splits document text into paragraphs/chunks.
- * Merges small paragraphs to maintain contextual relevance (target 300-600 characters).
  */
 function chunkText(text) {
     if (!text) return [];
     
-    // Clean text and split by newlines
     const paragraphs = text
         .split(/\r?\n/)
         .map(p => p.trim())
@@ -82,20 +243,16 @@ function chunkText(text) {
     let currentChunk = "";
     
     for (const paragraph of paragraphs) {
-        // If current paragraph fits in existing chunk, append it
         if (currentChunk.length + paragraph.length < 500) {
             currentChunk += (currentChunk ? " " : "") + paragraph;
         } else {
-            // Push old chunk if non-empty
             if (currentChunk) {
                 chunks.push(currentChunk);
             }
-            // Start new chunk
             currentChunk = paragraph;
         }
     }
     
-    // Push the final chunk
     if (currentChunk) {
         chunks.push(currentChunk);
     }
@@ -123,14 +280,9 @@ function cosineSimilarity(vecA, vecB) {
     return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
-/**
- * API: Indexes document text into the vector store.
- * Overwrites previous index for the same file.
- */
 async function indexDocument(fileName, text) {
     console.log(`🧠 RAG: Zahajuji vektorovou indexaci pro soubor ${fileName}...`);
     
-    // 1. Remove previous chunks of the same file to prevent duplicates
     await deleteDocumentIndex(fileName);
     
     const chunks = chunkText(text);
@@ -141,7 +293,6 @@ async function indexDocument(fileName, text) {
     
     const index = await loadIndex();
     
-    // 2. Generate embedding for each chunk
     try {
         for (let i = 0; i < chunks.length; i++) {
             const chunkTextContent = chunks[i];
@@ -158,10 +309,9 @@ async function indexDocument(fileName, text) {
         }
         
         saveIndex(index);
-        console.log(`✅ RAG: Soubor ${fileName} úspěšně indexován (${chunks.length} odstavců uloženo).`);
+        console.log(`✅ RAG: Soubor ${fileName} úspěšně indexován (${chunks.length} odstavců).`);
     } catch (e) {
         console.error(`❌ RAG: Chyba při generování embeddings pro ${fileName}:`, e.message);
-        // Do not save the partially generated chunks if generating embedding fails
         throw e;
     }
 }
@@ -173,20 +323,18 @@ async function deleteDocumentIndex(fileName) {
     const index = await loadIndex();
     const originalCount = index.chunks.length;
     
-    // Filter out chunks belonging to this file
     index.chunks = index.chunks.filter(chunk => chunk.fileName !== fileName);
     
     if (index.chunks.length !== originalCount) {
         saveIndex(index);
-        console.log(`🗑️ RAG: Odstraněno ${originalCount - index.chunks.length} indexovaných odstavců pro soubor ${fileName}.`);
+        console.log(`🗑️ RAG: Odstraněno ${originalCount - index.chunks.length} odstavců pro soubor ${fileName}.`);
     }
 }
 
 /**
  * API: Queries the vector index for semantically similar chunks.
- * Returns sorted list of matches with similarity score.
  */
-async function searchSimilar(query, limit = 5) {
+async function searchSimilar(query, limit = 5, filters = null) {
     if (!query || !query.trim()) return [];
     
     let queryVector;
@@ -197,9 +345,39 @@ async function searchSimilar(query, limit = 5) {
         throw e;
     }
 
-    const index = await loadIndex();
+    let chunks = [];
+    if (filters && filters.directory) {
+        chunks = loadPartition(filters.directory).chunks || [];
+    } else if (filters && Array.isArray(filters.fileNames) && filters.fileNames.length > 0) {
+        const dirs = new Set(filters.fileNames.map(f => f.includes('/') ? f.split('/')[0] : 'root'));
+        for (const dir of dirs) {
+            chunks.push(...(loadPartition(dir).chunks || []));
+        }
+    } else {
+        const index = await loadIndex();
+        chunks = index.chunks || [];
+    }
     
-    const results = index.chunks.map(chunk => {
+    
+    if (filters) {
+        if (Array.isArray(filters.fileNames) && filters.fileNames.length > 0) {
+            const allowedFiles = new Set(filters.fileNames.map(f => f.toLowerCase().replace(/\\/g, '/')));
+            chunks = chunks.filter(chunk => {
+                const normName = chunk.fileName.toLowerCase().replace(/\\/g, '/');
+                return allowedFiles.has(normName);
+            });
+        }
+        
+        if (filters.directory) {
+            const normDir = filters.directory.toLowerCase().replace(/\\/g, '/');
+            chunks = chunks.filter(chunk => {
+                const normName = chunk.fileName.toLowerCase().replace(/\\/g, '/');
+                return normName.startsWith(normDir + '/') || normName === normDir;
+            });
+        }
+    }
+
+    const results = chunks.map(chunk => {
         const score = cosineSimilarity(queryVector, chunk.vector);
         return {
             fileName: chunk.fileName,
@@ -210,7 +388,6 @@ async function searchSimilar(query, limit = 5) {
         };
     });
     
-    // Sort descending by score and apply limit
     return results
         .sort((a, b) => b.score - a.score)
         .slice(0, limit);
@@ -222,5 +399,9 @@ module.exports = {
     searchSimilar,
     loadIndex,
     getEmbedding,
-    cosineSimilarity
+    cosineSimilarity,
+    reencryptAllPartitions,
+    loadPartition,
+    savePartition,
+    getActiveDirectories
 };

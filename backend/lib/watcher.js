@@ -7,11 +7,13 @@
 const chokidar = require('chokidar');
 const path = require('path');
 const fs = require('fs');
+const db = require('./database');
 const { checkSubject } = require('./registries');
 const { indexDocument, deleteDocumentIndex } = require('./rag');
 const { extractTextFromFile, IMAGE_EXTENSIONS } = require('./ocr');
 const { logEvent } = require('./audit');
 const Mutex = require('./mutex');
+const { anonymizeText } = require('./anonymizer');
 
 // Robust Ollama module import supporting both CommonJS and ESM default exports
 const ollamaLib = require('ollama');
@@ -25,10 +27,7 @@ if (!fs.existsSync(WATCH_DIR)) {
     console.log(`📁 Vytvořen sledovaný adresář: ${WATCH_DIR}`);
 }
 
-// Ensure .inbox.json exists
-if (!fs.existsSync(INBOX_PATH)) {
-    fs.writeFileSync(INBOX_PATH, JSON.stringify({ files: {} }, null, 2), 'utf-8');
-}
+// Legacy .inbox.json initialization removed (storing in database instead)
 
 console.log(`👀 Spouštím sledování složky: ${WATCH_DIR}`);
 
@@ -57,10 +56,13 @@ watcher.on('add', async (filePath) => {
     if (supportedExts.includes(ext)) {
         console.log(`📥 Detekován nový dokument: ${path.basename(filePath)}`);
         
-        // Skip if already parsed and present in .inbox.json
+        // Compute relative path to WATCH_DIR
+        const relativePath = path.relative(WATCH_DIR, filePath);
+        
+        // Skip if already parsed and present in .inbox.json (checks both relativePath and basename for backward compatibility)
         const inbox = await loadInbox();
-        if (inbox.files[path.basename(filePath)]) {
-            console.log(`ℹ️ Soubor ${path.basename(filePath)} již byl v minulosti zpracován.`);
+        if (inbox.files[relativePath] || inbox.files[path.basename(filePath)]) {
+            console.log(`ℹ️ Soubor ${relativePath} již byl v minulosti zpracován.`);
             return;
         }
         
@@ -74,32 +76,60 @@ watcher.on('add', async (filePath) => {
 
 const inboxMutex = new Mutex();
 
-// Load inbox data helper
+// Load inbox data helper from encrypted database
 async function loadInbox() {
     await inboxMutex.acquire();
     try {
-        const data = await fs.promises.readFile(INBOX_PATH, 'utf-8');
-        return JSON.parse(data);
-    } catch (e) {
-        if (e.code !== 'ENOENT') {
-            console.error("⚠️ Nepodařilo se přečíst .inbox.json:", e.message);
+        // One-time migration: if old unencrypted .inbox.json exists, migrate it
+        if (fs.existsSync(INBOX_PATH)) {
+            try {
+                console.log("🔑 Migruji nešifrovaný .inbox.json do šifrované databáze...");
+                const rawData = await fs.promises.readFile(INBOX_PATH, 'utf-8');
+                const oldInbox = JSON.parse(rawData);
+                
+                const list = Object.entries(oldInbox.files || {}).map(([key, value]) => {
+                    return {
+                        id: key,
+                        ...value
+                    };
+                });
+                db.set('inbox_files', list);
+                
+                // Securely remove the unencrypted file from disk
+                await fs.promises.unlink(INBOX_PATH);
+                console.log("✅ Migrace dokončena. Starý soubor .inbox.json byl bezpečně smazán.");
+            } catch (migErr) {
+                console.error("❌ Selhala migrace nešifrovaného .inbox.json:", migErr.message);
+            }
         }
+        
+        const list = db.get('inbox_files') || [];
+        const files = {};
+        list.forEach(item => {
+            files[item.id] = item;
+        });
+        return { files };
+    } catch (e) {
+        console.error("⚠️ Nepodařilo se načíst inbox z databáze:", e.message);
     } finally {
         inboxMutex.release();
     }
     return { files: {} };
 }
 
-// Save inbox data helper
+// Save inbox data helper to encrypted database
 async function saveInbox(inbox) {
     await inboxMutex.acquire();
     try {
-        // Use a temporary file to prevent partial writes
-        const tempPath = `${INBOX_PATH}.tmp`;
-        await fs.promises.writeFile(tempPath, JSON.stringify(inbox, null, 2), 'utf-8');
-        await fs.promises.rename(tempPath, INBOX_PATH);
+        const list = Object.entries(inbox.files || {}).map(([key, value]) => {
+            return {
+                id: key,
+                ...value
+            };
+        });
+        db.set('inbox_files', list);
     } catch (e) {
-        console.error("⚠️ Nepodařilo se uložit .inbox.json:", e.message);
+        console.error("⚠️ Nepodařilo se uložit inbox do databáze:", e.message);
     } finally {
         inboxMutex.release();
     }
@@ -172,9 +202,11 @@ async function processDocument(filePath) {
     
     // 3. Save to inbox
     const inbox = await loadInbox();
-    inbox.files[fileName] = {
+    const relativePath = path.relative(WATCH_DIR, filePath);
+    inbox.files[relativePath] = {
         fileName: fileName,
         filePath: filePath,
+        relativePath: relativePath,
         status: "unread",
         caseNumber: metadata.caseNumber || "Neznámá sp. zn.",
         plaintiff: metadata.plaintiff || "Nezjištěn",
@@ -190,7 +222,7 @@ async function processDocument(filePath) {
         processedAt: new Date().toISOString()
     };
     await saveInbox(inbox);
-    console.log(`✅ Dokument ${fileName} byl úspěšně analyzován a uložen do lokálního indexu.`);
+    console.log(`✅ Dokument ${fileName} (${relativePath}) byl úspěšně analyzován a uložen do lokálního indexu.`);
     
     logEvent('FileWatcher', wasOcr ? 'Zpracování OCR' : 'Zpracování dokumentu', fileName, {
         caseNumber: metadata.caseNumber || 'Nezjištěna',
@@ -203,9 +235,10 @@ async function processDocument(filePath) {
     
     // Trigger local RAG vector indexing in background
     try {
-        await indexDocument(fileName, text);
+        const anonymizedText = anonymizeText(text);
+        await indexDocument(relativePath, anonymizedText);
     } catch (e) {
-        console.error(`❌ RAG: Selhala vektorová indexace pro soubor ${fileName}:`, e.message);
+        console.error(`❌ RAG: Selhala vektorová indexace pro soubor ${relativePath}:`, e.message);
     }
 }
 

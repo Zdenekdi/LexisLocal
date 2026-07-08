@@ -9,6 +9,9 @@ const { searchSimilar } = require('./rag');
 const { checkSubject } = require('./registries');
 const ollamaLib = require('ollama');
 const ollama = ollamaLib.default || ollamaLib;
+const crypto = require('crypto');
+const db = require('./database');
+const { calculateInferenceMetrics } = require('./green_monitor');
 
 class ChiefOrchestrator {
     constructor() {
@@ -22,7 +25,7 @@ class ChiefOrchestrator {
      * @param {string} globalModel - Default fallback model if preferred not available
      * @param {function} onStepProgress - Optional callback for real-time step reporting in UI
      */
-    async orchestrate(prompt, context = "", globalModel = "llama3", onStepProgress = null) {
+    async orchestrate(prompt, context = "", globalModel = "llama3", onStepProgress = null, ragFilters = null) {
         console.log("🧩 Chief Orchestrator: Zahajuji zpracování komplexního dotazu...");
         const startTime = Date.now();
         const stepsLog = [];
@@ -50,7 +53,11 @@ class ChiefOrchestrator {
                 continue;
             }
 
-            const stepModel = agent.preferredModel || globalModel;
+            let stepModel = agent.preferredModel || globalModel;
+            if (step.tier === 'light') {
+                stepModel = 'llama3'; // Route lightweight tasks to standard efficient model
+            }
+
             console.log(`🤖 Chief Orchestrator: Spouštím krok ${step.step} s agentem [${agent.name}] (Model: ${stepModel})`);
 
             if (onStepProgress) {
@@ -66,11 +73,12 @@ class ChiefOrchestrator {
 
             // --- SANDBOX: Kontrola oprávnění ---
             let ragContext = "";
+            let highConfidence = [];
             if (agent.permissions && agent.permissions.read_files) {
                 try {
                     // Agent má právo číst klientské spisy -> dotážeme sémantické vyhledávání
-                    const matches = await searchSimilar(step.instruction, 2);
-                    const highConfidence = matches.filter(m => m.score >= 0.70);
+                    const matches = await searchSimilar(step.instruction, 2, ragFilters);
+                    highConfidence = matches.filter(m => m.score >= 0.70);
                     if (highConfidence.length > 0) {
                         ragContext = highConfidence
                             .map(m => `[Precedent ze spisu: ${m.fileName}]:\n${m.text}`)
@@ -105,7 +113,17 @@ class ChiefOrchestrator {
             }
 
             // --- Spuštění lokálního modelu pro krok ---
+            const strictMode = ragFilters && (ragFilters.strict === true || ragFilters.strict === 'true');
+            let strictInstruction = "";
+            if (strictMode) {
+                strictInstruction = "\n⚠️ ARCHITEKTURA PROTI HALUCINACÍM (STRICT RAG):\n" +
+                    "Jsi v režimu přísné shody s dokumentací. Odpovídej výhradně na základě poskytnutého schváleného kontextu ze spisů.\n" +
+                    "Pokud kontext neobsahuje odpověď na položenou otázku nebo zadání, nesmíš použít své obecné znalosti ani si nic domýšlet. " +
+                    "V takovém případě musí tvůj výstup začínat přesnou větou: 'Nedostatek podkladů ze spisů pro bezpečné vypracování.' a stručně uvést, co chybí.\n";
+            }
+
             const systemContent = `${agent.systemPrompt}\n\n` +
+                strictInstruction +
                 `Pracuješ v hierarchickém swarmu pod dozorem Chief Orchestrátora. Tvůj úkol je: ${step.instruction}\n` +
                 (ragContext ? `\nSchválený bezpečný kontext ze spisů:\n${ragContext}\n` : "") +
                 (registryContext ? `\nČerstvá data z registru:\n${registryContext}\n` : "");
@@ -123,6 +141,7 @@ class ChiefOrchestrator {
 
             messages.push({ role: 'user', content: step.instruction });
 
+            const stepStartTime = Date.now();
             try {
                 const response = await ollama.chat({
                     model: stepModel,
@@ -131,7 +150,39 @@ class ChiefOrchestrator {
                 });
 
                 const stepResult = response.message.content;
+                const durationMs = Date.now() - stepStartTime;
                 accumulatedContext += `\n--- Výstup z kroku ${step.step} (${agent.name}): ---\n${stepResult}\n`;
+
+                const greenMetrics = calculateInferenceMetrics(durationMs);
+                db.insert('green_logs', {
+                    agentId: agent.id,
+                    model: stepModel,
+                    timestamp: new Date().toISOString(),
+                    ...greenMetrics
+                });
+
+                const systemPromptHash = crypto.createHash('sha256').update(systemContent).digest('hex');
+                const stepRagSources = highConfidence.map(m => ({
+                    fileName: m.fileName,
+                    score: m.score,
+                    textHash: crypto.createHash('sha256').update(m.text).digest('hex').substring(0, 8)
+                }));
+
+                const transparencyRecord = db.insert('transparency_logs', {
+                    agentId: agent.id,
+                    agentName: agent.name,
+                    model: stepModel,
+                    prompt: step.instruction,
+                    systemPrompt: systemContent,
+                    systemPromptHash: systemPromptHash,
+                    ragSources: stepRagSources,
+                    timestamp: new Date().toISOString(),
+                    humanApproved: false,
+                    greenMetrics: {
+                        energyWh: greenMetrics.energyWh,
+                        co2Grams: greenMetrics.co2Grams
+                    }
+                });
 
                 stepsLog.push({
                     step: step.step,
@@ -139,7 +190,9 @@ class ChiefOrchestrator {
                     agentName: agent.name,
                     agentEmoji: agent.emoji,
                     instruction: step.instruction,
-                    output: stepResult
+                    output: stepResult,
+                    transparencyId: transparencyRecord.id,
+                    metrics: greenMetrics
                 });
 
             } catch (chatErr) {
@@ -154,9 +207,16 @@ class ChiefOrchestrator {
         }
         console.log("🧩 Chief Orchestrator: Provádím závěrečnou syntézu...");
 
-        const synthesisSystem = "Jsi Chief Orchestrator lokálního právního AI swarmu Lexis.\n" +
+        const strictMode = ragFilters && (ragFilters.strict === true || ragFilters.strict === 'true');
+        let synthesisSystem = "Jsi Chief Orchestrator lokálního právního AI swarmu Lexis.\n" +
             "Tvým úkolem je vzít dosavadní dílčí výstupy a analýzy od specializovaných agentů swarmu a sestavit z nich pro advokáta jednu finální, perfektně strukturovanou, ucelenou a vysoce profesionální odpověď v češtině.\n" +
             "Zajisti, aby text neměl zbytečné duplicity, logicky navazoval a byl připraven k přímému použití v praxi. Pokud některý krok selhal, stručně na to upozorni.";
+
+        if (strictMode) {
+            synthesisSystem += "\n\n⚠️ ARCHITEKTURA PROTI HALUCINACÍM (STRICT RAG):\n" +
+                "Pokud v dílčích výstupech od agentů chybí informace k vypracování nebo pokud agenti nahlásili nedostatek podkladů, nesmíš si nic domýšlet ani doplňovat informace z vlastní hlavy. " +
+                "V takovém případě musí finální výstup jasně a uctivě konstatovat, že chybí podklady k bezpečnému vypracování, a uvést, co konkrétně chybí.";
+        }
 
         const synthesisMessages = [
             { role: 'system', content: synthesisSystem },
@@ -164,6 +224,7 @@ class ChiefOrchestrator {
         ];
 
         let finalResponse = "";
+        const synthesisStartTime = Date.now();
         try {
             const response = await ollama.chat({
                 model: globalModel,
@@ -171,6 +232,32 @@ class ChiefOrchestrator {
                 options: { temperature: 0.1 }
             });
             finalResponse = response.message.content;
+
+            const durationMs = Date.now() - synthesisStartTime;
+            const greenMetrics = calculateInferenceMetrics(durationMs);
+            db.insert('green_logs', {
+                agentId: 'chief_orchestrator',
+                model: globalModel,
+                timestamp: new Date().toISOString(),
+                ...greenMetrics
+            });
+
+            const synthesisSystemHash = crypto.createHash('sha256').update(synthesisSystem).digest('hex');
+            db.insert('transparency_logs', {
+                agentId: 'chief_orchestrator',
+                agentName: 'Chief Orchestrator',
+                model: globalModel,
+                prompt: prompt,
+                systemPrompt: synthesisSystem,
+                systemPromptHash: synthesisSystemHash,
+                ragSources: [],
+                timestamp: new Date().toISOString(),
+                humanApproved: false,
+                greenMetrics: {
+                    energyWh: greenMetrics.energyWh,
+                    co2Grams: greenMetrics.co2Grams
+                }
+            });
         } catch (synErr) {
             console.error("❌ Chief Orchestrator: Selhala finální syntéza:", synErr.message);
             finalResponse = `Omlouvám se, nepodařilo se provést finální syntézu. Zde jsou alespoň dílčí nasbírané výstupy:\n\n${accumulatedContext}`;
@@ -196,12 +283,17 @@ class ChiefOrchestrator {
         const systemPrompt = `Jsi Chief Orchestrator lokálního právního AI swarmu Lexis.
 Tvým úkolem je analyzovat komplexní právní pokyn od advokáta a rozložit jej na sled jednotlivých dílčích kroků (sub-tasks).
 Musíš vrátit VÝHRADNĚ platné JSON pole objektů bez jakéhokoliv dalšího okecávání, uvození, vysvětlování či markdown značek (neodpovídej v \`\`\`json kódovém bloku).
-Každý objekt v poli musí mít tuto přesnou strukturu:
+Každý objekt v poli must mít tuto přesnou strukturu:
 {
   "step": 1,
   "agentId": "resersnik" | "stylista" | "kontrolor" | "sekretarka" | "spisovatel",
-  "instruction": "přesná, stručná instrukce pro tohoto dílčího agenta v češtině"
+  "instruction": "přesná, stručná instrukce pro tohoto dílčího agenta v češtině",
+  "tier": "light" | "advanced"
 }
+
+Urči "tier" (úroveň složitosti):
+- "light": Pro rutinní, jednoduché úkoly (formátování, organizace, e-maily, jednoduché shrnutí, sekretářské práce).
+- "advanced": Pro analyticky náročné úkoly (rešerše zákonů/judikátů, psaní složitých smluv, oponentura, detekce právních rizik).
 
 Dostupní agenti swarmu:
 1. "resersnik" (vyhledávání, analýza zákonů, judikátů, hledání právních opor)
@@ -239,17 +331,20 @@ Vytvoř maximálně 2 až 4 logické a vysoce efektivní kroky tak, aby na sebe 
             {
                 step: 1,
                 agentId: "resersnik",
-                instruction: `Proveď úvodní analýzu a vyhledej právní oporu pro: ${prompt}`
+                instruction: `Proveď úvodní analýzu a vyhledej právní oporu pro: ${prompt}`,
+                tier: "advanced"
             },
             {
                 step: 2,
                 agentId: "spisovatel",
-                instruction: `Sestav text dokumentu či výstupu na základě úvodní analýzy.`
+                instruction: `Sestav text dokumentu či výstupu na základě úvodní analýzy.`,
+                tier: "advanced"
             },
             {
                 step: 3,
                 agentId: "kontrolor",
-                instruction: `Zkontroluj vygenerovaný dokument na právní a věcná rizika a navrhni úpravy.`
+                instruction: `Zkontroluj vygenerovaný dokument na právní a věcná rizika a navrhni úpravy.`,
+                tier: "advanced"
             }
         ];
     }

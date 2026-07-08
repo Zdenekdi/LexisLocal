@@ -4,6 +4,7 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const { WATCH_DIR, loadInbox, saveInbox, processDocument, setWatcherState, checkAllInsolvencies } = require('./lib/watcher');
 const { checkSubject } = require('./lib/registries');
 const { indexDocument, deleteDocumentIndex, searchSimilar, loadIndex } = require('./lib/rag');
@@ -18,6 +19,9 @@ const JudikaturaWatcher = require('./lib/judikatura');
 const ManagerialIntelligence = require('./lib/managerial');
 const HearingsWatcher = require('./lib/hearings');
 const { writeToSystemCalendar } = require('./lib/calendar');
+const { anonymizeText } = require('./lib/anonymizer');
+const { getHardwareProfile, calculateInferenceMetrics, getSystemTelemetry } = require('./lib/green_monitor');
+const { generateDublinCoreXml } = require('./lib/archival');
 
 
 
@@ -108,6 +112,42 @@ app.post('/api/models/pull', async (req, res) => {
     }
 });
 
+// Helper to resolve ragFilters from request body
+async function resolveRagFilters(reqBody) {
+    if (!reqBody || !reqBody.ragFilters) return null;
+    const { ragFilters } = reqBody;
+    
+    let fileNames = [];
+    if (Array.isArray(ragFilters.fileNames)) {
+        fileNames = [...ragFilters.fileNames];
+    }
+    
+    if (ragFilters.caseNumber) {
+        try {
+            const inbox = await loadInbox();
+            const caseFiles = Object.values(inbox.files || {})
+                .filter(f => f.caseNumber === ragFilters.caseNumber)
+                .map(f => f.relativePath || f.fileName);
+            fileNames = [...new Set([...fileNames, ...caseFiles])];
+        } catch (err) {
+            console.warn("⚠️ RAG Filter: Nepodařilo se načíst spisy pro caseNumber:", err.message);
+        }
+    }
+    
+    const filters = {};
+    if (fileNames.length > 0) {
+        filters.fileNames = fileNames;
+    }
+    if (ragFilters.directory) {
+        filters.directory = ragFilters.directory;
+    }
+    if (ragFilters.strict !== undefined) {
+        filters.strict = ragFilters.strict;
+    }
+    
+    return Object.keys(filters).length > 0 ? filters : null;
+}
+
 // AI Agent Swarm Orchestration Endpoint with Custom Model Selector
 app.post('/api/agent/:agentId', async (req, res) => {
     const { agentId } = req.params;
@@ -125,14 +165,39 @@ app.post('/api/agent/:agentId', async (req, res) => {
     console.log(`🤖 Volám agenta [${agent.name}] s modelem [${selectedModel}]`);
     
     try {
+        let systemPromptText = agent.systemPrompt;
+        let resolvedFilters = null;
+        try {
+            resolvedFilters = await resolveRagFilters(req.body);
+        } catch (fErr) {
+            console.warn("⚠️ RAG: Selhalo rozlišení filtrů:", fErr.message);
+        }
+
+        const strictMode = resolvedFilters && (resolvedFilters.strict === true || resolvedFilters.strict === 'true');
+        if (strictMode) {
+            systemPromptText += "\n\n⚠️ ARCHITEKTURA PROTI HALUCINACÍM (STRICT RAG):\n" +
+                "Jsi v režimu přísné shody s dokumentací. Odpovídej výhradně na základě poskytnutého schváleného kontextu ze spisů a kontextu dokumentu.\n" +
+                "Pokud dodaný kontext neobsahuje odpověď na položenou otázku nebo zadání, nesmíš použít své obecné znalosti ani si nic domýšlet. " +
+                "V takovém případě musí tvůj výstup začínat přesnou větou: 'Nedostatek podkladů ze spisů pro bezpečné vypracování.' a stručně uvést, co chybí.\n";
+        }
+
         const messages = [
-            { role: 'system', content: agent.systemPrompt }
+            { role: 'system', content: systemPromptText }
         ];
         
         // Retrieve relevant historical context from RAG memory
+        let ragSources = [];
         try {
-            const matches = await searchSimilar(prompt, 3);
+            if (resolvedFilters) {
+                console.log(`🧠 RAG: Aktivní filtry pro vyhledávání: ${JSON.stringify(resolvedFilters)}`);
+            }
+            const matches = await searchSimilar(prompt, 3, resolvedFilters);
             const highConfidenceMatches = matches.filter(m => m.score >= 0.70);
+            ragSources = highConfidenceMatches.map(m => ({
+                fileName: m.fileName,
+                score: m.score,
+                textHash: crypto.createHash('sha256').update(m.text).digest('hex').substring(0, 8)
+            }));
             
             if (highConfidenceMatches.length > 0) {
                 const ragContextText = highConfidenceMatches
@@ -150,7 +215,8 @@ app.post('/api/agent/:agentId', async (req, res) => {
         }
         
         if (context) {
-            messages.push({ role: 'system', content: `Kontext dokumentu / spisové podklady:\n${context}` });
+            const anonymizedContext = anonymizeText(context);
+            messages.push({ role: 'system', content: `Kontext dokumentu / spisové podklady:\n${anonymizedContext}` });
         }
         
         messages.push({ role: 'user', content: prompt });
@@ -163,37 +229,94 @@ app.post('/api/agent/:agentId', async (req, res) => {
             }
         });
         
+        const durationMs = Date.now() - startTime;
         logEvent('LexisEditor', `AI Agent (${agent.name})`, 'Generování textu', {
             model: selectedModel,
             promptLength: prompt.length,
             contextLength: context ? context.length : 0,
             responseLength: response.message.content.length,
-            durationMs: Date.now() - startTime
+            durationMs: durationMs
+        });
+
+        // 🌿 Green AI and 🔍 AI Act Transparency logs
+        const greenMetrics = calculateInferenceMetrics(durationMs);
+        db.insert('green_logs', {
+            agentId,
+            model: selectedModel,
+            timestamp: new Date().toISOString(),
+            ...greenMetrics
+        });
+
+        const systemPromptHash = crypto.createHash('sha256').update(systemPromptText).digest('hex');
+        const transparencyRecord = db.insert('transparency_logs', {
+            agentId,
+            agentName: agent.name,
+            model: selectedModel,
+            prompt: prompt,
+            systemPrompt: systemPromptText,
+            systemPromptHash: systemPromptHash,
+            ragSources: ragSources,
+            timestamp: new Date().toISOString(),
+            humanApproved: false,
+            greenMetrics: {
+                energyWh: greenMetrics.energyWh,
+                co2Grams: greenMetrics.co2Grams
+            }
         });
 
         res.json({
             agent: agent.name,
             model: selectedModel,
             response: response.message.content,
+            transparencyId: transparencyRecord.id,
+            greenMetrics,
             timestamp: new Date().toISOString()
         });
         
      } catch (err) {
         console.warn(`⚠️ Selhalo spojení s Ollama (${err.message}). Používám robustní lokální simulovaný fallback.`);
         const fallbackResponse = generateAgentFallback(agentId, prompt);
+        const durationMs = Date.now() - startTime;
         
         logEvent('LexisEditor', `AI Agent Fallback (${agent.name})`, 'Generování textu (Fallback)', {
             model: `${selectedModel} (Simulovaný)`,
             promptLength: prompt.length,
             contextLength: context ? context.length : 0,
             responseLength: fallbackResponse.length,
-            durationMs: Date.now() - startTime
+            durationMs: durationMs
+        });
+
+        const greenMetrics = calculateInferenceMetrics(durationMs);
+        db.insert('green_logs', {
+            agentId,
+            model: `${selectedModel} (Simulovaný)`,
+            timestamp: new Date().toISOString(),
+            ...greenMetrics
+        });
+
+        const systemPromptHash = crypto.createHash('sha256').update(systemPromptText).digest('hex');
+        const transparencyRecord = db.insert('transparency_logs', {
+            agentId,
+            agentName: agent.name,
+            model: `${selectedModel} (Simulovaný)`,
+            prompt: prompt,
+            systemPrompt: systemPromptText,
+            systemPromptHash: systemPromptHash,
+            ragSources: [],
+            timestamp: new Date().toISOString(),
+            humanApproved: false,
+            greenMetrics: {
+                energyWh: greenMetrics.energyWh,
+                co2Grams: greenMetrics.co2Grams
+            }
         });
 
         res.json({
             agent: agent.name,
             model: `${selectedModel} (Simulovaný)`,
             response: fallbackResponse,
+            transparencyId: transparencyRecord.id,
+            greenMetrics,
             timestamp: new Date().toISOString()
         });
      }
@@ -218,7 +341,11 @@ app.post('/api/agent-swarm/debate', async (req, res) => {
     // Retrieve RAG context
     let ragContext = "";
     try {
-        const matches = await searchSimilar(prompt, 3);
+        const resolvedFilters = await resolveRagFilters(req.body);
+        if (resolvedFilters) {
+            console.log(`🧠 Swarm RAG: Aktivní filtry pro debatu: ${JSON.stringify(resolvedFilters.fileNames)}`);
+        }
+        const matches = await searchSimilar(prompt, 3, resolvedFilters);
         const highConfidenceMatches = matches.filter(m => m.score >= 0.70);
         
         if (highConfidenceMatches.length > 0) {
@@ -346,7 +473,11 @@ app.post('/api/agent-swarm/orchestrate', async (req, res) => {
     console.log(`🧠 Express Server: Spouštím Chief Orchestrator pro: "${prompt.substring(0, 50)}..."`);
 
     try {
-        const result = await ChiefOrchestrator.orchestrate(prompt, context || "", selectedModel);
+        const resolvedFilters = await resolveRagFilters(req.body);
+        if (resolvedFilters) {
+            console.log(`🧠 Orchestrator: Aktivní filtry pro RAG: ${JSON.stringify(resolvedFilters.fileNames)}`);
+        }
+        const result = await ChiefOrchestrator.orchestrate(prompt, context || "", selectedModel, null, resolvedFilters);
         
         logEvent('LexisEditor', 'Chief Orchestrator', `Orchestrace: ${prompt.substring(0, 40)}`, {
             model: selectedModel,
@@ -811,8 +942,15 @@ app.post('/api/inbox/delete', async (req, res) => {
     
     try {
         const inbox = await loadInbox();
-        if (inbox.files[fileName]) {
-            const fileData = inbox.files[fileName];
+        let key = fileName;
+        if (!inbox.files[key]) {
+            // Find key by matching relativePath or basename
+            const foundKey = Object.keys(inbox.files || {}).find(k => k === fileName || path.basename(k) === fileName);
+            if (foundKey) key = foundKey;
+        }
+        
+        if (inbox.files[key]) {
+            const fileData = inbox.files[key];
             
             // Delete physical file if it exists
             if (fileData.filePath && fs.existsSync(fileData.filePath)) {
@@ -824,14 +962,15 @@ app.post('/api/inbox/delete', async (req, res) => {
                 }
             }
             
-            // Clear from local RAG vector index
+            // Clear from local RAG vector index (checks relativePath or key)
+            const indexKey = fileData.relativePath || key;
             try {
-                await deleteDocumentIndex(fileName);
+                await deleteDocumentIndex(indexKey);
             } catch (err) {
-                console.error(`❌ RAG: Nelze odstranit index pro ${fileName}:`, err.message);
+                console.error(`❌ RAG: Nelze odstranit index pro ${indexKey}:`, err.message);
             }
             
-            delete inbox.files[fileName];
+            delete inbox.files[key];
             await saveInbox(inbox);
             res.json({ success: true, message: `Soubor ${fileName} byl kompletně smazán z indexu i disku.` });
         } else {
@@ -1306,16 +1445,222 @@ function generateAgentFallback(agentId, prompt) {
 
 // GET /api/rag/search - Perform semantic vector search
 app.get('/api/rag/search', async (req, res) => {
-    const { query, limit } = req.query;
+    const { query, limit, caseNumber, fileNames } = req.query;
     if (!query) {
         return res.status(400).json({ error: "Vyhledávací dotaz je povinný." });
     }
     const searchLimit = limit ? parseInt(limit) : 5;
     try {
-        const matches = await searchSimilar(query, searchLimit);
+        let resolvedFilters = null;
+        let filterPayload = { ragFilters: {} };
+        if (fileNames) {
+            filterPayload.ragFilters.fileNames = fileNames.split(',').map(f => f.trim());
+        }
+        if (caseNumber) {
+            filterPayload.ragFilters.caseNumber = caseNumber.trim();
+        }
+        
+        if (fileNames || caseNumber) {
+            resolvedFilters = await resolveRagFilters(filterPayload);
+        }
+
+        const matches = await searchSimilar(query, searchLimit, resolvedFilters);
         res.json({ query, matches });
     } catch (err) {
         res.status(500).json({ error: `Chyba sémantického vyhledávání: ${err.message}` });
+    }
+});
+
+// GET /api/system/green-metrics - Aggregate energy and CO2 statistics
+app.get('/api/system/green-metrics', (req, res) => {
+    try {
+        const greenLogs = db.get('green_logs') || [];
+        const profile = getHardwareProfile();
+        
+        let totalEnergyWh = 0;
+        let totalCo2Grams = 0;
+        let totalCloudWh = 0;
+        let totalCloudCo2Grams = 0;
+        let totalCarbonSavedGrams = 0;
+        
+        greenLogs.forEach(log => {
+            totalEnergyWh += log.energyWh || 0;
+            totalCo2Grams += log.co2Grams || 0;
+            totalCloudWh += log.cloudEquivalentWh || 0;
+            totalCloudCo2Grams += log.cloudCo2Grams || 0;
+            totalCarbonSavedGrams += log.carbonSavedGrams || 0;
+        });
+        
+        const co2SavingPercent = totalCloudCo2Grams > 0 
+            ? parseFloat(((totalCarbonSavedGrams / totalCloudCo2Grams) * 100).toFixed(1))
+            : 0;
+            
+        res.json({
+            hardware: profile.hardwareName,
+            tdpWatts: profile.estimatedTdp,
+            totalRuns: greenLogs.length,
+            totalEnergyWh: parseFloat(totalEnergyWh.toFixed(5)),
+            totalCo2Grams: parseFloat(totalCo2Grams.toFixed(5)),
+            cloudEquivalentWh: parseFloat(totalCloudWh.toFixed(2)),
+            cloudCo2Grams: parseFloat(totalCloudCo2Grams.toFixed(2)),
+            carbonSavedGrams: parseFloat(totalCarbonSavedGrams.toFixed(5)),
+            co2SavingPercent,
+            recentRuns: greenLogs.slice(-10)
+        });
+    } catch (err) {
+        res.status(500).json({ error: `Chyba při načítání zelených statistik: ${err.message}` });
+    }
+});
+
+// GET /api/system/export - Secure de-crypted data export for GDPR portability (Article 20)
+app.get('/api/system/export', async (req, res) => {
+    try {
+        const inbox = await loadInbox();
+        const exportData = {
+            metadata: {
+                system: "LexisLocal",
+                version: require('../package.json').version || "1.0.0",
+                exportedAt: new Date().toISOString(),
+                totalInboxFiles: Object.keys(inbox.files || {}).length
+            },
+            database: {
+                activities: db.get('activities') || [],
+                timesheets: db.get('timesheets') || [],
+                workflows: db.get('workflows') || [],
+                conflicts: db.get('conflicts') || [],
+                alerts: db.get('alerts') || [],
+                email_settings: db.get('email_settings') || [],
+                email_tasks: db.get('email_tasks') || [],
+                green_logs: db.get('green_logs') || [],
+                transparency_logs: db.get('transparency_logs') || []
+            },
+            inbox: inbox.files || {}
+        };
+        
+        res.setHeader('Content-disposition', `attachment; filename=lexis_export_${new Date().toISOString().slice(0, 10)}.json`);
+        res.setHeader('Content-type', 'application/json');
+        res.write(JSON.stringify(exportData, null, 2));
+        res.end();
+    } catch (err) {
+        res.status(500).json({ error: `Chyba při exportu dat: ${err.message}` });
+    }
+});
+
+// GET /api/audit/transparency/verify - Verify cryptographic blockchain integrity of ledger
+app.get('/api/audit/transparency/verify', (req, res) => {
+    try {
+        const result = db.verifyLedger();
+        res.json(result);
+    } catch (err) {
+        res.status(500).json({ error: `Chyba při ověřování ledgeru: ${err.message}` });
+    }
+});
+
+// GET /api/audit/transparency - Retrieve AI Act Transparency Ledger
+app.get('/api/audit/transparency', (req, res) => {
+    try {
+        const logs = db.get('transparency_logs') || [];
+        res.json(logs);
+    } catch (err) {
+        res.status(500).json({ error: `Chyba při načítání transparentního ledgeru: ${err.message}` });
+    }
+});
+
+// POST /api/audit/transparency/:id/approve - Human-in-the-loop review approval
+app.post('/api/audit/transparency/:id/approve', (req, res) => {
+    const { id } = req.params;
+    try {
+        const updated = db.update('transparency_logs', id, {
+            humanApproved: true,
+            approvedAt: new Date().toISOString()
+        });
+        
+        if (updated) {
+            res.json({ success: true, message: `Rozhodnutí AI ID ${id} bylo schváleno lidským dohledem.`, record: updated });
+        } else {
+            res.status(404).json({ error: `Záznam s ID ${id} nebyl nalezen.` });
+        }
+    } catch (err) {
+        res.status(500).json({ error: `Chyba při schvalování záznamu: ${err.message}` });
+    }
+});
+
+// POST /api/system/rotate-key - Rotate database encryption key
+app.post('/api/system/rotate-key', (req, res) => {
+    try {
+        const success = db.rotateEncryptionKey();
+        if (success) {
+            res.json({ success: true, message: "Lokální šifrovací klíč byl úspěšně rotován a databáze byla přešifrována." });
+        } else {
+            res.status(500).json({ error: "Rotace klíče selhala. Podrobnosti v serverovém logu." });
+        }
+    } catch (err) {
+        res.status(500).json({ error: `Chyba při rotaci klíče: ${err.message}` });
+    }
+});
+
+// GET /api/system/models/sovereign - Get and prioritize local European/Czech models
+app.get('/api/system/models/sovereign', async (req, res) => {
+    try {
+        // Query local Ollama installation for available models
+        const localModelsResponse = await ollama.list();
+        const availableTags = (localModelsResponse.models || []).map(m => m.name);
+        
+        // Preferred European & open-source sovereign models ordered by preference
+        const preferredSovereignModels = [
+            'mistral:latest',
+            'mistral',
+            'mixtral',
+            'gemma2:2b',
+            'gemma2',
+            'llama3-czech',
+            'llama3'
+        ];
+        
+        const matched = preferredSovereignModels.filter(pref => 
+            availableTags.some(tag => tag.toLowerCase().startsWith(pref.toLowerCase()) || pref.toLowerCase().startsWith(tag.toLowerCase()))
+        );
+        
+        res.json({
+            sovereignPreferred: preferredSovereignModels,
+            availableLocal: availableTags,
+            matchedSovereign: matched,
+            recommendedActive: matched[0] || 'llama3'
+        });
+    } catch (err) {
+        res.status(500).json({ error: `Chyba při zjišťování suverénních modelů: ${err.message}` });
+    }
+});
+
+// GET /api/system/telemetry - Retrieve system performance & VRAM telemetry
+app.get('/api/system/telemetry', (req, res) => {
+    try {
+        const stats = getSystemTelemetry();
+        res.json(stats);
+    } catch (err) {
+        res.status(500).json({ error: `Chyba při načítání systémové telemetrie: ${err.message}` });
+    }
+});
+
+// POST /api/document/archive - Generate Dublin Core XML metadata descriptor for PDF/A
+app.post('/api/document/archive', (req, res) => {
+    const { title, creator, subject, description, type, language, rights } = req.body;
+    try {
+        const xml = generateDublinCoreXml({
+            title,
+            creator,
+            subject,
+            description,
+            type,
+            language,
+            rights
+        });
+        
+        res.setHeader('Content-type', 'application/xml');
+        res.write(xml);
+        res.end();
+    } catch (err) {
+        res.status(500).json({ error: `Chyba při generování metadat pro archivaci: ${err.message}` });
     }
 });
 
@@ -1459,7 +1804,7 @@ app.post('/api/rag/reindex-all', async (req, res) => {
                         content = await fs.promises.readFile(file.filePath, 'utf-8');
                     }
                     if (content && content.trim()) {
-                        await indexDocument(file.fileName, content);
+                        await indexDocument(file.relativePath || file.fileName, content);
                         successCount++;
                     }
                 } catch (parseErr) {
