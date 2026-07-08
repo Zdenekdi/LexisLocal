@@ -268,7 +268,7 @@
 
                         <!-- Chat Sidebar Config -->
                         <div class="chat-config-bar" style="display: flex; gap: 15px; flex-wrap: wrap; align-items: flex-end; padding: 15px 20px; border-bottom: 1px solid var(--border-glass);">
-                            <div class="config-item">
+                            <div class="config-item" id="config-agent-1-container">
                                 <label for="chat-agent-select" id="lbl-agent-1">Aktivní AI asistent:</label>
                                 <select id="chat-agent-select" class="glass-select" style="min-width: 160px;">
                                     <option value="resersnik">📚 Rešeršník</option>
@@ -283,6 +283,12 @@
                             <div class="config-item" style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
                                 <input type="checkbox" id="toggle-swarm-debate" style="width: 18px; height: 18px; accent-color: var(--accent-blue); cursor: pointer;">
                                 <label for="toggle-swarm-debate" style="margin: 0; cursor: pointer; font-weight: bold; color: var(--accent-blue);">👥 Oponentní diskuse</label>
+                            </div>
+
+                            <!-- Toggle for Hierarchical Swarm Orchestration -->
+                            <div class="config-item" style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                                <input type="checkbox" id="toggle-swarm-orchestrate" style="width: 18px; height: 18px; accent-color: var(--accent-blue); cursor: pointer;">
+                                <label for="toggle-swarm-orchestrate" style="margin: 0; cursor: pointer; font-weight: bold; color: var(--accent-blue);">🤖 Hierarchický Swarm</label>
                             </div>
 
                             <!-- Second Agent Dropdown (Only visible in Swarm Debate Mode) -->

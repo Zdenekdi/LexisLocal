@@ -163,7 +163,7 @@ describe('ChiefOrchestrator', () => {
 
             await orchestrator.orchestrate('Test prompt');
 
-            expect(searchSimilar).toHaveBeenCalledWith('Do research', 2);
+            expect(searchSimilar).toHaveBeenCalledWith('Do research', 2, null);
 
             const chatCalls = ollamaLib.default.chat.mock.calls;
             const agentCall = chatCalls[0][0]; // First call options

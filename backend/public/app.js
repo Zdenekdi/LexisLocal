@@ -157,17 +157,41 @@ class LexisLocalApp {
 
         // Swarm Debate Toggle UI behavior
         const swarmToggle = document.getElementById('toggle-swarm-debate');
+        const swarmOrchestrateToggle = document.getElementById('toggle-swarm-orchestrate');
+        
         if (swarmToggle) {
             swarmToggle.addEventListener('change', (e) => {
+                const agent1Container = document.getElementById('config-agent-1-container');
                 const agent2Container = document.getElementById('config-agent-2-container');
                 const lblAgent1 = document.getElementById('lbl-agent-1');
                 
                 if (e.target.checked) {
+                    if (swarmOrchestrateToggle) {
+                        swarmOrchestrateToggle.checked = false;
+                    }
+                    if (agent1Container) agent1Container.style.display = 'block';
                     if (agent2Container) agent2Container.style.display = 'block';
                     if (lblAgent1) lblAgent1.textContent = 'Aktivní AI Asistent / Tvůrce:';
                 } else {
                     if (agent2Container) agent2Container.style.display = 'none';
                     if (lblAgent1) lblAgent1.textContent = 'Aktivní AI Asistent:';
+                }
+            });
+        }
+
+        if (swarmOrchestrateToggle) {
+            swarmOrchestrateToggle.addEventListener('change', (e) => {
+                const agent1Container = document.getElementById('config-agent-1-container');
+                const agent2Container = document.getElementById('config-agent-2-container');
+                
+                if (e.target.checked) {
+                    if (swarmToggle) {
+                        swarmToggle.checked = false;
+                    }
+                    if (agent1Container) agent1Container.style.display = 'none';
+                    if (agent2Container) agent2Container.style.display = 'none';
+                } else {
+                    if (agent1Container) agent1Container.style.display = 'block';
                 }
             });
         }
@@ -1158,8 +1182,100 @@ class LexisLocalApp {
         output.scrollTop = output.scrollHeight;
 
         const swarmToggle = document.getElementById('toggle-swarm-debate');
+        const swarmOrchestrateToggle = document.getElementById('toggle-swarm-orchestrate');
         const isSwarm = swarmToggle && swarmToggle.checked;
+        const isOrchestrate = swarmOrchestrateToggle && swarmOrchestrateToggle.checked;
         
+        if (isOrchestrate) {
+            try {
+                const res = await fetch(`${this.apiBase}/agent-swarm/orchestrate`, {
+                    method: 'POST',
+                    headers: this.getHeaders({ 'Content-Type': 'application/json' }),
+                    body: JSON.stringify({
+                        prompt: userText,
+                        model: modelName
+                    })
+                });
+                const data = await res.json();
+                
+                // Remove typing indicator
+                const typingEl = document.getElementById(typingId);
+                if (typingEl) typingEl.remove();
+
+                if (!data.success) {
+                    throw new Error(data.error || "Orchestrace selhala.");
+                }
+
+                // Render beautiful step-by-step timeline of orchestrations
+                let stepsHtml = "";
+                const emojis = { resersnik: "📚", stylista: "✍️", oponent: "⚖️", sekretarka: "⏰", spisovatel: "📝", chief_orchestrator: "👑" };
+                
+                (data.steps || []).forEach(step => {
+                    const agentEmoji = emojis[step.agentId] || step.agentEmoji || "🤖";
+                    const formattedOutput = step.output
+                        .replace(/\n/g, '<br>')
+                        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+                        
+                    const carbon = step.metrics ? `(⚡ ${step.metrics.energyWh.toFixed(2)} Wh | 🍃 ${step.metrics.co2Grams.toFixed(2)}g CO₂)` : "";
+                    
+                    stepsHtml += `
+                        <div style="border-left: 2px solid var(--accent-blue); padding-left: 15px; margin-bottom: 20px; position: relative;">
+                            <div style="position: absolute; left: -9px; top: 0; background: var(--bg-card); border: 2px solid var(--accent-blue); border-radius: 50%; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; font-size: 0.5rem;"></div>
+                            <div style="font-size: 0.8rem; font-weight: bold; color: white; display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+                                <span>${agentEmoji}</span> Krok ${step.step}: ${step.agentName} <span style="font-size: 0.7rem; color: var(--text-muted); font-weight: normal; margin-left: 5px;">${carbon}</span>
+                            </div>
+                            <div style="font-size: 0.75rem; font-style: italic; color: var(--text-muted); margin-bottom: 5px;">Instrukce: "${step.instruction}"</div>
+                            <div style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.4; background: rgba(255,255,255,0.01); padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border-glass);">${formattedOutput}</div>
+                        </div>
+                    `;
+                });
+
+                const formattedFinal = data.finalOutput
+                    .replace(/\n/g, '<br>')
+                    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+
+                output.innerHTML += `
+                    <div class="chat-message agent" style="border-left: 4px solid var(--accent-blue); padding-left: 15px; margin-bottom: 20px; background: rgba(0, 102, 204, 0.03); border-radius: 4px 12px 12px 4px; width: 100%;">
+                        <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--accent-blue); font-weight: bold; margin-bottom: 15px; display: flex; align-items: center; gap: 6px;">
+                            <span>👑</span> Spuštěna hierarchická orchestrace swarmu (Celková doba: ${(data.durationMs/1000).toFixed(1)}s)
+                        </div>
+                        
+                        <!-- Pipeline Steps Timeline -->
+                        <div style="margin-bottom: 25px;">
+                            ${stepsHtml}
+                        </div>
+
+                        <!-- Final Synthesis -->
+                        <div style="display: flex; gap: 12px; border: 1px solid rgba(0, 102, 204, 0.2); background: rgba(0, 102, 204, 0.05); padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                            <div class="message-avatar" style="background: var(--accent-blue); color: white; min-width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.1rem;">
+                                👑
+                            </div>
+                            <div class="message-content" style="flex: 1;">
+                                <span style="font-weight: bold; color: white; font-size: 0.9rem; display: block; margin-bottom: 6px;">
+                                    Finální syntéza (Chief Orchestrator):
+                                </span>
+                                <p style="margin: 0; font-size: 0.95rem; line-height: 1.5; color: white;">${formattedFinal}</p>
+                            </div>
+                        </div>
+                        
+                        <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 15px;">
+                            <button class="btn btn-secondary" onclick="window.appInstance.sendTextToLexisEditor('${data.finalOutput.replace(/'/g, "\\'").replace(/\n/g, '\\n')}', 'Orchestrované stanovisko')" style="font-size: 0.75rem; padding: 5px 10px;">
+                                ✍️ Vložit do Editoru
+                            </button>
+                        </div>
+                    </div>
+                `;
+                output.scrollTop = output.scrollHeight;
+                
+            } catch (e) {
+                const typingEl = document.getElementById(typingId);
+                if (typingEl) typingEl.remove();
+                output.innerHTML += `<div class="chat-message agent"><div class="message-content"><p style="color:var(--accent-red);">❌ Chyba orchestrace: ${escapeHtml(e.message)}</p></div></div>`;
+                output.scrollTop = output.scrollHeight;
+            }
+            return;
+        }
+
         if (isSwarm) {
             const agent2Select = document.getElementById('chat-agent-2-select');
             const agentId2 = agent2Select ? agent2Select.value : 'kontrolor';
