@@ -1664,6 +1664,20 @@ app.post('/api/document/archive', (req, res) => {
     }
 });
 
+// POST /api/document/anonymize - Anonymize text containing GDPR sensitive terms
+app.post('/api/document/anonymize', (req, res) => {
+    const { text } = req.body;
+    if (text === undefined) {
+        return res.status(400).json({ error: "Text k anonymizaci je povinný." });
+    }
+    try {
+        const anonymized = anonymizeText(text);
+        res.json({ anonymized });
+    } catch (err) {
+        res.status(500).json({ error: `Chyba při anonymizaci: ${err.message}` });
+    }
+});
+
 // GET /api/registries/check - Query all registries for an ICO
 app.get('/api/registries/check', async (req, res) => {
     const { ico } = req.query;
