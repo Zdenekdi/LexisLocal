@@ -279,6 +279,12 @@ class LexisLocalApp {
             auditSearchInput.addEventListener('input', () => this.filterAuditLogs());
         }
 
+        // Verify Ledger Action
+        const verifyLedgerBtn = document.getElementById('btn-verify-ledger');
+        if (verifyLedgerBtn) {
+            verifyLedgerBtn.addEventListener('click', () => this.verifyTransparencyLedger());
+        }
+
         // --- AI Agents Customizer Listeners ---
         const btnAddAgent = document.getElementById('btn-add-agent');
         if (btnAddAgent) {
@@ -1905,6 +1911,8 @@ Generováno systémem LexisLocal. 100% soukromé a šifrované.`;
                 this.auditLogs = data.logs || [];
                 this.renderAuditLogs(this.auditLogs);
                 this.updateAuditStats(this.auditLogs);
+                this.loadGreenMetricsAndTelemetry();
+                this.loadTransparencyLedger();
             } else {
                 console.error("❌ Nepodařilo se načíst auditní logy:", data.error);
             }
@@ -3764,6 +3772,148 @@ Generováno systémem LexisLocal. 100% soukromé a šifrované.`;
         document.getElementById('em-smtp-ssl').checked = s.smtp_ssl !== false;
     }
 }
+
+    async loadGreenMetricsAndTelemetry() {
+        try {
+            // Fetch green metrics
+            const greenRes = await fetch(`${this.apiBase}/system/green-metrics`, { headers: this.getHeaders() });
+            const greenData = await greenRes.json();
+            
+            // Fetch system telemetry
+            const teleRes = await fetch(`${this.apiBase}/system/telemetry`, { headers: this.getHeaders() });
+            const teleData = await teleRes.json();
+            
+            const savedEl = document.getElementById('green-telemetry-energy-saved');
+            const co2El = document.getElementById('green-telemetry-co2-reduction');
+            if (savedEl) savedEl.textContent = `${greenData.savedWh ? greenData.savedWh.toFixed(1) : 0} Wh`;
+            if (co2El) co2El.textContent = `${greenData.savedCo2Grams ? greenData.savedCo2Grams.toFixed(1) : 0}g CO₂`;
+
+            // Telemetry
+            const cpuEl = document.getElementById('sys-telemetry-cores');
+            const loadEl = document.getElementById('sys-telemetry-load');
+            const ramEl = document.getElementById('sys-telemetry-ram');
+            const vramEl = document.getElementById('sys-telemetry-vram');
+            const uptimeEl = document.getElementById('sys-telemetry-uptime');
+
+            if (cpuEl) cpuEl.textContent = `${teleData.cpuCores || '--'} jader (${teleData.arch || '--'})`;
+            if (loadEl) loadEl.textContent = `${teleData.systemLoad !== undefined ? teleData.systemLoad.toFixed(2) : '--'}`;
+            if (ramEl) ramEl.textContent = `${teleData.memoryUsedGb || '--'} GB / ${teleData.memoryTotalGb || '--'} GB`;
+            if (vramEl) vramEl.textContent = `${teleData.vramFreeGb || '--'} GB volno / ${teleData.vramTotalGb || '--'} GB celkem`;
+            if (uptimeEl) {
+                const hours = Math.floor((teleData.uptimeSeconds || 0) / 3600);
+                const mins = Math.floor(((teleData.uptimeSeconds || 0) % 3600) / 60);
+                uptimeEl.textContent = `${hours}h ${mins}m`;
+            }
+        } catch (e) {
+            console.error("❌ Nepodařilo se načíst zelenou telemetrii:", e.message);
+        }
+    }
+
+    async loadTransparencyLedger() {
+        try {
+            const res = await fetch(`${this.apiBase}/audit/transparency`, { headers: this.getHeaders() });
+            const data = await res.json();
+            
+            const container = document.getElementById('ledger-entries-list');
+            if (!container) return;
+
+            if (!Array.isArray(data) || data.length === 0) {
+                container.innerHTML = `<div style="text-align: center; opacity: 0.6; padding: 10px;">Ledger je prázdný.</div>`;
+                return;
+            }
+
+            let html = "";
+            // Show latest entries first
+            [...data].reverse().forEach(entry => {
+                const isApproved = entry.humanApproved === true;
+                const approveBtn = isApproved 
+                    ? `<span style="color: var(--accent-green); font-weight: bold; font-size: 0.75rem;">✓ Schváleno</span>`
+                    : `<button class="btn btn-secondary" onclick="window.appInstance.approveTransparencyEntry('${entry.id}')" style="font-size: 0.7rem; padding: 3px 8px; border-color: #fbbf24; color: #fbbf24; background: rgba(251, 191, 36, 0.05);">Schválit</button>`;
+
+                html += `
+                    <div style="padding: 8px; border-bottom: 1px solid var(--border-glass); display: flex; justify-content: space-between; align-items: center; gap: 10px;">
+                        <div style="flex: 1; min-width: 0;">
+                            <div style="font-weight: bold; display: flex; align-items: center; gap: 4px;">
+                                🤖 ${entry.agentName || 'AI'} <span style="font-weight: normal; color: var(--text-muted); font-size: 0.7rem;">(${entry.model})</span>
+                            </div>
+                            <div style="font-size: 0.7rem; color: var(--text-muted); text-overflow: ellipsis; overflow: hidden; white-space: nowrap; margin-top: 2px;">
+                                Hash: ${entry.hash ? entry.hash.substring(0, 12) : 'N/A'}... | Prompt: "${entry.prompt}"
+                            </div>
+                        </div>
+                        <div style="flex: 0 0 auto; text-align: right;">
+                            ${approveBtn}
+                        </div>
+                    </div>
+                `;
+            });
+            container.innerHTML = html;
+        } catch (e) {
+            console.error("❌ Nepodařilo se načíst transparency ledger:", e.message);
+        }
+    }
+
+    async approveTransparencyEntry(id) {
+        try {
+            const res = await fetch(`${this.apiBase}/audit/transparency/${id}/approve`, {
+                method: 'POST',
+                headers: this.getHeaders()
+            });
+            const data = await res.json();
+            if (data.success) {
+                this.loadTransparencyLedger();
+            } else {
+                alert(`❌ Nepodařilo se schválit záznam: ${data.error}`);
+            }
+        } catch (e) {
+            console.error("❌ Chyba při schvalování záznamu:", e.message);
+        }
+    }
+
+    async verifyTransparencyLedger() {
+        const resultDiv = document.getElementById('ledger-verify-result');
+        const shieldSpan = document.getElementById('ledger-status-shield');
+        if (!resultDiv) return;
+
+        resultDiv.style.display = 'block';
+        resultDiv.style.background = 'rgba(255,255,255,0.05)';
+        resultDiv.style.color = 'white';
+        resultDiv.innerHTML = '⚙️ Ověřuji kryptografickou integritu ledgeru (Hash-Chaining)...';
+
+        try {
+            const res = await fetch(`${this.apiBase}/audit/transparency/verify`, { headers: this.getHeaders() });
+            const data = await res.json();
+
+            if (data.valid) {
+                resultDiv.style.background = 'rgba(16, 185, 129, 0.15)';
+                resultDiv.style.border = '1px solid #10b981';
+                resultDiv.style.color = '#34d399';
+                resultDiv.innerHTML = '🛡️ <strong>Integrita ověřena!</strong> Celý blockchain řetězec je neporušen a validní.';
+                
+                if (shieldSpan) {
+                    shieldSpan.textContent = '🛡️ Zabezpečen';
+                    shieldSpan.style.background = 'rgba(16, 185, 129, 0.2)';
+                    shieldSpan.style.borderColor = '#10b981';
+                    shieldSpan.style.color = '#10b981';
+                }
+            } else {
+                resultDiv.style.background = 'rgba(239, 68, 68, 0.15)';
+                resultDiv.style.border = '1px solid #ef4444';
+                resultDiv.style.color = '#fca5a5';
+                resultDiv.innerHTML = `⚠️ <strong>Detekováno narušení!</strong><br>Důvod: ${data.reason}<br>Index poškození: ${data.index} (ID: ${data.id})`;
+                
+                if (shieldSpan) {
+                    shieldSpan.textContent = '⚠️ Narušen!';
+                    shieldSpan.style.background = 'rgba(239, 68, 68, 0.2)';
+                    shieldSpan.style.borderColor = '#ef4444';
+                    shieldSpan.style.color = '#ef4444';
+                }
+            }
+        } catch (e) {
+            resultDiv.style.background = 'rgba(239, 68, 68, 0.1)';
+            resultDiv.style.color = '#fca5a5';
+            resultDiv.innerHTML = `❌ Chyba při ověřování ledgeru: ${e.message}`;
+        }
+    }
 
 // Bind to window for global inline onclick callbacks
 window.addEventListener('DOMContentLoaded', () => {

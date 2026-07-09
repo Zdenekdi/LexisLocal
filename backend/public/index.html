@@ -562,6 +562,86 @@
                                 </tbody>
                             </table>
                         </div>
+
+                        <!-- Separator -->
+                        <hr style="border: none; border-top: 1px solid var(--border-glass); margin: 35px 0;">
+
+                        <!-- Grid for Green Monitor and Transparency Ledger -->
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 25px; align-items: start; margin-top: 25px;">
+                            
+                            <!-- Card A: Zelené AI a Telemetrie -->
+                            <div class="glass" style="padding: 25px; border-radius: 16px; border: 1px solid var(--border-glass);">
+                                <h4 style="margin-top: 0; margin-bottom: 15px; display: flex; align-items: center; gap: 10px; font-family: 'Outfit', sans-serif;">
+                                    <span>🌿</span> Zelené AI &amp; Systémový Monitor
+                                </h4>
+                                <p style="font-size: 0.85rem; opacity: 0.7; margin-bottom: 20px;">Odhad úspory lokálního edge-AI oproti cloudovému zpracování a hardware profil.</p>
+                                
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;">
+                                    <div class="glass" style="padding: 12px; border-radius: 10px; text-align: center; background: rgba(255, 255, 255, 0.01);">
+                                        <span style="font-size: 0.75rem; opacity: 0.7; display: block; margin-bottom: 3px;">Ušetřeno vs Cloud</span>
+                                        <strong id="green-telemetry-energy-saved" style="font-size: 1.25rem; color: var(--accent-green);">0 Wh</strong>
+                                    </div>
+                                    <div class="glass" style="padding: 12px; border-radius: 10px; text-align: center; background: rgba(255, 255, 255, 0.01);">
+                                        <span style="font-size: 0.75rem; opacity: 0.7; display: block; margin-bottom: 3px;">Uhlíková redukce</span>
+                                        <strong id="green-telemetry-co2-reduction" style="font-size: 1.25rem; color: #10b981;">0g CO₂</strong>
+                                    </div>
+                                </div>
+
+                                <div style="display: flex; flex-direction: column; gap: 8px; font-size: 0.85rem;">
+                                    <div style="display: flex; justify-content: space-between;">
+                                        <span style="color: var(--text-muted);">Procesor (CPU):</span>
+                                        <span id="sys-telemetry-cores" style="color: white; font-weight: bold;">--</span>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between;">
+                                        <span style="color: var(--text-muted);">Zatížení systému (Load):</span>
+                                        <span id="sys-telemetry-load" style="color: white; font-weight: bold;">--</span>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between;">
+                                        <span style="color: var(--text-muted);">Využití RAM:</span>
+                                        <span id="sys-telemetry-ram" style="color: white; font-weight: bold;">--</span>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between;">
+                                        <span style="color: var(--text-muted);">Grafická paměť (odhad VRAM):</span>
+                                        <span id="sys-telemetry-vram" style="color: white; font-weight: bold;">--</span>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between;">
+                                        <span style="color: var(--text-muted);">Uptime systému:</span>
+                                        <span id="sys-telemetry-uptime" style="color: white; font-weight: bold;">--</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Card B: AI Act Transparency Ledger (Blockchain) -->
+                            <div class="glass" style="padding: 25px; border-radius: 16px; border: 1px solid var(--border-glass);">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                                    <h4 style="margin: 0; display: flex; align-items: center; gap: 10px; font-family: 'Outfit', sans-serif;">
+                                        <span>🛡️</span> AI Act Transparency Ledger
+                                    </h4>
+                                    <span id="ledger-status-shield" class="status-indicator online" style="margin-left: 10px; font-size: 0.8rem; padding: 4px 10px; border-radius: 20px; font-weight: bold; background: rgba(16, 185, 129, 0.2); border: 1px solid #10b981; color: #10b981;">🛡️ Zabezpečen</span>
+                                </div>
+                                <p style="font-size: 0.85rem; opacity: 0.7; margin-bottom: 20px;">Evropský registr transparentnosti AI s kryptografickým řetězením změn (Hash-Chaining).</p>
+                                
+                                <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+                                    <button class="btn btn-secondary" id="btn-verify-ledger" style="font-size: 0.8rem; padding: 6px 12px; display: flex; align-items: center; gap: 6px; flex: 1; justify-content: center;">
+                                        <span>🔍</span> Prověřit integritu
+                                    </button>
+                                    <button class="btn btn-secondary" onclick="window.location.href='/api/system/export'" style="font-size: 0.8rem; padding: 6px 12px; display: flex; align-items: center; gap: 6px; background: rgba(0, 102, 204, 0.1); border-color: var(--accent-blue);">
+                                        <span>💾</span> Exportovat vše (GDPR)
+                                    </button>
+                                </div>
+
+                                <div id="ledger-verify-result" style="display: none; padding: 10px 14px; border-radius: 8px; font-size: 0.85rem; margin-bottom: 20px; text-align: center;">
+                                    <!-- Populate via JS -->
+                                </div>
+
+                                <div style="max-height: 180px; overflow-y: auto; border: 1px solid var(--border-glass); border-radius: 8px; background: rgba(0,0,0,0.1); padding: 10px; font-size: 0.8rem;">
+                                    <div id="ledger-entries-list" style="display: flex; flex-direction: column; gap: 8px;">
+                                        <div style="text-align: center; padding: 20px; opacity: 0.6;">Načítám AI Act ledger...</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
                     </div>
                 </section>
 
