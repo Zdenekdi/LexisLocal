@@ -50,6 +50,22 @@ services:
       PAPERLESS_WEBHOOKS_ALLOWED_SCHEMES: http,https
       PAPERLESS_WEBHOOKS_ALLOWED_PORTS: 4000,3000,80,443
 
+  lexis-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: lexis-backend
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    volumes:
+      - ~/Desktop/LexisSpisy:/app/LexisSpisy
+    environment:
+      - WATCH_DIR=/app/LexisSpisy
+      - PORT=4000
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
 volumes:
   redisdata:
   pgdata:
