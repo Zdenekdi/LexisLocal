@@ -108,13 +108,16 @@ async function loadInbox() {
         list.forEach(item => {
             files[item.id] = item;
         });
-        return { files };
+        // Alerty (insolvence) mají vlastní kolekci — jinak by se zahazovaly a
+        // stejný úpadek by se hlásil při každém běhu znovu.
+        const alerts = db.get('inbox_alerts') || [];
+        return { files, alerts };
     } catch (e) {
         console.error("⚠️ Nepodařilo se načíst inbox z databáze:", e.message);
     } finally {
         inboxMutex.release();
     }
-    return { files: {} };
+    return { files: {}, alerts: [] };
 }
 
 // Save inbox data helper to encrypted database
@@ -128,6 +131,10 @@ async function saveInbox(inbox) {
             };
         });
         db.set('inbox_files', list);
+        // Perzistovat i alerty (pokud je volající předal), jinak by se ztratily.
+        if (inbox.alerts !== undefined) {
+            db.set('inbox_alerts', inbox.alerts || []);
+        }
     } catch (e) {
         console.error("⚠️ Nepodařilo se uložit inbox do databáze:", e.message);
     } finally {

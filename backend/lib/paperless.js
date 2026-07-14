@@ -7,6 +7,7 @@ const { indexDocument } = require('./rag');
 const { checkSubject } = require('./registries');
 const { loadInbox, saveInbox } = require('./watcher');
 const { logEvent } = require('./audit');
+const { anonymizeText } = require('./anonymizer');
 
 // Robust Ollama module import supporting both CommonJS and ESM default exports
 const ollamaLib = require('ollama');
@@ -111,9 +112,11 @@ async function handlePaperlessWebhook(payload) {
     });
 
     // 4. Index to RAG Vector Database
+    // PII (jména, RČ, adresy) se před indexací anonymizuje — stejně jako u watcheru,
+    // aby se osobní údaje nedostaly do vektorového indexu.
     if (docText.trim().length > 0) {
         try {
-            await indexDocument(title, docText);
+            await indexDocument(title, anonymizeText(docText));
         } catch (e) {
             console.error(`❌ Paperless RAG: Selhala vektorová indexace pro dokument ${title}:`, e.message);
         }

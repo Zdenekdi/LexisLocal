@@ -27,6 +27,15 @@ function sanitizeFileName(name) {
     return name.replace(/[^a-zA-Z0-9_á-žÁ-Ž]/g, '_').substring(0, 100);
 }
 
+// Escapování textu do ICS dle RFC 5545 (zpětné lomítko, středník, čárka, nový řádek).
+function escapeIcsText(value) {
+    return String(value == null ? '' : value)
+        .replace(/\\/g, '\\\\')
+        .replace(/;/g, '\\;')
+        .replace(/,/g, '\\,')
+        .replace(/\r?\n/g, '\\n');
+}
+
 // Generate an ICS content helper
 function generateIcs(id, title, dateStr, timeStr, location, context, isCancelled) {
     const cleanId = id || 'hearing_' + Date.now();
@@ -68,14 +77,18 @@ function generateIcs(id, title, dateStr, timeStr, location, context, isCancelled
         `DTSTAMP:${dtstamp}`,
         startLine,
         endLine,
-        `SUMMARY:${cleanTitle}`,
-        `DESCRIPTION:${context ? context.replace(/\r?\n/g, ' ') : ''}`
+        `SUMMARY:${escapeIcsText(cleanTitle)}`,
+        `DESCRIPTION:${escapeIcsText(context || '')}`
     ];
-    
-    if (location) {
-        lines.push(`LOCATION:${location}`);
+
+    if (isCancelled) {
+        lines.push('STATUS:CANCELLED');
     }
-    
+
+    if (location) {
+        lines.push(`LOCATION:${escapeIcsText(location)}`);
+    }
+
     lines.push('END:VEVENT');
     lines.push('END:VCALENDAR');
     
@@ -89,23 +102,25 @@ async function checkAllHearings(WATCH_DIR) {
     
     let checked = 0;
     let updated = 0;
-    
+    let dirty = false; // změny (např. přechod na 'past'), které je třeba uložit i bez updated
+
     for (const h of hearings) {
         if (h.status === 'cancelled' || h.status === 'past') continue;
-        
+
         checked++;
         try {
             const hearingDate = new Date(h.dueDate);
             const today = new Date();
             today.setHours(0,0,0,0);
-            
+
             // Difference in days
             const diffTime = hearingDate.getTime() - today.getTime();
             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-            
+
             if (diffDays < -1) {
-                // Hearing is in the past, stop monitoring
-                h.status = 'past';
+                // Hearing is in the past, stop monitoring — a ULOŽIT, jinak se
+                // prošlá jednání dotazují donekonečna.
+                if (h.status !== 'past') { h.status = 'past'; dirty = true; }
                 continue;
             }
             
@@ -193,11 +208,10 @@ async function checkAllHearings(WATCH_DIR) {
                     isCancelled = isEvCancelled;
                     shouldUpdateIcs = true;
                 } else {
-                    // Empty list of events, and we are within 30 days => hearing is cancelled!
-                    isCancelled = true;
-                    statusText = 'cancelled';
-                    shouldUpdateIcs = true;
-                    console.log(`⚖️ Hlídač jednání: DETEKOVÁNO ZRUŠENÍ JEDNÁNÍ (odstraněno z kalendáře portálu) u ${h.title}`);
+                    // Prázdný seznam událostí NEZNAMENÁ automaticky zrušení — může jít
+                    // o dočasný výpadek/nedostupnost API. Rušíme jen na EXPLICITNÍ signál
+                    // (jednaciZruseno). Zde stav ponecháme beze změny.
+                    console.warn(`⚠️ Hlídač jednání: InfoJednání nevrátilo žádnou událost pro ${h.title} — ponechávám beze změny (možný výpadek API, neruším automaticky).`);
                 }
             }
             
@@ -231,10 +245,10 @@ async function checkAllHearings(WATCH_DIR) {
         }
     }
     
-    if (updated > 0) {
+    if (updated > 0 || dirty) {
         saveMonitoredHearings(WATCH_DIR, hearings);
     }
-    
+
     return { checked, updated };
 }
 
