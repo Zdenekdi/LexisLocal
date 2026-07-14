@@ -315,8 +315,14 @@ Vytvoř maximálně 2 až 4 logické a vysoce efektivní kroky tak, aby na sebe 
             });
 
             const contentText = response.message.content.trim();
-            // Remove markdown code blocks if any got leaked
-            const jsonText = contentText.replace(/^```json/i, '').replace(/```$/, '').trim();
+            // Robustně odstraníme markdown fence — ať už ```json, prostý ``` nebo
+            // fence uprostřed textu (dřív se řešil jen prefix ```json).
+            let jsonText = contentText;
+            const fenceMatch = contentText.match(/```(?:json)?\s*([\s\S]*?)```/i);
+            if (fenceMatch) {
+                jsonText = fenceMatch[1];
+            }
+            jsonText = jsonText.trim();
             
             const steps = JSON.parse(jsonText);
             if (Array.isArray(steps) && steps.length > 0) {

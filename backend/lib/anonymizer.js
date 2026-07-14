@@ -11,7 +11,13 @@ const CZECH_GIVEN_NAMES = new Set([
     'jan', 'jana', 'petr', 'jiri', 'jiří', 'marie', 'josef', 'pavel', 'martin', 'tomas', 'tomáš',
     'jaroslav', 'miroslav', 'frantisek', 'františek', 'vaclav', 'václav', 'michal', 'zdenek', 'zdeněk',
     'jakub', 'lenka', 'katerina', 'kateřina', 'alena', 'hana', 'ludmila', 'david', 'filip',
-    'lukas', 'lukáš', 'ondrej', 'ondřej', 'veronika', 'monika', 'kristyna', 'kristýna', 'barbora'
+    'lukas', 'lukáš', 'ondrej', 'ondřej', 'veronika', 'monika', 'kristyna', 'kristýna', 'barbora',
+    // Rozšíření o další běžná česká jména (dřív jen ~30).
+    'anna', 'eva', 'lucie', 'tereza', 'jitka', 'zuzana', 'ivana', 'jaroslava', 'helena', 'vera', 'věra',
+    'daniela', 'simona', 'gabriela', 'nikola', 'adela', 'adéla', 'eliska', 'eliška', 'natalie', 'aneta',
+    'karel', 'milan', 'roman', 'radek', 'marek', 'vojtech', 'vojtěch', 'matej', 'matěj', 'daniel',
+    'antonin', 'antonín', 'stanislav', 'ladislav', 'vladimir', 'vladimír', 'oldrich', 'oldřich',
+    'rudolf', 'robert', 'richard', 'patrik', 'dominik', 'adam', 'stepan', 'štěpán', 'radim', 'igor'
 ]);
 
 /**
@@ -30,8 +36,16 @@ function anonymizeText(text) {
     // 2. Anonymize Czech Birth Numbers (rodná čísla: e.g. 850708/1234 or 901231/123)
     result = result.replace(/\b\d{6}\/\d{3,4}\b/g, '[RODNÉ ČÍSLO]');
     
-    // 3. Anonymize Czech Phone Numbers (+420 123 456 789, 777123456, etc.)
-    result = result.replace(/(?:\+(?:420|421)\s*)?[1-9]\d{2}\s*\d{3}\s*\d{3}\b/g, '[TELEFON]');
+    // 3. Anonymize Czech Phone Numbers. Dřívější vzor bral JAKÉKOLI 9místné číslo
+    //    (spisové značky, částky, IČO). Nově vyžadujeme předvolbu, oddělovače,
+    //    nebo telefonní klíčové slovo, aby nedocházelo k nadměrné redakci.
+    // 3a. S mezinárodní předvolbou: +420 123 456 789
+    result = result.replace(/\+(?:420|421)\s*\d{3}\s*\d{3}\s*\d{3}\b/g, '[TELEFON]');
+    // 3b. Klasický zápis s oddělovači (mezery/pomlčky): 777 123 456
+    result = result.replace(/\b[1-9]\d{2}[ \-]\d{3}[ \-]\d{3}\b/g, '[TELEFON]');
+    // 3c. Po telefonním klíčovém slově i bez oddělovačů: "tel: 777123456"
+    result = result.replace(/\b(tel\.?|telefon|mobil|mob\.?|gsm)(\s*:?\s*)(\+?(?:420|421)?\s*[1-9](?:[\s\-]?\d){8})\b/gi,
+        (m, kw, sep) => `${kw}${sep}[TELEFON]`);
     
     // 4. Anonymize Czech Academics/Titles + Name patterns (e.g. Mgr. Novák, JUDr. Petr Novotný)
     const titleRegex = /\b(?:Mgr|Ing|JUDr|PhDr|MUDr|doc|prof|Bc)\.?\s+[A-ZÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ][a-záčďéěíňóřšťúůýž]+(?:\s+[A-ZÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ][a-záčďéěíňóřšťúůýž]+)?/g;

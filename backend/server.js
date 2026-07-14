@@ -8,7 +8,7 @@ const crypto = require('crypto');
 const { WATCH_DIR, loadInbox, saveInbox, processDocument, setWatcherState, checkAllInsolvencies } = require('./lib/watcher');
 const { checkSubject } = require('./lib/registries');
 const { indexDocument, deleteDocumentIndex, searchSimilar, loadIndex } = require('./lib/rag');
-const { logEvent } = require('./lib/audit');
+const { logEvent, clearAuditLogs } = require('./lib/audit');
 const { loadAgents, saveAgent, deleteAgent, resetAgentToDefault } = require('./lib/agents');
 const ChiefOrchestrator = require('./lib/orchestrator');
 const db = require('./lib/database');
@@ -1895,14 +1895,10 @@ app.get('/api/audit/logs', (req, res) => {
 
 // POST /api/audit/clear - Clear all audit trail log events
 app.post('/api/audit/clear', async (req, res) => {
-    const fs = require('fs');
-    const path = require('path');
     try {
-        const WATCH_DIR = process.env.WATCH_DIR || path.join(require('os').homedir(), 'Desktop', 'LexisSpisy');
-        const AUDIT_LOG_FILE = path.join(WATCH_DIR, '.audit_log.json');
-        if (fs.existsSync(AUDIT_LOG_FILE)) {
-            await fs.promises.writeFile(AUDIT_LOG_FILE, JSON.stringify([], null, 2), 'utf-8');
-        }
+        // Delegace do audit modulu — používá stejnou cestu jako zápis logu,
+        // takže se nemůže smazat jiný soubor kvůli odlišnému výpočtu WATCH_DIR.
+        clearAuditLogs();
         logEvent('LexisLocal Dashboard', 'Pročištění logů', 'Audit Trail', { cleared: true });
         res.json({ success: true, message: "Auditní logy byly vyčištěny." });
     } catch (err) {

@@ -59,7 +59,22 @@ function logEvent(user, operation, target, details = {}) {
     }
 }
 
+/**
+ * Vyčistí auditní log (zapíše prázdné pole). Používá stejnou cestu jako zápis,
+ * takže se nikdy nesmaže jiný soubor kvůli odlišnému výpočtu WATCH_DIR.
+ */
+function clearAuditLogs() {
+    try {
+        fs.writeFileSync(AUDIT_LOG_FILE, JSON.stringify([], null, 2), 'utf-8');
+        return true;
+    } catch (e) {
+        console.error("❌ Nepodařilo se vyčistit auditní log:", e.message);
+        return false;
+    }
+}
+
 module.exports = {
     loadAuditLogs,
-    logEvent
+    logEvent,
+    clearAuditLogs
 };
