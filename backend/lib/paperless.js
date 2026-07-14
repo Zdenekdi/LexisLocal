@@ -7,10 +7,8 @@ const { indexDocument } = require('./rag');
 const { checkSubject } = require('./registries');
 const { loadInbox, saveInbox } = require('./watcher');
 const { logEvent } = require('./audit');
-
-// Robust Ollama module import supporting both CommonJS and ESM default exports
-const ollamaLib = require('ollama');
-const ollama = ollamaLib.default || ollamaLib;
+const { anonymizeText } = require('./anonymizer');
+const { calculateDeadlineDate, runAIExtractor } = require('./extraction'); // sdílený AI-extraktor
 
 const PAPERLESS_API_URL = process.env.PAPERLESS_API_URL || 'http://localhost:8000';
 const PAPERLESS_API_TOKEN = process.env.PAPERLESS_API_TOKEN || '';
@@ -23,9 +21,16 @@ let customFieldIdsCache = null;
  */
 async function handlePaperlessWebhook(payload) {
     const { document_id, title, content, tags } = payload;
-    
+
     if (!document_id || !title) {
         throw new Error("Neplatný webhook payload: chybí document_id nebo title.");
+    }
+
+    // document_id z Paperlessu je vždy číselné — vynutíme to (obrana proti
+    // path traversal / injekci přes odvozený název souboru).
+    const safeDocId = String(document_id).replace(/\D/g, '');
+    if (!safeDocId) {
+        throw new Error("Neplatný webhook payload: document_id musí být číselné.");
     }
 
     const docText = content || '';
@@ -75,18 +80,18 @@ async function handlePaperlessWebhook(payload) {
 
     // 3. Save to LexisLocal Inbox
     const inbox = await loadInbox();
-    const fileName = `paperless_${document_id}_${title.replace(/[^a-zA-Z0-9-_.]/g, '_')}`;
-    
+    const fileName = `paperless_${safeDocId}_${title.replace(/[^a-zA-Z0-9-_.]/g, '_')}`;
+
     inbox.files[fileName] = {
         fileName: title,
-        filePath: `paperless://${document_id}`,
+        filePath: `paperless://${safeDocId}`,
         status: "unread",
         caseNumber: metadata.caseNumber || "Neznámá sp. zn.",
         plaintiff: metadata.plaintiff || "Nezjištěn",
         defendant: metadata.defendant || "Nezjištěn",
         deadlineDays: metadata.deadlineDays || 0,
         deadlineDate: metadata.deadlineDate || null,
-        summary: metadata.summary || `Importováno z Paperless-ngx (ID: ${document_id}).`,
+        summary: metadata.summary || `Importováno z Paperless-ngx (ID: ${safeDocId}).`,
         ico: metadata.ico || null,
         inInsolvency: registryData ? registryData.inInsolvency : false,
         insolvencyCase: registryData ? registryData.insolvencyCase : null,
@@ -98,15 +103,17 @@ async function handlePaperlessWebhook(payload) {
     console.log(`✅ Paperless: Dokument ${title} byl zapsán do lokálního inboxu.`);
 
     logEvent('PaperlessWebhook', 'Zpracování dokumentu', title, {
-        documentId: document_id,
+        documentId: safeDocId,
         caseNumber: metadata.caseNumber || 'Nezjištěna',
         deadlineDays: metadata.deadlineDays || 0
     });
 
     // 4. Index to RAG Vector Database
+    // PII (jména, RČ, adresy) se před indexací anonymizuje — stejně jako u watcheru,
+    // aby se osobní údaje nedostaly do vektorového indexu.
     if (docText.trim().length > 0) {
         try {
-            await indexDocument(title, docText);
+            await indexDocument(title, anonymizeText(docText));
         } catch (e) {
             console.error(`❌ Paperless RAG: Selhala vektorová indexace pro dokument ${title}:`, e.message);
         }
@@ -115,7 +122,7 @@ async function handlePaperlessWebhook(payload) {
     // 5. Write back Custom Fields to Paperless API
     if (PAPERLESS_API_TOKEN) {
         try {
-            await writebackMetadataToPaperless(document_id, metadata, registryData);
+            await writebackMetadataToPaperless(safeDocId, metadata, registryData);
         } catch (err) {
             console.error(`❌ Paperless Writeback: Selhal zpětný zápis metadat:`, err.message);
         }
@@ -186,43 +193,6 @@ function runRegexExtractor(title, tags, text) {
     return metadata;
 }
 
-function calculateDeadlineDate(days) {
-    if (!days) return null;
-    const d = new Date();
-    d.setDate(d.getDate() + days);
-    return d.toISOString().split('T')[0]; // YYYY-MM-DD
-}
-
-/**
- * Ollama AI Metadata Extractor
- */
-async function runAIExtractor(text) {
-    const prompt = `Zanalyzuj následující český právní text a vytáhni z něj klíčová strukturovaná metadata.
-Reaguj VÝHRADNĚ validním JSON objektem s těmito poli:
-{
-  "caseNumber": "spisová značka ve formátu např. '23 C 120/2026'",
-  "plaintiff": "jméno žalobce",
-  "defendant": "jméno žalovaného",
-  "deadlineDays": 15, // lhůta k vyjádření v dnech jako číslo, pokud je uvedena
-  "summary": "krátké shrnutí obsahu jednou větou"
-}
-
-Text k analýze:
-${text.substring(0, 3000)}`;
-
-    const response = await ollama.chat({
-        model: "llama3",
-        messages: [{ role: 'user', content: prompt }],
-        options: { temperature: 0.1 }
-    });
-    
-    const content = response.message.content;
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-        return JSON.parse(jsonMatch[0]);
-    }
-    return null;
-}
 
 /**
  * Connect to Paperless REST API to fetch or create custom field definitions,

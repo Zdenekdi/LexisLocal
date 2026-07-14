@@ -14,9 +14,15 @@ const db = require('./database');
 const ollamaLib = require('ollama');
 const ollama = ollamaLib.default || ollamaLib;
 
-// WATCH_DIR resolution (matches watcher.js)
-const WATCH_DIR = process.env.WATCH_DIR || path.join(process.env.HOME || process.env.USERPROFILE, 'Desktop', 'LexisSpisy');
+const { WATCH_DIR } = require('./config'); // jeden zdroj pravdy, viz lib/config.js
 const EMBEDDING_MODEL = process.env.EMBEDDING_MODEL || 'nomic-embed-text';
+
+// Jednoduchý mutex — serializuje zápisové operace nad indexem. Chokidar spouští
+// indexaci více souborů paralelně; bez serializace by se interleaved load→save
+// navzájem přepisovaly (ztráta chunků / přepis partitionů).
+// Jeden zdroj: lib/mutex.js (dřív měl rag.js vlastní identickou kopii třídy).
+const Mutex = require('./mutex');
+const ragMutex = new Mutex();
 
 /**
  * Lists all active subdirectories in WATCH_DIR to determine partition boundaries.
@@ -186,19 +192,17 @@ async function loadIndex() {
     return { chunks: allChunks };
 }
 
-// Save RAG index to disk (splits chunks back to correct partitions)
+// Save RAG index to disk (splits chunks back to correct partitions).
+// POZOR: neukládá nešifrovaný monolit .rag_index.json — ten by obcházel
+// šifrování partitionů (plný text + vektory v plaintextu). Partitiony jsou
+// jediný perzistentní formát; případný starý plaintext se po zápisu smaže.
 function saveIndex(index) {
-    const RAG_INDEX_PATH = path.join(WATCH_DIR, '.rag_index.json');
-    try {
-        fs.writeFileSync(RAG_INDEX_PATH, JSON.stringify(index, null, 2), 'utf-8');
-    } catch (e) {}
-
     const groups = {};
     const dirs = getActiveDirectories();
     for (const dir of dirs) {
         groups[dir] = [];
     }
-    
+
     for (const chunk of index.chunks || []) {
         const dir = chunk.fileName.includes('/') ? chunk.fileName.split('/')[0] : 'root';
         if (!groups[dir]) {
@@ -206,10 +210,17 @@ function saveIndex(index) {
         }
         groups[dir].push(chunk);
     }
-    
+
     for (const dir of Object.keys(groups)) {
         savePartition(dir, { chunks: groups[dir] });
     }
+
+    // Migrace/úklid: starý nešifrovaný monolit už není potřeba (data jsou nyní
+    // v šifrovaných partitionech) — smažeme ho, aby PII nezůstávalo v plaintextu.
+    const RAG_INDEX_PATH = path.join(WATCH_DIR, '.rag_index.json');
+    try {
+        if (fs.existsSync(RAG_INDEX_PATH)) fs.unlinkSync(RAG_INDEX_PATH);
+    } catch (e) { /* best-effort */ }
 }
 
 /**
@@ -282,37 +293,44 @@ function cosineSimilarity(vecA, vecB) {
 
 async function indexDocument(fileName, text) {
     console.log(`🧠 RAG: Zahajuji vektorovou indexaci pro soubor ${fileName}...`);
-    
-    await deleteDocumentIndex(fileName);
-    
+
     const chunks = chunkText(text);
     if (chunks.length === 0) {
         console.warn(`⚠️ RAG: Soubor ${fileName} neobsahuje text k indexaci.`);
         return;
     }
-    
-    const index = await loadIndex();
-    
+
+    // Embeddings (síťová/CPU operace) počítáme MIMO zámek, abychom neblokovali
+    // ostatní; kritickou sekci load→merge→save serializuje mutex.
+    const vectors = [];
     try {
         for (let i = 0; i < chunks.length; i++) {
-            const chunkTextContent = chunks[i];
-            const vector = await getEmbedding(chunkTextContent);
+            vectors.push(await getEmbedding(chunks[i]));
+        }
+    } catch (e) {
+        console.error(`❌ RAG: Chyba při generování embeddings pro ${fileName}:`, e.message);
+        throw e;
+    }
 
+    await ragMutex.acquire();
+    try {
+        const index = await loadIndex();
+        // Odstranit staré chunky téhož souboru (re-indexace).
+        index.chunks = index.chunks.filter(chunk => chunk.fileName !== fileName);
+        for (let i = 0; i < chunks.length; i++) {
             index.chunks.push({
                 id: `chk_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
                 fileName: fileName,
-                text: chunkTextContent,
-                vector: vector,
+                text: chunks[i],
+                vector: vectors[i],
                 chunkIndex: i,
                 totalChunks: chunks.length
             });
         }
-        
         saveIndex(index);
         console.log(`✅ RAG: Soubor ${fileName} úspěšně indexován (${chunks.length} odstavců).`);
-    } catch (e) {
-        console.error(`❌ RAG: Chyba při generování embeddings pro ${fileName}:`, e.message);
-        throw e;
+    } finally {
+        ragMutex.release();
     }
 }
 
@@ -320,14 +338,19 @@ async function indexDocument(fileName, text) {
  * API: Removes indexed chunks belonging to the specified file.
  */
 async function deleteDocumentIndex(fileName) {
-    const index = await loadIndex();
-    const originalCount = index.chunks.length;
-    
-    index.chunks = index.chunks.filter(chunk => chunk.fileName !== fileName);
-    
-    if (index.chunks.length !== originalCount) {
-        saveIndex(index);
-        console.log(`🗑️ RAG: Odstraněno ${originalCount - index.chunks.length} odstavců pro soubor ${fileName}.`);
+    await ragMutex.acquire();
+    try {
+        const index = await loadIndex();
+        const originalCount = index.chunks.length;
+
+        index.chunks = index.chunks.filter(chunk => chunk.fileName !== fileName);
+
+        if (index.chunks.length !== originalCount) {
+            saveIndex(index);
+            console.log(`🗑️ RAG: Odstraněno ${originalCount - index.chunks.length} odstavců pro soubor ${fileName}.`);
+        }
+    } finally {
+        ragMutex.release();
     }
 }
 

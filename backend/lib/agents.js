@@ -6,7 +6,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const WATCH_DIR = process.env.WATCH_DIR || path.join(process.env.HOME || process.env.USERPROFILE, 'Desktop', 'LexisSpisy');
+const { WATCH_DIR } = require('./config'); // jeden zdroj pravdy, viz lib/config.js
 const AGENTS_PATH = path.join(WATCH_DIR, '.agents.json');
 
 // Default built-in system agents

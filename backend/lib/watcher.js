@@ -14,12 +14,9 @@ const { extractTextFromFile, IMAGE_EXTENSIONS } = require('./ocr');
 const { logEvent } = require('./audit');
 const Mutex = require('./mutex');
 const { anonymizeText } = require('./anonymizer');
+const { calculateDeadlineDate, runAIExtractor } = require('./extraction'); // sdílený AI-extraktor
 
-// Robust Ollama module import supporting both CommonJS and ESM default exports
-const ollamaLib = require('ollama');
-const ollama = ollamaLib.default || ollamaLib;
-
-const WATCH_DIR = process.env.WATCH_DIR || path.join(process.env.HOME || process.env.USERPROFILE, 'Desktop', 'LexisSpisy');
+const { WATCH_DIR } = require('./config'); // jeden zdroj pravdy, viz lib/config.js
 const INBOX_PATH = path.join(WATCH_DIR, '.inbox.json');
 
 if (!fs.existsSync(WATCH_DIR)) {
@@ -108,13 +105,16 @@ async function loadInbox() {
         list.forEach(item => {
             files[item.id] = item;
         });
-        return { files };
+        // Alerty (insolvence) mají vlastní kolekci — jinak by se zahazovaly a
+        // stejný úpadek by se hlásil při každém běhu znovu.
+        const alerts = db.get('inbox_alerts') || [];
+        return { files, alerts };
     } catch (e) {
         console.error("⚠️ Nepodařilo se načíst inbox z databáze:", e.message);
     } finally {
         inboxMutex.release();
     }
-    return { files: {} };
+    return { files: {}, alerts: [] };
 }
 
 // Save inbox data helper to encrypted database
@@ -128,6 +128,10 @@ async function saveInbox(inbox) {
             };
         });
         db.set('inbox_files', list);
+        // Perzistovat i alerty (pokud je volající předal), jinak by se ztratily.
+        if (inbox.alerts !== undefined) {
+            db.set('inbox_alerts', inbox.alerts || []);
+        }
     } catch (e) {
         console.error("⚠️ Nepodařilo se uložit inbox do databáze:", e.message);
     } finally {
@@ -302,45 +306,6 @@ function runRegexExtractor(text) {
     return metadata;
 }
 
-// Calculate deadline target date helper
-function calculateDeadlineDate(days) {
-    if (!days) return null;
-    const d = new Date();
-    d.setDate(d.getDate() + days);
-    return d.toISOString().split('T')[0]; // YYYY-MM-DD
-}
-
-// Ollama AI Metadata Extractor
-async function runAIExtractor(text) {
-    // Build a highly optimized, single-shot structured JSON prompt
-    const prompt = `Zanalyzuj následující český právní text a vytáhni z něj klíčová strukturovaná metadata.
-Reaguj VÝHRADNĚ validním JSON objektem s těmito poli:
-{
-  "caseNumber": "spisová značka ve formátu např. '23 C 120/2026'",
-  "plaintiff": "jméno žalobce",
-  "defendant": "jméno žalovaného",
-  "deadlineDays": 15, // lhůta k vyjádření v dnech jako číslo, pokud je uvedena
-  "summary": "krátké shrnutí obsahu jednou větou"
-}
-
-Text k analýze:
-${text.substring(0, 3000)}`;
-
-    const response = await ollama.chat({
-        model: "llama3",
-        messages: [{ role: 'user', content: prompt }],
-        options: { temperature: 0.1 }
-    });
-    
-    const content = response.message.content;
-    
-    // Parse the JSON blocks safely
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-        return JSON.parse(jsonMatch[0]);
-    }
-    return null;
-}
 
 // Hlídač insolvencí (ISIR Watcher) - Runs active insolvency check on all monitored IČOs
 async function checkAllInsolvencies() {

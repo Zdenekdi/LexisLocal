@@ -8,7 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const WATCH_DIR = process.env.WATCH_DIR || path.join(require('os').homedir(), 'Desktop', 'LexisSpisy');
+const { WATCH_DIR } = require('./config'); // jeden zdroj pravdy, viz lib/config.js
 const DB_FILE = path.join(WATCH_DIR, '.lexis.db');
 const KEY_FILE = path.join(WATCH_DIR, '.lexis.key'); // Local encryption key
 

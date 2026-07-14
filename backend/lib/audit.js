@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 // Save the audit log inside the watched dir as a hidden file for resilience and cloud syncing
-const WATCH_DIR = process.env.WATCH_DIR || path.join(require('os').homedir(), 'Desktop', 'LexisSpisy');
+const { WATCH_DIR } = require('./config'); // jeden zdroj pravdy, viz lib/config.js
 const AUDIT_LOG_FILE = path.join(WATCH_DIR, '.audit_log.json');
 
 /**
@@ -59,7 +59,22 @@ function logEvent(user, operation, target, details = {}) {
     }
 }
 
+/**
+ * Vyčistí auditní log (zapíše prázdné pole). Používá stejnou cestu jako zápis,
+ * takže se nikdy nesmaže jiný soubor kvůli odlišnému výpočtu WATCH_DIR.
+ */
+function clearAuditLogs() {
+    try {
+        fs.writeFileSync(AUDIT_LOG_FILE, JSON.stringify([], null, 2), 'utf-8');
+        return true;
+    } catch (e) {
+        console.error("❌ Nepodařilo se vyčistit auditní log:", e.message);
+        return false;
+    }
+}
+
 module.exports = {
     loadAuditLogs,
-    logEvent
+    logEvent,
+    clearAuditLogs
 };

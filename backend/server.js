@@ -8,7 +8,7 @@ const crypto = require('crypto');
 const { WATCH_DIR, loadInbox, saveInbox, processDocument, setWatcherState, checkAllInsolvencies } = require('./lib/watcher');
 const { checkSubject } = require('./lib/registries');
 const { indexDocument, deleteDocumentIndex, searchSimilar, loadIndex } = require('./lib/rag');
-const { logEvent } = require('./lib/audit');
+const { logEvent, clearAuditLogs } = require('./lib/audit');
 const { loadAgents, saveAgent, deleteAgent, resetAgentToDefault } = require('./lib/agents');
 const ChiefOrchestrator = require('./lib/orchestrator');
 const db = require('./lib/database');
@@ -18,6 +18,7 @@ const ConflictDetector = require('./lib/conflicts');
 const JudikaturaWatcher = require('./lib/judikatura');
 const ManagerialIntelligence = require('./lib/managerial');
 const HearingsWatcher = require('./lib/hearings');
+const { buildIcs, sanitizeFileName } = require('./lib/ics'); // jeden generátor ICS + sanitizace názvu
 const { writeToSystemCalendar } = require('./lib/calendar');
 const { anonymizeText } = require('./lib/anonymizer');
 const { getHardwareProfile, calculateInferenceMetrics, getSystemTelemetry } = require('./lib/green_monitor');
@@ -36,6 +37,28 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
+
+// --- Ochrana proti path traversal ---
+// Vrátí bezpečnou absolutní cestu uvnitř WATCH_DIR pro daný název souboru.
+// Zahodí adresářové komponenty (path.basename) a ověří, že výsledek nikdy
+// neopustí kořenový adresář (obrana proti "../", absolutním cestám i "\0").
+function safePathInWatchDir(fileName) {
+    const raw = String(fileName == null ? '' : fileName);
+    if (raw.indexOf('\0') !== -1) {
+        throw new Error('Neplatný název souboru.');
+    }
+    const base = path.basename(raw);
+    if (!base || base === '.' || base === '..') {
+        throw new Error('Neplatný název souboru.');
+    }
+    const root = path.resolve(WATCH_DIR);
+    const resolved = path.resolve(root, base);
+    const rootWithSep = root.endsWith(path.sep) ? root : root + path.sep;
+    if (resolved !== root && !resolved.startsWith(rootWithSep)) {
+        throw new Error('Cesta mimo povolený adresář.');
+    }
+    return resolved;
+}
 
 // Secure API Token Middleware
 const API_TOKEN = process.env.API_TOKEN;
@@ -359,6 +382,9 @@ app.post('/api/agent-swarm/debate', async (req, res) => {
     }
 
     try {
+        // GDPR: kontext se před odesláním do modelu anonymizuje stejně jako u /api/agent.
+        const safeContext = context ? anonymizeText(context) : context;
+
         // --- STEP 1: INVOKE AGENT 1 (CREATOR) ---
         const messages1 = [
             { role: 'system', content: agent1.systemPrompt }
@@ -371,8 +397,8 @@ app.post('/api/agent-swarm/debate', async (req, res) => {
             });
         }
         
-        if (context) {
-            messages1.push({ role: 'system', content: `Kontext dokumentu:\n${context}` });
+        if (safeContext) {
+            messages1.push({ role: 'system', content: `Kontext dokumentu:\n${safeContext}` });
         }
         
         messages1.push({ role: 'user', content: prompt });
@@ -397,8 +423,8 @@ app.post('/api/agent-swarm/debate', async (req, res) => {
             });
         }
         
-        if (context) {
-            messages2.push({ role: 'system', content: `Kontext dokumentu:\n${context}` });
+        if (safeContext) {
+            messages2.push({ role: 'system', content: `Kontext dokumentu:\n${safeContext}` });
         }
         
         messages2.push({
@@ -988,12 +1014,17 @@ app.post('/api/inbox/upload', async (req, res) => {
         return res.status(400).json({ error: "Název souboru a base64 obsah jsou povinné." });
     }
     
+    let filePath;
     try {
-        const filePath = path.join(WATCH_DIR, fileName);
-        
+        filePath = safePathInWatchDir(fileName);
+    } catch (e) {
+        return res.status(400).json({ error: e.message });
+    }
+
+    try {
         // Clean base64 prefix if present
         const base64Data = base64.replace(/^data:.*?;base64,/, "");
-        
+
         const buffer = Buffer.from(base64Data, 'base64');
         await fs.promises.writeFile(filePath, buffer);
         console.log(`📥 Nahraný soubor uložen na disk: ${filePath}`);
@@ -1113,7 +1144,9 @@ app.post('/api/campaigns/validate-recipients', async (req, res) => {
                 if (checked.error) {
                     return { ico: cleanIco, error: checked.error };
                 }
-                // Generate a mock ISDS data box ID if not returned or found
+                // POZOR: toto NENÍ reálné ISDS ID — je odvozené z IČO jako placeholder.
+                // isdsSimulated:true označuje, že datovou schránku je nutné před
+                // odesláním ověřit v oficiálním registru (nesmí se doručovat naslepo).
                 const cleanName = checked.name.toLowerCase();
                 let isdsId = "";
                 if (cleanName.includes("banka") || cleanName.includes("spořitelna")) {
@@ -1125,7 +1158,8 @@ app.post('/api/campaigns/validate-recipients', async (req, res) => {
                 }
                 return {
                     ...checked,
-                    isdsId
+                    isdsId,
+                    isdsSimulated: true
                 };
             } catch (err) {
                 return { ico: cleanIco, error: err.message };
@@ -1187,38 +1221,16 @@ app.post('/api/campaigns/send', async (req, res) => {
                 })
             });
             
-            // 3. Generate ICS calendar file in Kalendar directory
+            // 3. Generate ICS calendar file in Kalendar directory (jeden generátor s escapováním)
             const cleanId = 'camp_dl_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
-            const dtstamp = new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
-            const startDate = deadlineDate.toISOString().split('T')[0].replace(/-/g, '');
-            
-            const endD = new Date(deadlineDate);
-            endD.setDate(endD.getDate() + 1);
-            const endDate = endD.toISOString().split('T')[0].replace(/-/g, '');
-            
-            const cleanTitle = `⚠️ LHŮTA: ${alertTitle}`;
-            
-            const icsContent = [
-                'BEGIN:VCALENDAR',
-                'VERSION:2.0',
-                'PRODID:-//LexisLocal//NONSGML iCalendar Generator//CS',
-                'CALSCALE:GREGORIAN',
-                'BEGIN:VEVENT',
-                `UID:${cleanId}@lexislocal`,
-                `DTSTAMP:${dtstamp}`,
-                `DTSTART;VALUE=DATE:${startDate}`,
-                `DTEND;VALUE=DATE:${endDate}`,
-                `SUMMARY:${cleanTitle}`,
-                `DESCRIPTION:${alertDetails}`,
-                'BEGIN:VALARM',
-                'TRIGGER:-P1D', // Alert 1 day before
-                'ACTION:DISPLAY',
-                'DESCRIPTION:Připomenutí blížící se lhůty Lexis',
-                'END:VALARM',
-                'END:VEVENT',
-                'END:VCALENDAR'
-            ].join('\r\n');
-            
+            const icsContent = buildIcs({
+                id: cleanId,
+                title: `⚠️ LHŮTA: ${alertTitle}`,
+                date: deadlineDate.toISOString().split('T')[0],
+                description: alertDetails,
+                alarm: true
+            });
+
             const safeName = sanitizeFileName(alertTitle);
             const filePath = path.join(CALENDAR_DIR, `${safeName}.ics`);
             await fs.promises.writeFile(filePath, icsContent, 'utf-8');
@@ -1227,26 +1239,24 @@ app.post('/api/campaigns/send', async (req, res) => {
                 ico,
                 name,
                 isdsId,
-                status: 'Odesláno',
+                status: 'Simulováno (neodesláno)',
+                simulated: true,
                 alertId: alert.id,
                 calendarFile: filePath
             });
         }
-        
+
         res.json({
             success: true,
+            simulated: true,
             results,
-            message: `Hromadné obesílání dokončeno. Úspěšně odesláno ${results.length} zpráv, zapsáno do logů a naplánováno v kalendáři.`
+            message: `SIMULACE hromadného obesílání: ${results.length} zpráv NEBYLO reálně odesláno (chybí napojení na ISDS). Vytvořeny záznamy do logu, hlídání doručenek a kalendářní lhůty.`
         });
     } catch (err) {
         res.status(500).json({ error: `Chyba při hromadném odesílání: ${err.message}` });
     }
 });
 
-// Helper function to sanitize calendar file names
-function sanitizeFileName(name) {
-    return name.replace(/[^a-zA-Z0-9_á-žÁ-Ž]/g, '_').substring(0, 100);
-}
 
 // POST /api/calendar/add - Generate standard .ics file inside LexisSpisy/Kalendar folder
 app.post('/api/calendar/add', async (req, res) => {
@@ -1262,56 +1272,20 @@ app.post('/api/calendar/add', async (req, res) => {
         }
         
         const cleanId = id || 'dl_' + Date.now();
-        const dtstamp = new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
-        const startDate = dueDate.replace(/-/g, '');
-        
-        let startLine, endLine;
-        if (time) {
-            const timeClean = time.replace(/:/g, '').substring(0, 4) + '00';
-            startLine = `DTSTART;TZID=Europe/Prague:${startDate}T${timeClean}`;
-            
-            // Assume 1 hour
-            const [h, m] = time.split(':');
-            const startD = new Date(`${dueDate}T${h}:${m}:00`);
-            const endD = new Date(startD.getTime() + 60 * 60 * 1000);
-            const endDateStr = endD.toISOString().split('T')[0].replace(/-/g, '');
-            const endTimeClean = endD.toTimeString().split(' ')[0].replace(/:/g, '');
-            endLine = `DTEND;TZID=Europe/Prague:${endDateStr}T${endTimeClean}`;
-        } else {
-            startLine = `DTSTART;VALUE=DATE:${startDate}`;
-            const endD = new Date(dueDate);
-            endD.setDate(endD.getDate() + 1);
-            const endDateStr = endD.toISOString().split('T')[0].replace(/-/g, '');
-            endLine = `DTEND;VALUE=DATE:${endDateStr}`;
-        }
-        
         const prefix = isHearing ? '⚖️ JEDNÁNÍ' : '⚠️ LHŮTA';
         const cleanTitle = `${prefix}: ${title}`;
-        const cleanDesc = context ? context.replace(/\r?\n/g, ' ') : `Detekovaná událost v systému Lexis.`;
-        
-        const lines = [
-            'BEGIN:VCALENDAR',
-            'VERSION:2.0',
-            'PRODID:-//LexisLocal//NONSGML iCalendar Generator//CS',
-            'CALSCALE:GREGORIAN',
-            'BEGIN:VEVENT',
-            `UID:${cleanId}@lexislocal`,
-            `DTSTAMP:${dtstamp}`,
-            startLine,
-            endLine,
-            `SUMMARY:${cleanTitle}`,
-            `DESCRIPTION:${cleanDesc}`
-        ];
-        
-        if (location) {
-            lines.push(`LOCATION:${location}`);
-        }
-        
-        lines.push('END:VEVENT');
-        lines.push('END:VCALENDAR');
-        
-        const icsContent = lines.join('\r\n');
-        
+        const cleanDesc = context || 'Detekovaná událost v systému Lexis.';
+
+        // Jeden generátor ICS s escapováním (viz lib/ics.js)
+        const icsContent = buildIcs({
+            id: cleanId,
+            title: cleanTitle,
+            date: dueDate,
+            time: time,
+            location: location,
+            description: cleanDesc
+        });
+
         const safeName = sanitizeFileName(title);
         const filePath = path.join(CALENDAR_DIR, `${safeName}.ics`);
         
@@ -1692,25 +1666,30 @@ app.get('/api/registries/check', async (req, res) => {
         const lastDigit = parseInt(cleanIco.slice(-1)) || 0;
         
         // CEE Simulation based on deterministic seed (ICO last digit)
+        // simulated:true je strojově čitelný příznak — frontend NESMÍ tato data
+        // prezentovat jako ověřená (jde o odhad, ne o reálné dotazy do CEE).
         if (lastDigit % 3 === 0) {
             result.cee = {
+                simulated: true,
                 activeExecutions: 2,
                 totalAmount: 184500,
-                disclaimer: "Simulováno z CEE. Pro ostrý přístup doplňte přihlašovací údaje Exekutorské komory v nastavení."
+                disclaimer: "SIMULOVÁNO (neověřeno) z CEE. Pro ostrý přístup doplňte přihlašovací údaje Exekutorské komory v nastavení."
             };
         } else {
             result.cee = {
+                simulated: true,
                 activeExecutions: 0,
                 totalAmount: 0,
-                disclaimer: "Simulováno z CEE. Pro ostrý přístup doplňte přihlašovací údaje Exekutorské komory v nastavení."
+                disclaimer: "SIMULOVÁNO (neověřeno) z CEE. Pro ostrý přístup doplňte přihlašovací údaje Exekutorské komory v nastavení."
             };
         }
-        
+
         // Katastr Simulation based on seed
         result.katastr = {
+            simulated: true,
             propertiesCount: lastDigit % 2 === 0 ? 1 : 0,
             hasPlomba: lastDigit % 4 === 0,
-            disclaimer: "Simulováno z Katastru nemovitostí (dálkový přístup)."
+            disclaimer: "SIMULOVÁNO (neověřeno) z Katastru nemovitostí (dálkový přístup)."
         };
         
         res.json(result);
@@ -1726,11 +1705,17 @@ app.post('/api/registries/save-report', async (req, res) => {
         return res.status(400).json({ error: "Chybí povinná data pro uložení prověrky." });
     }
     
+    // IČO smí obsahovat pouze číslice (obrana proti path traversal přes ico).
+    const cleanIco = String(ico).replace(/\D/g, '').slice(0, 12);
+    if (!cleanIco) {
+        return res.status(400).json({ error: "Neplatné IČO." });
+    }
+
     try {
         const cleanName = name.replace(/[^a-zA-Z0-9čšžýáíéóúůďťňĎŤŇČŠŽÝÁÍÉÓÚŮ\s-_]/g, '').replace(/\s+/g, '_');
-        const fileName = `Proverka_${cleanName}_${ico}.txt`;
-        const filePath = path.join(WATCH_DIR, fileName);
-        
+        const fileName = `Proverka_${cleanName}_${cleanIco}.txt`;
+        const filePath = safePathInWatchDir(fileName);
+
         await fs.promises.writeFile(filePath, reportText, 'utf-8');
         console.log(`📥 Lustrační centrum: Uložena nová prověrka do: ${filePath}`);
         
@@ -1852,14 +1837,10 @@ app.get('/api/audit/logs', (req, res) => {
 
 // POST /api/audit/clear - Clear all audit trail log events
 app.post('/api/audit/clear', async (req, res) => {
-    const fs = require('fs');
-    const path = require('path');
     try {
-        const WATCH_DIR = process.env.WATCH_DIR || path.join(require('os').homedir(), 'Desktop', 'LexisSpisy');
-        const AUDIT_LOG_FILE = path.join(WATCH_DIR, '.audit_log.json');
-        if (fs.existsSync(AUDIT_LOG_FILE)) {
-            await fs.promises.writeFile(AUDIT_LOG_FILE, JSON.stringify([], null, 2), 'utf-8');
-        }
+        // Delegace do audit modulu — používá stejnou cestu jako zápis logu,
+        // takže se nemůže smazat jiný soubor kvůli odlišnému výpočtu WATCH_DIR.
+        clearAuditLogs();
         logEvent('LexisLocal Dashboard', 'Pročištění logů', 'Audit Trail', { cleared: true });
         res.json({ success: true, message: "Auditní logy byly vyčištěny." });
     } catch (err) {
@@ -2091,11 +2072,12 @@ app.post('/api/email/simulate', async (req, res) => {
         const cleanBody = body.replace(/^@[a-zA-Z0-9_ěščřžýáíéúůóďťňĎŤŇ]+\s*/, ''); // Odstranit případný tag z těla
         
         try {
+            // GDPR: tělo e-mailu se před odesláním do modelu anonymizuje.
             const response = await ollama.chat({
                 model: selectedModel,
                 messages: [
                     { role: 'system', content: agent.systemPrompt },
-                    { role: 'user', content: cleanBody }
+                    { role: 'user', content: anonymizeText(cleanBody) }
                 ],
                 options: {
                     temperature: 0.3

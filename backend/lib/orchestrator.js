@@ -5,6 +5,7 @@
  */
 
 const { loadAgents } = require('./agents');
+const { anonymizeText } = require('./anonymizer'); // GDPR: kontext se anonymizuje před modelem
 const { searchSimilar } = require('./rag');
 const { checkSubject } = require('./registries');
 const ollamaLib = require('ollama');
@@ -40,7 +41,8 @@ class ChiefOrchestrator {
         
         let accumulatedContext = "";
         if (context) {
-            accumulatedContext += `Výchozí kontext dokumentu z editoru:\n${context}\n\n`;
+            // GDPR: syrový kontext z editoru se před vstupem do modelu anonymizuje.
+            accumulatedContext += `Výchozí kontext dokumentu z editoru:\n${anonymizeText(context)}\n\n`;
         }
 
         // --- KROK 2: Sekvenční spuštění (Delegation & Sandbox) ---
@@ -315,8 +317,14 @@ Vytvoř maximálně 2 až 4 logické a vysoce efektivní kroky tak, aby na sebe 
             });
 
             const contentText = response.message.content.trim();
-            // Remove markdown code blocks if any got leaked
-            const jsonText = contentText.replace(/^```json/i, '').replace(/```$/, '').trim();
+            // Robustně odstraníme markdown fence — ať už ```json, prostý ``` nebo
+            // fence uprostřed textu (dřív se řešil jen prefix ```json).
+            let jsonText = contentText;
+            const fenceMatch = contentText.match(/```(?:json)?\s*([\s\S]*?)```/i);
+            if (fenceMatch) {
+                jsonText = fenceMatch[1];
+            }
+            jsonText = jsonText.trim();
             
             const steps = JSON.parse(jsonText);
             if (Array.isArray(steps) && steps.length > 0) {
