@@ -37,6 +37,28 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
+// --- Ochrana proti path traversal ---
+// Vrátí bezpečnou absolutní cestu uvnitř WATCH_DIR pro daný název souboru.
+// Zahodí adresářové komponenty (path.basename) a ověří, že výsledek nikdy
+// neopustí kořenový adresář (obrana proti "../", absolutním cestám i "\0").
+function safePathInWatchDir(fileName) {
+    const raw = String(fileName == null ? '' : fileName);
+    if (raw.indexOf('\0') !== -1) {
+        throw new Error('Neplatný název souboru.');
+    }
+    const base = path.basename(raw);
+    if (!base || base === '.' || base === '..') {
+        throw new Error('Neplatný název souboru.');
+    }
+    const root = path.resolve(WATCH_DIR);
+    const resolved = path.resolve(root, base);
+    const rootWithSep = root.endsWith(path.sep) ? root : root + path.sep;
+    if (resolved !== root && !resolved.startsWith(rootWithSep)) {
+        throw new Error('Cesta mimo povolený adresář.');
+    }
+    return resolved;
+}
+
 // Secure API Token Middleware
 const API_TOKEN = process.env.API_TOKEN;
 const authenticate = (req, res, next) => {
@@ -988,12 +1010,17 @@ app.post('/api/inbox/upload', async (req, res) => {
         return res.status(400).json({ error: "Název souboru a base64 obsah jsou povinné." });
     }
     
+    let filePath;
     try {
-        const filePath = path.join(WATCH_DIR, fileName);
-        
+        filePath = safePathInWatchDir(fileName);
+    } catch (e) {
+        return res.status(400).json({ error: e.message });
+    }
+
+    try {
         // Clean base64 prefix if present
         const base64Data = base64.replace(/^data:.*?;base64,/, "");
-        
+
         const buffer = Buffer.from(base64Data, 'base64');
         await fs.promises.writeFile(filePath, buffer);
         console.log(`📥 Nahraný soubor uložen na disk: ${filePath}`);
@@ -1726,11 +1753,17 @@ app.post('/api/registries/save-report', async (req, res) => {
         return res.status(400).json({ error: "Chybí povinná data pro uložení prověrky." });
     }
     
+    // IČO smí obsahovat pouze číslice (obrana proti path traversal přes ico).
+    const cleanIco = String(ico).replace(/\D/g, '').slice(0, 12);
+    if (!cleanIco) {
+        return res.status(400).json({ error: "Neplatné IČO." });
+    }
+
     try {
         const cleanName = name.replace(/[^a-zA-Z0-9čšžýáíéóúůďťňĎŤŇČŠŽÝÁÍÉÓÚŮ\s-_]/g, '').replace(/\s+/g, '_');
-        const fileName = `Proverka_${cleanName}_${ico}.txt`;
-        const filePath = path.join(WATCH_DIR, fileName);
-        
+        const fileName = `Proverka_${cleanName}_${cleanIco}.txt`;
+        const filePath = safePathInWatchDir(fileName);
+
         await fs.promises.writeFile(filePath, reportText, 'utf-8');
         console.log(`📥 Lustrační centrum: Uložena nová prověrka do: ${filePath}`);
         

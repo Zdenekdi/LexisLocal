@@ -23,9 +23,16 @@ let customFieldIdsCache = null;
  */
 async function handlePaperlessWebhook(payload) {
     const { document_id, title, content, tags } = payload;
-    
+
     if (!document_id || !title) {
         throw new Error("Neplatný webhook payload: chybí document_id nebo title.");
+    }
+
+    // document_id z Paperlessu je vždy číselné — vynutíme to (obrana proti
+    // path traversal / injekci přes odvozený název souboru).
+    const safeDocId = String(document_id).replace(/\D/g, '');
+    if (!safeDocId) {
+        throw new Error("Neplatný webhook payload: document_id musí být číselné.");
     }
 
     const docText = content || '';
@@ -75,18 +82,18 @@ async function handlePaperlessWebhook(payload) {
 
     // 3. Save to LexisLocal Inbox
     const inbox = await loadInbox();
-    const fileName = `paperless_${document_id}_${title.replace(/[^a-zA-Z0-9-_.]/g, '_')}`;
-    
+    const fileName = `paperless_${safeDocId}_${title.replace(/[^a-zA-Z0-9-_.]/g, '_')}`;
+
     inbox.files[fileName] = {
         fileName: title,
-        filePath: `paperless://${document_id}`,
+        filePath: `paperless://${safeDocId}`,
         status: "unread",
         caseNumber: metadata.caseNumber || "Neznámá sp. zn.",
         plaintiff: metadata.plaintiff || "Nezjištěn",
         defendant: metadata.defendant || "Nezjištěn",
         deadlineDays: metadata.deadlineDays || 0,
         deadlineDate: metadata.deadlineDate || null,
-        summary: metadata.summary || `Importováno z Paperless-ngx (ID: ${document_id}).`,
+        summary: metadata.summary || `Importováno z Paperless-ngx (ID: ${safeDocId}).`,
         ico: metadata.ico || null,
         inInsolvency: registryData ? registryData.inInsolvency : false,
         insolvencyCase: registryData ? registryData.insolvencyCase : null,
@@ -98,7 +105,7 @@ async function handlePaperlessWebhook(payload) {
     console.log(`✅ Paperless: Dokument ${title} byl zapsán do lokálního inboxu.`);
 
     logEvent('PaperlessWebhook', 'Zpracování dokumentu', title, {
-        documentId: document_id,
+        documentId: safeDocId,
         caseNumber: metadata.caseNumber || 'Nezjištěna',
         deadlineDays: metadata.deadlineDays || 0
     });
@@ -115,7 +122,7 @@ async function handlePaperlessWebhook(payload) {
     // 5. Write back Custom Fields to Paperless API
     if (PAPERLESS_API_TOKEN) {
         try {
-            await writebackMetadataToPaperless(document_id, metadata, registryData);
+            await writebackMetadataToPaperless(safeDocId, metadata, registryData);
         } catch (err) {
             console.error(`❌ Paperless Writeback: Selhal zpětný zápis metadat:`, err.message);
         }
