@@ -72,10 +72,15 @@ describe('Sovereign Environment Setup', () => {
             expect(anonymized).not.toContain('850708/1234');
         });
 
-        it('redacts Czech phone numbers correctly', () => {
+        it('redacts labeled/prefixed phone numbers but not bare numbers', () => {
+            // Telefon se rediguje jen s označením (Tel./Mobil./Fax) nebo mezinárodní
+            // předvolbou (+420). Holé 9místné číslo bez označení se NEredIGuje —
+            // v právním textu jde častěji o spisovou značku/IČO/částku než o telefon.
             const text = 'Mé telefonní číslo je +420 777 123 456, případně volejte 602987654.';
-            const anonymized = anonymizeText(text);
-            expect(anonymized).toBe('Mé telefonní číslo je [TELEFON], případně volejte [TELEFON].');
+            expect(anonymizeText(text)).toBe('Mé telefonní číslo je [TELEFON], případně volejte 602987654.');
+            expect(anonymizeText('Tel.: 777 123 456')).toBe('Tel.: [TELEFON]');
+            expect(anonymizeText('Mobil: 602987654')).toBe('Mobil: [TELEFON]');
+            expect(anonymizeText('Fax: +420 541 245 111')).toBe('Fax: [TELEFON]');
         });
 
         it('redacts Czech academic titles and names correctly', () => {
