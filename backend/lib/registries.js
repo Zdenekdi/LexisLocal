@@ -7,6 +7,11 @@
 
 const https = require('https');
 
+// Demo/testovací fixtures (smyšlené subjekty) jsou aktivní jen v demo/test režimu.
+// V produkci se i tato IČO dotazují reálných registrů — nikdy nevracíme
+// fabrikovaná data jako ověřená.
+const DEMO_FIXTURES = process.env.LEXIS_DEMO === '1' || process.env.NODE_ENV === 'test';
+
 /**
  * Robust native HTTPS helper to avoid extra external package dependencies
  */
@@ -58,11 +63,12 @@ function fetchUrl(url, options = {}) {
  * Queries the official ARES REST API
  */
 async function checkAres(ico) {
-    if (ico === "12345678" || ico === "88888888") {
+    if (DEMO_FIXTURES && (ico === "12345678" || ico === "88888888")) {
         return {
             ico: ico,
             name: ico === "12345678" ? "Úpadce s.r.o." : "Rizikový Věřitel a.s.",
-            seat: "Vodičkova 736/17, Nové Město, 11000 Praha 1"
+            seat: "Vodičkova 736/17, Nové Město, 11000 Praha 1",
+            simulated: true
         };
     }
     try {
@@ -97,11 +103,12 @@ async function checkAres(ico) {
  * Queries the official Ministry of Justice SOAP Web Service (ISIR)
  */
 async function checkIsir(ico) {
-    if (ico === "12345678" || ico === "88888888") {
+    if (DEMO_FIXTURES && (ico === "12345678" || ico === "88888888")) {
         return {
             inInsolvency: true,
             caseNumber: "MSP-123/2026",
-            status: "Zahájené insolvenční řízení"
+            status: "Zahájené insolvenční řízení",
+            simulated: true
         };
     }
     try {

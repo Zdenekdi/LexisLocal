@@ -1140,7 +1140,9 @@ app.post('/api/campaigns/validate-recipients', async (req, res) => {
                 if (checked.error) {
                     return { ico: cleanIco, error: checked.error };
                 }
-                // Generate a mock ISDS data box ID if not returned or found
+                // POZOR: toto NENÍ reálné ISDS ID — je odvozené z IČO jako placeholder.
+                // isdsSimulated:true označuje, že datovou schránku je nutné před
+                // odesláním ověřit v oficiálním registru (nesmí se doručovat naslepo).
                 const cleanName = checked.name.toLowerCase();
                 let isdsId = "";
                 if (cleanName.includes("banka") || cleanName.includes("spořitelna")) {
@@ -1152,7 +1154,8 @@ app.post('/api/campaigns/validate-recipients', async (req, res) => {
                 }
                 return {
                     ...checked,
-                    isdsId
+                    isdsId,
+                    isdsSimulated: true
                 };
             } catch (err) {
                 return { ico: cleanIco, error: err.message };
@@ -1254,16 +1257,18 @@ app.post('/api/campaigns/send', async (req, res) => {
                 ico,
                 name,
                 isdsId,
-                status: 'Odesláno',
+                status: 'Simulováno (neodesláno)',
+                simulated: true,
                 alertId: alert.id,
                 calendarFile: filePath
             });
         }
-        
+
         res.json({
             success: true,
+            simulated: true,
             results,
-            message: `Hromadné obesílání dokončeno. Úspěšně odesláno ${results.length} zpráv, zapsáno do logů a naplánováno v kalendáři.`
+            message: `SIMULACE hromadného obesílání: ${results.length} zpráv NEBYLO reálně odesláno (chybí napojení na ISDS). Vytvořeny záznamy do logu, hlídání doručenek a kalendářní lhůty.`
         });
     } catch (err) {
         res.status(500).json({ error: `Chyba při hromadném odesílání: ${err.message}` });
@@ -1719,25 +1724,30 @@ app.get('/api/registries/check', async (req, res) => {
         const lastDigit = parseInt(cleanIco.slice(-1)) || 0;
         
         // CEE Simulation based on deterministic seed (ICO last digit)
+        // simulated:true je strojově čitelný příznak — frontend NESMÍ tato data
+        // prezentovat jako ověřená (jde o odhad, ne o reálné dotazy do CEE).
         if (lastDigit % 3 === 0) {
             result.cee = {
+                simulated: true,
                 activeExecutions: 2,
                 totalAmount: 184500,
-                disclaimer: "Simulováno z CEE. Pro ostrý přístup doplňte přihlašovací údaje Exekutorské komory v nastavení."
+                disclaimer: "SIMULOVÁNO (neověřeno) z CEE. Pro ostrý přístup doplňte přihlašovací údaje Exekutorské komory v nastavení."
             };
         } else {
             result.cee = {
+                simulated: true,
                 activeExecutions: 0,
                 totalAmount: 0,
-                disclaimer: "Simulováno z CEE. Pro ostrý přístup doplňte přihlašovací údaje Exekutorské komory v nastavení."
+                disclaimer: "SIMULOVÁNO (neověřeno) z CEE. Pro ostrý přístup doplňte přihlašovací údaje Exekutorské komory v nastavení."
             };
         }
-        
+
         // Katastr Simulation based on seed
         result.katastr = {
+            simulated: true,
             propertiesCount: lastDigit % 2 === 0 ? 1 : 0,
             hasPlomba: lastDigit % 4 === 0,
-            disclaimer: "Simulováno z Katastru nemovitostí (dálkový přístup)."
+            disclaimer: "SIMULOVÁNO (neověřeno) z Katastru nemovitostí (dálkový přístup)."
         };
         
         res.json(result);

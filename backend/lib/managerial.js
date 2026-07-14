@@ -169,23 +169,45 @@ class ManagerialIntelligence {
      */
     getCapacityAllocation() {
         const alerts = db.get('alerts').filter(a => a.status === 'pending');
-        
-        const staff = [
-            { id: "advokat", name: "JUDr. Zdeněk Dias (Advokát)", role: "Partner", load: 0, status: "optimal" },
-            { id: "koncipient_a", name: "Mgr. Jan Novák (Koncipient A)", role: "Koncipient", load: 0, status: "optimal" },
-            { id: "koncipient_b", name: "Mgr. Eva Sladká (Koncipient B)", role: "Koncipient", load: 0, status: "optimal" }
-        ];
 
-        // Intelligently allocate tasks based on keywords in alerts
+        // Tým se primárně načítá z konfigurace (db kolekce 'staff'). Pokud není
+        // nastaven, použije se NEUTRÁLNÍ ukázkový tým označený demo:true — dřív
+        // zde byla natvrdo konkrétní (fabrikovaná) jména vydávaná za reálný tým.
+        let configured = db.get('staff');
+        let isDemo = false;
+        let staff;
+        if (Array.isArray(configured) && configured.length > 0) {
+            staff = configured.map(s => ({
+                id: s.id,
+                name: s.name,
+                role: s.role || 'Koncipient',
+                load: 0,
+                status: 'optimal'
+            }));
+        } else {
+            isDemo = true;
+            staff = [
+                { id: "partner", name: "Partner (ukázka)", role: "Partner", load: 0, status: "optimal" },
+                { id: "koncipient_a", name: "Koncipient A (ukázka)", role: "Koncipient", load: 0, status: "optimal" },
+                { id: "koncipient_b", name: "Koncipient B (ukázka)", role: "Koncipient", load: 0, status: "optimal" }
+            ];
+        }
+
+        // Rozdělení úkolů podle klíčových slov — cílíme podle role (robustní i pro
+        // jinou velikost týmu než 3).
+        const partner = staff.find(s => (s.role || '').toLowerCase().includes('partner')) || staff[0];
+        const koncipienti = staff.filter(s => s !== partner);
+        let rr = 0;
         alerts.forEach(alert => {
-            const titleLower = alert.title.toLowerCase();
-            
+            const titleLower = (alert.title || '').toLowerCase();
             if (titleLower.includes('odvolání') || titleLower.includes('rozsudek')) {
-                staff[0].load += 1.5; // Advokát reviews court orders
-            } else if (titleLower.includes('smlouva') || titleLower.includes('lustrace')) {
-                staff[1].load += 1.0; // Koncipient A drafts contracts
-            } else {
-                staff[2].load += 0.8; // Koncipient B reviews AML and others
+                if (partner) partner.load += 1.5;
+            } else if (koncipienti.length > 0) {
+                const target = koncipienti[rr % koncipienti.length];
+                target.load += (titleLower.includes('smlouva') || titleLower.includes('lustrace')) ? 1.0 : 0.8;
+                rr++;
+            } else if (partner) {
+                partner.load += 0.8;
             }
         });
 
@@ -205,6 +227,7 @@ class ManagerialIntelligence {
 
         return {
             staff: updatedStaff,
+            demo: isDemo,
             totalAlertsCount: alerts.length,
             timestamp: new Date().toISOString()
         };
