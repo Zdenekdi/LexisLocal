@@ -25,7 +25,6 @@ const { getHardwareProfile, calculateInferenceMetrics, getSystemTelemetry } = re
 const { generateDublinCoreXml } = require('./lib/archival');
 
 
-
 // Robust Ollama module import supporting both CommonJS and ESM default exports
 const ollamaLib = require('ollama');
 const ollama = ollamaLib.default || ollamaLib;
@@ -578,7 +577,6 @@ app.post('/api/activity/custom', (req, res) => {
     }
 });
 
-
 // GET /api/activity/today - Get aggregated activities for today
 app.get('/api/activity/today', (req, res) => {
     try {
@@ -985,7 +983,6 @@ app.get('/api/inbox/case/:caseNum/timeline', async (req, res) => {
     }
 });
 
-
 // POST /api/inbox/delete - Delete document from index and physically from disk
 app.post('/api/inbox/delete', async (req, res) => {
     const { fileName } = req.body;
@@ -1134,25 +1131,6 @@ Soud vyzývá žalovaného, aby se ve lhůtě 15 dnů od doručení tohoto usnes
     }
 });
 
-// GET /api/registry/check - Check subject against ARES and ISIR public registries
-app.get('/api/registry/check', async (req, res) => {
-    const { ico } = req.query;
-    if (!ico) {
-        return res.status(400).json({ error: "IČO je povinný parametr." });
-    }
-    
-    try {
-        const result = await checkSubject(ico);
-        if (result.error) {
-            return res.status(400).json({ error: result.error });
-        }
-        res.json(result);
-    } catch (err) {
-        res.status(500).json({ error: `Chyba při lustraci subjektu: ${err.message}` });
-    }
-});
-
-
 // POST /api/campaigns/validate-recipients - Validate a list of ICOs
 app.post('/api/campaigns/validate-recipients', async (req, res) => {
     const { icos } = req.body;
@@ -1283,7 +1261,6 @@ app.post('/api/campaigns/send', async (req, res) => {
         res.status(500).json({ error: `Chyba při hromadném odesílání: ${err.message}` });
     }
 });
-
 
 // POST /api/calendar/add - Generate standard .ics file inside LexisSpisy/Kalendar folder
 app.post('/api/calendar/add', async (req, res) => {
@@ -1416,7 +1393,6 @@ app.get('/api/calendar/events', async (req, res) => {
     }
 });
 
-
 // POST /api/calendar/sync - Manually trigger check of all monitored hearings
 app.post('/api/calendar/sync', async (req, res) => {
     try {
@@ -1427,21 +1403,23 @@ app.post('/api/calendar/sync', async (req, res) => {
     }
 });
 
-
-// Resilient Fallback Engine
+// Resilient Fallback Engine.
+// PRÁVNÍ BEZPEČNOST: offline fallback NIKDY nevymýšlí právní obsah (paragrafy,
+// judikaturu, hotové vzory). Dřív vracel konkrétní § a celé smlouvy vydávané za
+// výstup agenta — to je u nástroje pro advokáty riziko justičního omylu. Nově
+// vrací jen upozornění, že lokální model (Ollama) není dostupný — shodně s editorem.
 function generateAgentFallback(agentId, prompt) {
-    if (agentId === 'resersnik') {
-        return `📚 **[Rešeršník - Lokální Fallback]**\n\nAnalyzoval jsem právní problematiku: *"${prompt}"*.\n\n**Právní rozbor dle českého právního řádu (Zákon č. 89/2012 Sb., občanský zákoník):**\n- **Presumpce dobré víry (§ 7 OZ):** Má se za to, že ten, kdo jednal určitým způsobem, jednal v dobré víře. Protistrana by musela prokázat Váš zlý úmysl.\n- **Neplatnost právního jednání (§ 580 OZ):** Právní jednání odporující zákonu je neplatné pouze tehdy, pokud to vyžaduje smysl a účel zákona.\n\n*Doporučení:* V reakci na soudní výzvu výslovně zdůrazněte splnění všech zákonných náležitostí a presumpci dobré víry.`;
-    } else if (agentId === 'stylista') {
-        return `✍️ **[Stylista - Lokální Fallback]**\n\nUpravil jsem právní text do vytříbené advokátní češtiny:\n\n*„S ohledem na shora uvedené skutečnosti a s poukazem na ustálenou judikaturu Nejvyššího soudu ČR tímto uctivě vyzýváme druhou smluvní stranu ke splnění jejího smluvního závazku, a to ve lhůtě do 15 dnů od doručení této výzvy, pod následkem zahájení soudního řízení.“*`;
-    } else if (agentId === 'kontrolor') {
-        return `⚖️ **[Kontrolor - Lokální Fallback]**\n\nProvedl jsem právní audit a detekoval následující rizika:\n\n1. ⚠️ **Formulace lhůty:** Spojení *„bez zbytečného odkladu“* je v tomto typu kontraktu vysoce rizikové a neurčité. Doporučuji nahradit fixní lhůtou (např. *„do 3 pracovních dnů“*).\n2. ⚠️ **Smluvní pokuta:** Chybí explicitní limitace celkové výše smluvní pokuty, což by soud mohl vyhodnotit jako jednání v rozporu s dobrými mravy.`;
-    } else if (agentId === 'sekretarka') {
-        return `⏰ **[Sekretářka - Lokální Fallback]**\n\nZorganizovala jsem Váš úkol a připravila podklady:\n\n**Seznam extrahovaných úkolů:**\n- 📅 **Lhůta k vyjádření:** Zkontrolovat a do 15 dnů odeslat datovou zprávu protistraně.\n- 📧 **Klientovi:** Odeslat potvrzující e-mail o převzetí zastoupení a obdržení spisu.\n- 🗂️ **Spis:** Založit fyzickou složku spisu a zařadit do archivu pod sp. zn.\n\n*Doporučení:* Nezapomeňte jedním kliknutím vygenerovat .ics soubor a importovat termín do Vašeho systémového kalendáře!`;
-        } else if (agentId === 'spisovatel') {
-        return `📝 **[Spisovatel - Lokální Fallback]**\n\nSestavil jsem pro Vás kompletní návrh Smlouvy o dílo podle standardů portálu POHODA a občanského zákoníku č. 89/2012 Sb. na základě zadání: *"${prompt}"*.\n\n**SMLOUVA O DÍLO**\nuzavřená podle ustanovení § 2586 a násl. zákona č. 89/2012 Sb., občanský zákoník, ve znění pozdějších předpisů.\n\n**Smluvní strany**\n\n1. **Objednatel:**\n   Název/Jméno: [Doplnit...]\n   Sídlo/Bydliště: [Doplnit...]\n   IČO: [Doplnit...]\n   DIČ: [Doplnit...]\n   Zapsaná v obchodním rejstříku: [Doplnit...] vedeném u [Doplnit...] soudu, oddíl [Doplnit...], vložka [Doplnit...]\n   Zastoupená: [Doplnit...]\n   Bankovní spojení: [Doplnit...]\n   Číslo účtu: [Doplnit...]\n   (dále jen „Objednatel“)\n\na\n\n2. **Zhotovitel:**\n   Název/Jméno: [Doplnit...]\n   Sídlo/Bydliště: [Doplnit...]\n   IČO: [Doplnit...]\n   DIČ: [Doplnit...]\n   Zapsaná v obchodním rejstříku: [Doplnit...] vedeném u [Doplnit...] soudu, oddíl [Doplnit...], vložka [Doplnit...]\n   Zastoupená: [Doplnit...]\n   Bankovní spojení: [Doplnit...]\n   Číslo účtu: [Doplnit...]\n   (dále jen „Zhotovitel“)\n\n**Článek I. Předmět smlouvy**\n1. Zhotovitel se zavazuje provést na svůj náklad a nebezpečí pro Objednatele dílo: [Doplnit specifikaci díla, např. vymalování kanceláří v sídle Objednatele], a Objednatel se zavazuje dílo převzít a zaplatit zhotovateli dohodnutou cenu za dílo.\n\n**Článek II. Doba a místo plnění**\n1. Zhotovitel se zavazuje zahájit práce na díle dne: [Doplnit...] a dílo řádně dokončit a předat Objednateli nejpozději do: [Doplnit...].\n2. Místem plnění díla je: [Doplnit...].\n\n**Článek III. Cena díla a platební podmínky**\n1. Cena za řádně provedené dílo je stanovena dohodou smluvních stran a činí celkem: [Doplnit částku, např. 50 000] Kč bez DPH. DPH bude účtována v zákonné výši.\n2. Podkladem pro zaplacení ceny díla je faktura vystavená Zhotovitelem po protokolárním předání a převzetí díla bez vad a nedodělků.\n3. Splatnost faktury činí 14 dnů ode dne jejího doručení Objednateli.\n\n**Článek IV. Provádění díla a práva a povinnosti stran**\n1. Zhotovitel je povinen provádět dílo s odbornou péčí, v souladu s platnými právními předpisy, technickými normami a pokyny Objednatele.\n2. Objednatel je povinen poskytnout Zhotovateli součinnost nezbytnou pro provádění díla, zejména mu předat pracoviště ve stavu způsobilém k zahájení prací.\n\n**Článek V. Předání a převzetí díla**\n1. Zhotovitel splní svou povinnost provést dílo jeho řádným dokončením a předáním Objednateli.\n2. O předání a převzetí díla sepíší smluvní strany písemný předávací protokol podepsaný oprávněnými zástupci obou stran.\n\n**Článek VI. Odpovědnost za vady a záruka**\n1. Zhotovitel odpovídá za to, že dílo má v době předání a po dobu záruční doby vlastnosti stanovené touto smlouvou a obecně závaznými předpisy.\n2. Zhotovitel poskytuje na dílo záruku v délce: [Doplnit, např. 24] měsíců ode dne podpisu předávacího protokolu.\n3. Objednatel je povinen reklamovat vady písemně bez zbytečného odkladu po jejich zjištění. Zhotovitel se zavazuje reklamované vady odstranit bezplatně nejpozději do [Doplnit...] dnů od doručení reklamace.\n\n**Článek VII. Smluvní pokuty a sankce**\n1. V případě prodlení Zhotovitele s dokončením a předáním díla je Objednatel oprávněn požadovat smluvní pokutu ve výši 0,1 % z ceny díla za každý den prodlení.\n2. V případě prodlení Objednatele s úhradou faktury je Zhotovitel oprávněn požadovat úrok z prodlení v zákonné výši.\n\n**Článek VIII. Závěrečná ustanovení**\n1. Jakékoliv změny či doplňky této smlouvy lze provádět pouze formou písemných, vzestupně číslovaných dodatků podepsaných oběma smluvními stranami.\n2. Tato smlouva se vyhotovuje ve dvou stejnopisech, z nichž každá strana obdrží po jednom vyhotovení.\n3. Smlouva nabývá platnosti a účinnosti dnem jejího podpisu oběma smluvními stranami.\n\nV [Doplnit...] dne [Doplnit...]              V [Doplnit...] dne [Doplnit...]\n\n\n_______________________                      _______________________\nObjednatel                                   Zhotovitel`;
-    }
-    return `🤖 **[Agent ${agentId}]**\n\nZpracoval jsem Váš dotaz ohledně: "${prompt}". Služba Ollama je offline, toto je záložní odpověď.`;
+    const roles = {
+        resersnik: 'rešerši',
+        stylista: 'stylistickou úpravu',
+        kontrolor: 'kontrolu a oponenturu',
+        sekretarka: 'organizaci úkolů',
+        spisovatel: 'sepsání dokumentu'
+    };
+    const role = roles[agentId] || 'zpracování dotazu';
+    return `⚠️ **AI je offline**\n\nLokální model (Ollama) není dostupný, takže nelze provést ${role}. `
+        + `Toto **není** právní rozbor ani rada — offline režim záměrně negeneruje zákonná ustanovení `
+        + `ani judikaturu, aby nevznikaly mylné citace.\n\nSpusťte lokální model a dotaz zopakujte.`;
 }
 
 // GET /api/rag/search - Perform semantic vector search
@@ -1680,7 +1658,7 @@ app.post('/api/document/anonymize', (req, res) => {
 });
 
 // GET /api/registries/check - Query all registries for an ICO
-app.get('/api/registries/check', async (req, res) => {
+async function handleRegistriesCheck(req, res) {
     const { ico } = req.query;
     if (!ico) {
         return res.status(400).json({ error: "IČO je povinný údaj." });
@@ -1723,7 +1701,9 @@ app.get('/api/registries/check', async (req, res) => {
     } catch (err) {
         res.status(500).json({ error: `Lustrace selhala: ${err.message}` });
     }
-});
+}
+app.get('/api/registries/check', handleRegistriesCheck);
+app.get('/api/registry/check', handleRegistriesCheck); // sloučeno: díve samostatný (pod)handler
 
 // POST /api/registries/save-report - Save structured registry audit to Desktop case directory
 app.post('/api/registries/save-report', async (req, res) => {
