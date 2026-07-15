@@ -32,8 +32,35 @@ const ollama = ollamaLib.default || ollamaLib;
 
 const app = express();
 const PORT = process.env.PORT || 4000;
+// Bezpečnost: backend obsluhuje jen lokální klienty (editor + dashboard na témž
+// stroji), proto se váže na loopback. LAN přístup jde zapnout jen vědomě přes BIND_HOST.
+const BIND_HOST = process.env.BIND_HOST || '127.0.0.1';
+const LOOPBACK_ONLY = BIND_HOST === '127.0.0.1' || BIND_HOST === 'localhost' || BIND_HOST === '::1';
 
-app.use(cors());
+// CORS jen pro localhost (a požadavky bez Originu — Electron main, curl, stejný
+// původ). Blokuje čtení odpovědí z cizích webů (obrana proti CSRF / DNS-rebinding
+// mířícímu na 127.0.0.1). Cizí origin nedostane hlavičku Access-Control-Allow-Origin.
+function isLocalOrigin(origin) {
+    if (!origin) return true;
+    try {
+        const h = new URL(origin).hostname;
+        return h === 'localhost' || h === '127.0.0.1' || h === '::1';
+    } catch (e) { return false; }
+}
+app.use(cors({ origin: (origin, cb) => cb(null, isLocalOrigin(origin)) }));
+
+// Host-guard: když běžíme jen na loopbacku, odmítni požadavky s cizí Host hlavičkou
+// (obrana proti DNS-rebinding, kdy útočníkův web přesměruje svůj název na 127.0.0.1).
+if (LOOPBACK_ONLY) {
+    app.use((req, res, next) => {
+        const host = String(req.headers.host || '').split(':')[0].toLowerCase();
+        if (host && host !== 'localhost' && host !== '127.0.0.1' && host !== '::1') {
+            return res.status(403).json({ error: 'Neplatný Host.' });
+        }
+        next();
+    });
+}
+
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
@@ -2168,6 +2195,15 @@ const SSL_KEY_PATH = process.env.SSL_KEY_PATH || 'key.pem';
 const SSL_CERT_PATH = process.env.SSL_CERT_PATH || 'cert.pem';
 
 if (require.main === module) {
+    // Bezpečnostní posture při startu (ať je jasné, co je a není zapnuté).
+    console.log(`🔐 Vazba: ${BIND_HOST}${LOOPBACK_ONLY ? ' (jen loopback — nedostupné z LAN)' : ' (POZOR: dostupné z LAN)'}`);
+    if (!API_TOKEN) {
+        console.warn('⚠️  API_TOKEN není nastaven — per-request autentizace je vypnutá. '
+            + 'Backend je sice vázán jen na loopback, ale pro plnou ochranu nastav API_TOKEN '
+            + '(env) a stejný token vlož do nastavení editoru i dashboardu (hlavička X-API-Token).');
+    } else {
+        console.log('🔐 API_TOKEN je nastaven — per-request autentizace je zapnutá.');
+    }
     if (USE_HTTPS && fs.existsSync(SSL_KEY_PATH) && fs.existsSync(SSL_CERT_PATH)) {
         try {
             const https = require('https');
@@ -2175,21 +2211,21 @@ if (require.main === module) {
                 key: fs.readFileSync(SSL_KEY_PATH),
                 cert: fs.readFileSync(SSL_CERT_PATH)
             };
-            https.createServer(sslOptions, app).listen(PORT, () => {
-                console.log(`🚀🔒 LexisLocal AI ZABEZPEČENÝ backend (HTTPS) běží na https://localhost:${PORT}`);
+            https.createServer(sslOptions, app).listen(PORT, BIND_HOST, () => {
+                console.log(`🚀🔒 LexisLocal AI ZABEZPEČENÝ backend (HTTPS) běží na https://${BIND_HOST}:${PORT}`);
             });
         } catch (httpsErr) {
             console.error("❌ Nepodařilo se spustit HTTPS server, padám zpět na HTTP:", httpsErr.message);
-            app.listen(PORT, () => {
-                console.log(`🚀 LexisLocal AI backend běží na http://localhost:${PORT}`);
+            app.listen(PORT, BIND_HOST, () => {
+                console.log(`🚀 LexisLocal AI backend běží na http://${BIND_HOST}:${PORT}`);
             });
         }
     } else {
         if (USE_HTTPS) {
             console.warn(`⚠️ V konfiguraci je vyžadováno HTTPS, ale chybí soubory certifikátu (${SSL_KEY_PATH} / ${SSL_CERT_PATH}). Spouštím na HTTP.`);
         }
-        app.listen(PORT, () => {
-            console.log(`🚀 LexisLocal AI backend běží na http://localhost:${PORT}`);
+        app.listen(PORT, BIND_HOST, () => {
+            console.log(`🚀 LexisLocal AI backend běží na http://${BIND_HOST}:${PORT}`);
         });
     }
 }

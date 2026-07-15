@@ -15,6 +15,7 @@ const ollamaLib = require('ollama');
 const ollama = ollamaLib.default || ollamaLib;
 
 const { WATCH_DIR } = require('./config'); // jeden zdroj pravdy, viz lib/config.js
+const secureCrypto = require('./secure_crypto'); // AES-GCM + zpětné čtení CBC (jeden zdroj)
 const EMBEDDING_MODEL = process.env.EMBEDDING_MODEL || 'nomic-embed-text';
 
 // Jednoduchý mutex — serializuje zápisové operace nad indexem. Chokidar spouští
@@ -61,18 +62,8 @@ function savePartition(directoryName, index) {
     
     try {
         const key = getPartitionKey(directoryName);
-        const iv = crypto.randomBytes(16);
-        const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
-        
-        const rawText = JSON.stringify(index);
-        let encrypted = cipher.update(rawText, 'utf8', 'hex');
-        encrypted += cipher.final('hex');
-        
-        const payload = JSON.stringify({
-            iv: iv.toString('hex'),
-            data: encrypted
-        });
-        
+        // AES-256-GCM (integrita) přes sdílený secure_crypto.
+        const payload = JSON.stringify(secureCrypto.encrypt(key, JSON.stringify(index)));
         fs.writeFileSync(partitionPath, payload, 'utf8');
     } catch (e) {
         console.error(`⚠️ RAG: Nepodařilo se uložit partition pro ${directoryName}:`, e.message);
@@ -105,14 +96,10 @@ function loadPartition(directoryName) {
     try {
         const rawPayload = fs.readFileSync(partitionPath, 'utf8');
         const payload = JSON.parse(rawPayload);
-        
-        const iv = Buffer.from(payload.iv, 'hex');
+
         const key = getPartitionKey(directoryName);
-        const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
-        
-        let decrypted = decipher.update(payload.data, 'hex', 'utf8');
-        decrypted += decipher.final('utf8');
-        
+        // Přečte GCM i starší CBC (zpětná kompatibilita).
+        const decrypted = secureCrypto.decrypt(key, payload);
         return JSON.parse(decrypted);
     } catch (e) {
         console.error(`⚠️ RAG: Nepodařilo se dešifrovat partition pro ${directoryName}:`, e.message);
@@ -133,27 +120,13 @@ function reencryptAllPartitions(oldMasterKey, newMasterKey) {
         try {
             const rawPayload = fs.readFileSync(partitionPath, 'utf8');
             const payload = JSON.parse(rawPayload);
-            
-            const iv = Buffer.from(payload.iv, 'hex');
+
             const oldKey = crypto.pbkdf2Sync(oldMasterKey, dir, 1000, 32, 'sha256');
-            const decipher = crypto.createDecipheriv('aes-256-cbc', oldKey, iv);
-            
-            let decrypted = decipher.update(payload.data, 'hex', 'utf8');
-            decrypted += decipher.final('utf8');
-            
+            const decrypted = secureCrypto.decrypt(oldKey, payload); // GCM i legacy CBC
             const index = JSON.parse(decrypted);
-            
+
             const newKey = crypto.pbkdf2Sync(newMasterKey, dir, 1000, 32, 'sha256');
-            const newIv = crypto.randomBytes(16);
-            const cipher = crypto.createCipheriv('aes-256-cbc', newKey, newIv);
-            
-            let encrypted = cipher.update(JSON.stringify(index), 'utf8', 'hex');
-            encrypted += cipher.final('hex');
-            
-            const newPayload = JSON.stringify({
-                iv: newIv.toString('hex'),
-                data: encrypted
-            });
+            const newPayload = JSON.stringify(secureCrypto.encrypt(newKey, JSON.stringify(index)));
             fs.writeFileSync(partitionPath, newPayload, 'utf8');
         } catch (e) {
             console.error(`❌ RAG: Selhal přepisy klíče pro partition ${dir}:`, e.message);

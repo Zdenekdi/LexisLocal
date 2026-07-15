@@ -9,8 +9,8 @@ const path = require('path');
 const crypto = require('crypto');
 
 const { WATCH_DIR } = require('./config'); // jeden zdroj pravdy, viz lib/config.js
+const secureCrypto = require('./secure_crypto'); // klíč mimo data + AES-GCM (jeden zdroj)
 const DB_FILE = path.join(WATCH_DIR, '.lexis.db');
-const KEY_FILE = path.join(WATCH_DIR, '.lexis.key'); // Local encryption key
 
 class LexisDatabase {
     constructor() {
@@ -52,25 +52,9 @@ class LexisDatabase {
     }
 
     loadOrCreateKey() {
-        if (fs.existsSync(KEY_FILE)) {
-            try {
-                const hexKey = fs.readFileSync(KEY_FILE, 'utf8').trim();
-                this.encryptionKey = Buffer.from(hexKey, 'hex');
-            } catch (err) {
-                console.error("❌ Selhalo načtení šifrovacího klíče:", err.message);
-                this.encryptionKey = crypto.randomBytes(32); // Fallback to memory-only volatile key
-            }
-        } else {
-            try {
-                // Generate a highly secure 256-bit key
-                this.encryptionKey = crypto.randomBytes(32);
-                fs.writeFileSync(KEY_FILE, this.encryptionKey.toString('hex'), 'utf8');
-                console.log("🔑 Vygenerován nový lokální šifrovací klíč .lexis.key");
-            } catch (err) {
-                console.error("⚠️ Nelze zapsat klíč na disk, používám paměťový:", err.message);
-                this.encryptionKey = crypto.randomBytes(32);
-            }
-        }
+        // Klíč se řeší centrálně: nové umístění mimo WATCH_DIR + migrace starého
+        // klíče od dat + generování nového (viz lib/secure_crypto.js).
+        this.encryptionKey = secureCrypto.resolveKey();
     }
 
     /**
@@ -79,16 +63,8 @@ class LexisDatabase {
     save() {
         try {
             const rawText = JSON.stringify(this.collections, null, 2);
-            const iv = crypto.randomBytes(16);
-            const cipher = crypto.createCipheriv('aes-256-cbc', this.encryptionKey, iv);
-            
-            let encrypted = cipher.update(rawText, 'utf8', 'hex');
-            encrypted += cipher.final('hex');
-
-            const payload = JSON.stringify({
-                iv: iv.toString('hex'),
-                data: encrypted
-            });
+            // AES-256-GCM (integrita) přes sdílený secure_crypto.
+            const payload = JSON.stringify(secureCrypto.encrypt(this.encryptionKey, rawText));
 
             // Write atomically using temporary file to prevent corruption
             const tempFile = DB_FILE + '.tmp';
@@ -107,16 +83,8 @@ class LexisDatabase {
             const rawPayload = fs.readFileSync(DB_FILE, 'utf8');
             const payload = JSON.parse(rawPayload);
 
-            if (!payload.iv || !payload.data) {
-                throw new Error("Neplatný formát zašifrovaného souboru.");
-            }
-
-            const iv = Buffer.from(payload.iv, 'hex');
-            const decipher = crypto.createDecipheriv('aes-256-cbc', this.encryptionKey, iv);
-            
-            let decrypted = decipher.update(payload.data, 'hex', 'utf8');
-            decrypted += decipher.final('utf8');
-
+            // Dešifrování přes secure_crypto — přečte GCM i starší CBC (zpětná kompatibilita).
+            const decrypted = secureCrypto.decrypt(this.encryptionKey, payload);
             this.collections = JSON.parse(decrypted);
         } catch (err) {
             console.error("❌ Selhalo dešifrování DB (pravděpodobně změněný klíč). Vytvářím záložní DB:", err.message);
@@ -258,12 +226,8 @@ class LexisDatabase {
             const oldKey = this.encryptionKey;
             // Generate a secure new 256-bit key
             const newKey = crypto.randomBytes(32);
-            const tempKeyFile = KEY_FILE + '.tmp';
-            
-            // Write new key file temporarily
-            fs.writeFileSync(tempKeyFile, newKey.toString('hex'), 'utf8');
-            
-            // Re-encrypt collections with new key
+
+            // Re-encrypt collections with new key (GCM přes secure_crypto)
             this.encryptionKey = newKey;
             this.save();
 
@@ -276,10 +240,10 @@ class LexisDatabase {
             } catch (ragErr) {
                 console.warn("⚠️ Nebylo možné přeregistrovat partitions (může chybět RAG modul):", ragErr.message);
             }
-            
-            // Atomically replace old key with new key
-            fs.renameSync(tempKeyFile, KEY_FILE);
-            console.log("🔑 Úspěšně rotován lokální šifrovací klíč .lexis.key");
+
+            // Klíč se ukládá atomicky do bezpečného umístění mimo data.
+            secureCrypto.saveKey(newKey);
+            console.log("🔑 Úspěšně rotován lokální šifrovací klíč (mimo datovou složku).");
             return true;
         } catch (err) {
             console.error("❌ Kritická chyba při rotaci šifrovacího klíče:", err.message);

@@ -42,6 +42,9 @@ if (!fs.existsSync(tempWatchDir)) {
     fs.mkdirSync(tempWatchDir, { recursive: true });
 }
 process.env.WATCH_DIR = tempWatchDir;
+// Klíč mimo WATCH_DIR (bezpečnost) — izolovaný temp adresář pro test.
+const tempKeyDir = path.join(os.tmpdir(), `lexis_test_sov_key_${Date.now()}`);
+process.env.LEXIS_KEY_DIR = tempKeyDir;
 
 const { anonymizeText } = require('../lib/anonymizer');
 const { calculateInferenceMetrics, getHardwareProfile, getSystemTelemetry } = require('../lib/green_monitor');
@@ -120,8 +123,10 @@ describe('Sovereign Environment Setup', () => {
 
     describe('Sovereign Cryptographic Security (Key Rotation)', () => {
         it('should successfully rotate local database encryption key and re-encrypt RAG partitions', () => {
-            const initialKeyFile = path.join(tempWatchDir, '.lexis.key');
+            // Klíč je nově MIMO WATCH_DIR (v LEXIS_KEY_DIR) — bezpečnostní požadavek.
+            const initialKeyFile = path.join(tempKeyDir, 'lexis.key');
             expect(fs.existsSync(initialKeyFile)).toBe(true);
+            expect(fs.existsSync(path.join(tempWatchDir, '.lexis.key'))).toBe(false);
             const originalKeyHex = fs.readFileSync(initialKeyFile, 'utf8');
 
             // Create a dummy RAG partition folder to register under active directories
@@ -139,7 +144,7 @@ describe('Sovereign Environment Setup', () => {
             const success = db.rotateEncryptionKey();
             expect(success).toBe(true);
 
-            // Verify database key has changed
+            // Verify database key has changed (a stále je mimo WATCH_DIR)
             const newKeyHex = fs.readFileSync(initialKeyFile, 'utf8');
             expect(newKeyHex).not.toBe(originalKeyHex);
 

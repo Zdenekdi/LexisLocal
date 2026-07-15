@@ -6,6 +6,9 @@ const crypto = require('crypto');
 // Setup temporary environment variables BEFORE loading the database
 const tempWatchDir = path.join(os.tmpdir(), `lexis_test_db_${Date.now()}`);
 process.env.WATCH_DIR = tempWatchDir;
+// Klíč se nově ukládá MIMO WATCH_DIR (bezpečnost) — izolovaný temp adresář pro test.
+const tempKeyDir = path.join(os.tmpdir(), `lexis_test_key_${Date.now()}`);
+process.env.LEXIS_KEY_DIR = tempKeyDir;
 
 const db = require('../lib/database');
 
@@ -30,8 +33,10 @@ describe('Database Utility', () => {
         db.save();
     });
 
-    it('should initialize and create key file', () => {
-        expect(fs.existsSync(path.join(tempWatchDir, '.lexis.key'))).toBe(true);
+    it('should create the key OUTSIDE the data folder (not in WATCH_DIR)', () => {
+        // Bezpečnost: klíč nesmí ležet u dat (jinak by se syncoval do cloudu s daty).
+        expect(fs.existsSync(path.join(tempKeyDir, 'lexis.key'))).toBe(true);
+        expect(fs.existsSync(path.join(tempWatchDir, '.lexis.key'))).toBe(false);
     });
 
     it('should insert and retrieve an item', () => {

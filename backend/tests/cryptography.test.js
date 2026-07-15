@@ -9,6 +9,8 @@ if (!fs.existsSync(tempWatchDir)) {
     fs.mkdirSync(tempWatchDir, { recursive: true });
 }
 process.env.WATCH_DIR = tempWatchDir;
+// Klíč mimo WATCH_DIR (bezpečnost) — izolovaný temp adresář pro test.
+process.env.LEXIS_KEY_DIR = path.join(os.tmpdir(), `lexis_test_cryptokey_${Date.now()}`);
 
 const db = require('../lib/database');
 const { loadInbox, saveInbox } = require('../lib/watcher');
