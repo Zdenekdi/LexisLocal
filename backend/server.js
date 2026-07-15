@@ -119,7 +119,7 @@ app.get('/api/status', (req, res) => {
     res.json({
         status: "online",
         project: "LexisLocal AI Ecosystem",
-        version: "1.2.0",
+        version: require('../package.json').version, // jeden zdroj pravdy = package.json
         watcherDir: WATCH_DIR,
         activeAgents: Object.keys(agents)
     });

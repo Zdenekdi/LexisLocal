@@ -3,17 +3,31 @@ const path = require('path');
 
 // Save the audit log inside the watched dir as a hidden file for resilience and cloud syncing
 const { WATCH_DIR } = require('./config'); // jeden zdroj pravdy, viz lib/config.js
+const secureCrypto = require('./secure_crypto'); // audit log je compliance artefakt → šifrovaný (GCM)
 const AUDIT_LOG_FILE = path.join(WATCH_DIR, '.audit_log.json');
 
+// Klíč se řeší přes secure_crypto (stejný jako DB, mimo WATCH_DIR). Líně, aby se
+// nezakládal soubor klíče při pouhém importu modulu.
+let _auditKey = null;
+function getKey() {
+    if (!_auditKey) _auditKey = secureCrypto.resolveKey();
+    return _auditKey;
+}
+
 /**
- * Load all audit logs
+ * Load all audit logs (šifrované GCM; legacy plaintext se stále přečte a přemigruje).
  */
 function loadAuditLogs() {
     try {
         if (!fs.existsSync(AUDIT_LOG_FILE)) {
             return [];
         }
-        return JSON.parse(fs.readFileSync(AUDIT_LOG_FILE, 'utf-8'));
+        const raw = fs.readFileSync(AUDIT_LOG_FILE, 'utf-8');
+        const parsed = JSON.parse(raw);
+        // Legacy: soubor je přímo pole záznamů v plaintextu.
+        if (Array.isArray(parsed)) return parsed;
+        // Nový formát: šifrovaný payload { v, iv, tag, data }.
+        return JSON.parse(secureCrypto.decrypt(getKey(), parsed));
     } catch (e) {
         console.error("❌ Nepodařilo se načíst auditní log:", e.message);
         return [];
@@ -21,13 +35,14 @@ function loadAuditLogs() {
 }
 
 /**
- * Save audit logs
+ * Save audit logs (vždy šifrovaně).
  */
 function saveAuditLogs(logs) {
     try {
         // Keep logs capped at 1000 items to prevent huge file sizes, ordered from oldest to newest
         const cappedLogs = logs.slice(-1000);
-        fs.writeFileSync(AUDIT_LOG_FILE, JSON.stringify(cappedLogs, null, 2), 'utf-8');
+        const payload = JSON.stringify(secureCrypto.encrypt(getKey(), JSON.stringify(cappedLogs)));
+        fs.writeFileSync(AUDIT_LOG_FILE, payload, 'utf-8');
     } catch (e) {
         console.error("❌ Nepodařilo se uložit auditní log:", e.message);
     }
@@ -65,7 +80,7 @@ function logEvent(user, operation, target, details = {}) {
  */
 function clearAuditLogs() {
     try {
-        fs.writeFileSync(AUDIT_LOG_FILE, JSON.stringify([], null, 2), 'utf-8');
+        saveAuditLogs([]); // zapíše prázdný (šifrovaný) log
         return true;
     } catch (e) {
         console.error("❌ Nepodařilo se vyčistit auditní log:", e.message);

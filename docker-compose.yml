@@ -17,7 +17,8 @@ services:
     environment:
       POSTGRES_DB: paperless
       POSTGRES_USER: paperless
-      POSTGRES_PASSWORD: paperless_secure_password_123
+      # Secrety se NIKDY necommitují — načítají se z .env (viz .env.example).
+      POSTGRES_PASSWORD: ${PAPERLESS_DB_PASSWORD:?Nastavte PAPERLESS_DB_PASSWORD v souboru .env}
 
   webserver:
     image: ghcr.io/paperless-ngx/paperless-ngx:latest
@@ -39,8 +40,8 @@ services:
       PAPERLESS_DBPORT: 5432
       PAPERLESS_DBNAME: paperless
       PAPERLESS_DBUSER: paperless
-      PAPERLESS_DBPASS: paperless_secure_password_123
-      PAPERLESS_SECRET_KEY: lexis_local_secret_key_change_me_in_prod
+      PAPERLESS_DBPASS: ${PAPERLESS_DB_PASSWORD:?Nastavte PAPERLESS_DB_PASSWORD v souboru .env}
+      PAPERLESS_SECRET_KEY: ${PAPERLESS_SECRET_KEY:?Nastavte PAPERLESS_SECRET_KEY v souboru .env}
       PAPERLESS_TIME_ZONE: Europe/Prague
       PAPERLESS_OCR_LANGUAGE: ces+eng
       PAPERLESS_OCR_LANGUAGES: ces eng
