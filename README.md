@@ -116,6 +116,19 @@ npm run dist:win
     ```
 3.  Otevřete v prohlížeči adresu `http://localhost:3000`.
 
+#### 🔐 API token (povinný)
+Všechny `/api/*` endpointy vyžadují token (statické soubory dashboardu ne). Při prvním startu se
+token **automaticky vygeneruje**, vypíše do konzole a uloží mimo synchronizovaná data
+(`~/Library/Application Support/LexisLocal/api_token` na macOS, `%APPDATA%\LexisLocal\api_token`
+na Windows, `~/.config/lexislocal/api_token` na Linuxu). Token zadejte jednou v dashboardu do pole
+**„API token"** (uloží se do prohlížeče), nebo ho posílejte v hlavičce `X-API-Token`
+či `Authorization: Bearer <token>`. Vlastní token lze vynutit přes proměnnou prostředí:
+```bash
+API_TOKEN="vas-tajny-token" npm run dev
+```
+Server se ve výchozím stavu váže na `127.0.0.1` (jen tento počítač). Pro přístup z LAN/více zařízení
+nastavte `HOST=0.0.0.0` a případně povolené originy přes `ALLOWED_ORIGINS` (čárkou oddělené).
+
 ### 🧪 Spuštění testovací sady
 Projekt obsahuje komplexní sadu 116 unit testů, které pokrývají šifrování, migraci dat, hash-chaining, anonymizaci i sémantické vyhledávání:
 ```bash
@@ -226,6 +239,19 @@ npm run dist:win
     npm run dev
     ```
 3.  Open `http://localhost:3000` in your web browser.
+
+#### 🔐 API token (required)
+All `/api/*` endpoints require a token (dashboard static files do not). On first start a token is
+**generated automatically**, printed to the console, and stored outside synced data
+(`~/Library/Application Support/LexisLocal/api_token` on macOS, `%APPDATA%\LexisLocal\api_token` on
+Windows, `~/.config/lexislocal/api_token` on Linux). Enter it once in the dashboard **"API token"**
+field (persisted in the browser), or send it via the `X-API-Token` header or
+`Authorization: Bearer <token>`. To force your own token use an environment variable:
+```bash
+API_TOKEN="your-secret-token" npm run dev
+```
+The server binds to `127.0.0.1` by default (this machine only). For LAN/multi-device access set
+`HOST=0.0.0.0` and optionally allowed origins via `ALLOWED_ORIGINS` (comma-separated).
 
 ### 🧪 Running tests
 Run the full test suite (116 passing tests) validating encryption, RAG partitioning, anonymizer patterns, and ledger integrity:

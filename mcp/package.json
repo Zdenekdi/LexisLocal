@@ -1,0 +1,17 @@
+{
+  "name": "lexislocal-mcp",
+  "version": "1.0.0",
+  "description": "MCP server pro LexisLocal — přístup pro Claude, Claude Code a AI agenty.",
+  "type": "commonjs",
+  "main": "index.js",
+  "bin": { "lexislocal-mcp": "index.js" },
+  "scripts": {
+    "start": "node index.js",
+    "test": "node test/smoke.js"
+  },
+  "engines": { "node": ">=18" },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.10.0",
+    "zod": "^3.23.8"
+  }
+}

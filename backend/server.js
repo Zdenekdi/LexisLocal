@@ -983,6 +983,70 @@ app.get('/api/inbox/case/:caseNum/timeline', async (req, res) => {
     }
 });
 
+// POST /api/case/email-logged - Zaznamená do auditu (a tím do timeline spisu),
+// že advokát přeposlal příchozí datovou zprávu klientovi e-mailem.
+// POZOR: voláno až PO POTVRZENÍ advokáta, že e-mail v poště skutečně odeslal —
+// přeposlání jde přes mailto, appka odeslání sama nezaručí, takže bez potvrzení
+// by zápis „odesláno" byl nepravdivý. target = spisová značka → záznam se objeví
+// v timeline daného spisu (ten agreguje auditní logy podle target === caseNum).
+app.post('/api/case/email-logged', (req, res) => {
+    const { caseNumber, clientName, recipientEmail, subject, sender, dmID } = req.body || {};
+    if (!recipientEmail) {
+        return res.status(400).json({ error: "Chybí e-mail příjemce." });
+    }
+    try {
+        const caseNum = (caseNumber && String(caseNumber).trim()) || '';
+        const target = caseNum || 'Datová zpráva (bez sp. zn.)';
+        logEvent('LexisEditor', 'E-mail klientovi odeslán (přeposlání datové zprávy)', target, {
+            klient: clientName || '',
+            prijemce: recipientEmail,
+            predmet: subject || '',
+            odesilatel: sender || '',
+            dmID: dmID || '',
+            kanal: 'e-mail (mailto) — odeslání potvrdil advokát'
+        });
+        res.json({ success: true, linkedToCase: !!caseNum });
+    } catch (err) {
+        res.status(500).json({ error: `Zápis do spisu selhal: ${err.message}` });
+    }
+});
+
+// POST /api/email/send - Reálné odeslání e-mailu klientovi přes SMTP i s přílohou
+// (mailto přílohu neumí). Po úspěšném odeslání zapíše do auditu → timeline spisu.
+// Odesílá SERVER, takže „odesláno" je pravdivé (potvrzeno SMTP), ne jen otevřené okno.
+app.post('/api/email/send', async (req, res) => {
+    const { to, subject, body, attachmentPaths, caseNumber, clientName, sender, dmID } = req.body || {};
+    if (!to) return res.status(400).json({ error: "Chybí e-mail příjemce." });
+    try {
+        const mailer = require('./lib/mailer');
+        const settingsList = db.get('email_settings') || [];
+        const settings = settingsList[0] || {};
+        const missing = mailer.validateSmtp(settings);
+        if (missing.length) {
+            return res.status(400).json({
+                error: 'SMTP není nastavené (chybí: ' + missing.join(', ') + '). Doplň v LexisLocalu → Nastavení e-mailu.',
+                code: 'SMTP_CONFIG'
+            });
+        }
+        await mailer.sendMail(settings, { to, subject, body, attachmentPaths });
+        // Reálně odesláno → pravdivý zápis do spisu (audit → timeline).
+        const caseNum = (caseNumber && String(caseNumber).trim()) || '';
+        const target = caseNum || 'Datová zpráva (bez sp. zn.)';
+        logEvent('LexisEditor', 'E-mail klientovi odeslán (SMTP, přeposlání datové zprávy)', target, {
+            klient: clientName || '',
+            prijemce: to,
+            predmet: subject || '',
+            odesilatel: sender || '',
+            dmID: dmID || '',
+            prilohy: Array.isArray(attachmentPaths) ? attachmentPaths.length : 0,
+            kanal: 'SMTP — odesláno serverem'
+        });
+        res.json({ success: true, linkedToCase: !!caseNum });
+    } catch (err) {
+        res.status(500).json({ error: 'Odeslání e-mailu selhalo: ' + err.message, code: err.code || 'SEND_FAIL' });
+    }
+});
+
 // POST /api/inbox/delete - Delete document from index and physically from disk
 app.post('/api/inbox/delete', async (req, res) => {
     const { fileName } = req.body;
@@ -1194,14 +1258,17 @@ app.post('/api/campaigns/send', async (req, res) => {
         for (const recipient of recipients) {
             const { ico, name, isdsId, text } = recipient;
             
-            // 1. Log simulation in audit
-            logEvent('LexisEditor', `Hromadné obesílání - Odesláno přes ISDS`, 'Datová zpráva', {
+            // 1. Log do auditu — POZOR: nic se reálně neodeslalo. Auditní log je
+            // právní důkazní řetězec (transparency ledger), takže NESMÍ tvrdit
+            // „Odesláno", když šlo jen o přípravu/simulaci bez napojení na ISDS.
+            logEvent('LexisEditor', `Hromadné obesílání – PŘÍPRAVA (neodesláno, bez napojení na ISDS)`, 'Datová zpráva', {
                 klient: clientName,
                 spis: caseNumber,
                 prijemce: name,
                 ico: ico,
                 isdsId: isdsId,
-                status: 'Odesláno (Simulace)',
+                status: 'Připraveno (neodesláno)',
+                simulated: true,
                 textLength: text ? text.length : 0
             });
             
@@ -1335,7 +1402,13 @@ app.post('/api/calendar/add', async (req, res) => {
             console.log(`⚖️ Registrováno soudní jednání pro sledování změn: sp. zn. ${spisovaZnacka.cisloSenatu} ${spisovaZnacka.druhVeci} ${spisovaZnacka.bcVec}/${spisovaZnacka.rocnik}`);
         }
         
-        res.json({ success: true, filePath, syncStatus, message: "ICS soubor byl úspěšně vygenerován a synchronizován do kalendáře." });
+        // Zpráva podle SKUTEČNÉHO výsledku zápisu do systémového kalendáře —
+        // netvrdíme „synchronizováno", když se to nepodařilo / platforma nepodporuje.
+        const synced = (syncStatus === 'created' || syncStatus === 'duplicate');
+        const syncMsg = synced
+            ? 'ICS soubor byl vygenerován a událost zapsána do systémového kalendáře.'
+            : 'ICS soubor byl vygenerován (událost si přidej importem .ics — přímý zápis do kalendáře na tomto systému neproběhl).';
+        res.json({ success: true, filePath, syncStatus, message: syncMsg });
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: `Chyba při generování ICS kalendáře: ${err.message}` });
@@ -2136,10 +2209,12 @@ ${replyText}`;
             subject: subject 
         });
         
-        res.json({ 
-            success: true, 
-            task: createdTask, 
-            message: "E-mail byl úspěšně zpracován asistentem a odpověď odeslána zpět." 
+        res.json({
+            success: true,
+            task: createdTask,
+            // POZOR: toto je simulace (/email/simulate) — odpověď se VYGENERUJE a uloží,
+            // ale reálně se e-mailem NEODESÍLÁ (žádné SMTP odeslání). Netvrdíme „odesláno".
+            message: "E-mail byl zpracován asistentem a odpověď připravena (v tomto režimu se e-mailem reálně neodesílá)."
         });
         
     } catch (err) {

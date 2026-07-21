@@ -1611,9 +1611,14 @@ class LexisLocalApp {
                 return;
             }
             
-            // Build the report text to save
+            // Build the report text to save. POZOR: ARES (název/sídlo) a ISIR
+            // (insolvence) jsou reálné dotazy; CEE (exekuce) a Katastr jsou zatím
+            // SIMULOVANÉ (bez napojení). Report proto nikde netvrdí konkrétní
+            // exekuce/nemovitosti jako fakt — jinak by je advokát mohl vložit do
+            // podání jako ověřené zjištění.
             const reportText = `==================================================
-⚖️ LEXISLOCAL - OFICIÁLNÍ PROVĚRKA SUBJEKTU
+⚖️ LEXISLOCAL - PROVĚRKA SUBJEKTU
+(ARES + ISIR ověřeno; CEE + Katastr NEOVĚŘENO – simulace)
 ==================================================
 Subjekt: ${data.name}
 IČO: ${data.ico}
@@ -1623,8 +1628,10 @@ Provedeno dne: ${new Date(data.verifiedAt).toLocaleString('cs-CZ')}
 --------------------------------------------------
 1. KATASTR NEMOVITOSTÍ (Lokalita a plomby)
 --------------------------------------------------
-Vlastněné nemovitosti: ${data.katastr.propertiesCount > 0 ? `ANO (${data.katastr.propertiesCount} zapsaných staveb/pozemků)` : 'NE (žádný přímý zápis vlastnictví)'}
-Aktivní plombování/změna práva: ${data.katastr.hasPlomba ? '⚠️ DETEKOVÁNA PLOMBA (probíhající řízení o změně práva!)' : 'Bez omezení / Bez plomby'}
+${data.katastr.simulated
+    ? 'Stav: NEOVĚŘENO — bez napojení na dálkový přístup do Katastru. Vlastnictví ani plomby nelze potvrdit; níže uvedená data jsou pouze ukázková a NESMÍ se použít jako fakt.'
+    : `Vlastněné nemovitosti: ${data.katastr.propertiesCount > 0 ? `ANO (${data.katastr.propertiesCount} zapsaných staveb/pozemků)` : 'NE (žádný přímý zápis vlastnictví)'}
+Aktivní plombování/změna práva: ${data.katastr.hasPlomba ? '⚠️ DETEKOVÁNA PLOMBA (probíhající řízení o změně práva!)' : 'Bez omezení / Bez plomby'}`}
 Upozornění: ${data.katastr.disclaimer}
 
 --------------------------------------------------
@@ -1637,8 +1644,10 @@ Stav řízení: ${data.insolvencyStatus}` : ''}
 --------------------------------------------------
 3. CENTRÁLNÍ EVIDENCE EXEKUCÍ (CEE - Exekutorská komora)
 --------------------------------------------------
-Stav: ${data.cee.activeExecutions > 0 ? `⚠️ DETEKOVÁNY ${data.cee.activeExecutions} AKTIVNÍ EXEKUCE` : '✅ BEZ ZÁZNAMU o aktivních exekucích'}
-${data.cee.activeExecutions > 0 ? `Celková vymáhaná jistina: ${data.cee.totalAmount.toLocaleString('cs-CZ')} Kč` : ''}
+${data.cee.simulated
+    ? 'Stav: NEOVĚŘENO — bez napojení na CEE. Existenci ani výši exekucí nelze potvrdit; níže uvedená data jsou pouze ukázková a NESMÍ se použít jako fakt.'
+    : `Stav: ${data.cee.activeExecutions > 0 ? `⚠️ DETEKOVÁNY ${data.cee.activeExecutions} AKTIVNÍ EXEKUCE` : '✅ BEZ ZÁZNAMU o aktivních exekucích'}
+${data.cee.activeExecutions > 0 ? `Celková vymáhaná jistina: ${data.cee.totalAmount.toLocaleString('cs-CZ')} Kč` : ''}`}
 Upozornění: ${data.cee.disclaimer}
 
 --------------------------------------------------
@@ -1649,7 +1658,7 @@ Generováno systémem LexisLocal. 100% soukromé a šifrované.`;
                 <div class="stat-card glass" style="width: 100%; display: flex; flex-direction: column; gap: 20px; padding: 25px;">
                     <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 15px; border-bottom: 1px solid var(--border-glass); padding-bottom: 15px;">
                         <div>
-                            <span style="font-size: 0.75rem; color: var(--accent-blue); font-weight: 700; text-transform: uppercase;">Výpis z registrů (Live)</span>
+                            <span style="font-size: 0.75rem; color: var(--accent-blue); font-weight: 700; text-transform: uppercase;">Výpis z registrů (ARES + ISIR ověřeno${(data.cee && data.cee.simulated) || (data.katastr && data.katastr.simulated) ? '; CEE + Katastr simulace' : ''})</span>
                             <h2 style="margin: 5px 0 0 0; font-size: 1.5rem; color: white;">${data.name}</h2>
                             <p style="margin: 5px 0 0 0; font-size: 0.85rem; color: var(--text-muted);">IČO: ${data.ico} | Sídlo: ${data.seat}</p>
                         </div>
@@ -1684,25 +1693,32 @@ Generováno systémem LexisLocal. 100% soukromé a šifrované.`;
                             </p>
                         </div>
 
-                        <div style="background: ${data.cee.activeExecutions > 0 ? 'rgba(245,158,11,0.08)' : 'rgba(255,255,255,0.02)'}; border: 1px solid ${data.cee.activeExecutions > 0 ? 'rgba(245,158,11,0.2)' : 'var(--border-glass)'}; border-radius: 12px; padding: 15px;">
-                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+                        <div style="background: ${(data.cee.activeExecutions > 0 && !data.cee.simulated) ? 'rgba(245,158,11,0.08)' : 'rgba(255,255,255,0.02)'}; border: 1px solid ${(data.cee.activeExecutions > 0 && !data.cee.simulated) ? 'rgba(245,158,11,0.2)' : 'var(--border-glass)'}; border-radius: 12px; padding: 15px;">
+                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap;">
                                 <span style="font-size: 1.2rem;">⚠️</span>
-                                <h4 style="margin: 0; color: ${data.cee.activeExecutions > 0 ? '#fbbf24' : 'white'};">Exekuce (CEE)</h4>
+                                <h4 style="margin: 0; color: ${(data.cee.activeExecutions > 0 && !data.cee.simulated) ? '#fbbf24' : 'white'};">Exekuce (CEE)</h4>
+                                ${data.cee.simulated ? '<span style="font-size: 0.62rem; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase; color: #fca5a5; background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.35); border-radius: 999px; padding: 2px 8px;">Simulováno – neověřeno</span>' : ''}
                             </div>
-                            <p style="font-size: 0.85rem; margin: 0; color: ${data.cee.activeExecutions > 0 ? '#fde047' : 'var(--text-muted)'};">
-                                ${data.cee.activeExecutions > 0 ? `<b>POZOR: ${data.cee.activeExecutions} EXEKUCE!</b><br>Celková vymáhaná jistina: ${data.cee.totalAmount.toLocaleString('cs-CZ')} Kč.` : 'Subjekt nemá evidovány žádné aktivní exekuce.'}
+                            <p style="font-size: 0.85rem; margin: 0; color: ${(data.cee.activeExecutions > 0 && !data.cee.simulated) ? '#fde047' : 'var(--text-muted)'};">
+                                ${data.cee.simulated
+                                    ? `Bez napojení na CEE nelze exekuce ověřit. ${data.cee.activeExecutions > 0 ? `(Ukázkový odhad: ${data.cee.activeExecutions} exekuce / ${data.cee.totalAmount.toLocaleString('cs-CZ')} Kč — <b>nepoužívat jako fakt</b>.)` : '(Ukázkový odhad: bez záznamu.)'}`
+                                    : (data.cee.activeExecutions > 0 ? `<b>POZOR: ${data.cee.activeExecutions} EXEKUCE!</b><br>Celková vymáhaná jistina: ${data.cee.totalAmount.toLocaleString('cs-CZ')} Kč.` : 'Subjekt nemá evidovány žádné aktivní exekuce.')}
                             </p>
+                            ${data.cee.disclaimer ? `<p style="font-size: 0.72rem; margin: 8px 0 0; color: var(--text-muted); font-style: italic;">${data.cee.disclaimer}</p>` : ''}
                         </div>
 
-                        <div style="background: ${data.katastr.hasPlomba ? 'rgba(239,68,68,0.08)' : 'rgba(255,255,255,0.02)'}; border: 1px solid ${data.katastr.hasPlomba ? 'rgba(239,68,68,0.2)' : 'var(--border-glass)'}; border-radius: 12px; padding: 15px;">
-                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+                        <div style="background: ${(data.katastr.hasPlomba && !data.katastr.simulated) ? 'rgba(239,68,68,0.08)' : 'rgba(255,255,255,0.02)'}; border: 1px solid ${(data.katastr.hasPlomba && !data.katastr.simulated) ? 'rgba(239,68,68,0.2)' : 'var(--border-glass)'}; border-radius: 12px; padding: 15px;">
+                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap;">
                                 <span style="font-size: 1.2rem;">🏡</span>
-                                <h4 style="margin: 0; color: ${data.katastr.hasPlomba ? '#f87171' : 'white'};">Katastr nemovitostí</h4>
+                                <h4 style="margin: 0; color: ${(data.katastr.hasPlomba && !data.katastr.simulated) ? '#f87171' : 'white'};">Katastr nemovitostí</h4>
+                                ${data.katastr.simulated ? '<span style="font-size: 0.62rem; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase; color: #fca5a5; background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.35); border-radius: 999px; padding: 2px 8px;">Simulováno – neověřeno</span>' : ''}
                             </div>
                             <p style="font-size: 0.85rem; margin: 0; color: var(--text-muted);">
-                                ${data.katastr.propertiesCount > 0 ? `Vlastnictví nemovitostí: <b>ANO</b><br>` : 'Nemovitosti: Bez přímého zápisu<br>'}
-                                ${data.katastr.hasPlomba ? '⚠️ <span style="color: #f87171; font-weight: bold;">DETEKOVÁNA PLOMBA (probíhá změna práv!)</span>' : 'Plomby / Zástavní práva: Bez omezení'}
+                                ${data.katastr.simulated
+                                    ? 'Bez dálkového přístupu do Katastru nelze vlastnictví ani plomby ověřit — <b>ukázková data, nepoužívat jako fakt</b>.'
+                                    : `${data.katastr.propertiesCount > 0 ? `Vlastnictví nemovitostí: <b>ANO</b><br>` : 'Nemovitosti: Bez přímého zápisu<br>'}${data.katastr.hasPlomba ? '⚠️ <span style="color: #f87171; font-weight: bold;">DETEKOVÁNA PLOMBA (probíhá změna práv!)</span>' : 'Plomby / Zástavní práva: Bez omezení'}`}
                             </p>
+                            ${data.katastr.disclaimer ? `<p style="font-size: 0.72rem; margin: 8px 0 0; color: var(--text-muted); font-style: italic;">${data.katastr.disclaimer}</p>` : ''}
                         </div>
                     </div>
                 </div>
@@ -3511,7 +3527,8 @@ Generováno systémem LexisLocal. 100% soukromé a šifrované.`;
             smtp_host: document.getElementById('em-smtp-host').value.trim(),
             smtp_port: document.getElementById('em-smtp-port').value.trim(),
             smtp_user: document.getElementById('em-smtp-user').value.trim(),
-            smtp_ssl: document.getElementById('em-smtp-ssl').checked
+            smtp_ssl: document.getElementById('em-smtp-ssl').checked,
+            smtp_pass: document.getElementById('em-smtp-pass').value
         };
         
         try {
@@ -3578,7 +3595,7 @@ Generováno systémem LexisLocal. 100% soukromé a šifrované.`;
             const data = await res.json();
             if (data.success) {
                 if (dialog) dialog.close();
-                alert(`✓ Úkol byl úspěšně zpracován asistentem (${data.task.assignedAgentName} ${data.task.assignedAgentEmoji}) a odpověď odeslána zpět advokátovi!`);
+                alert(`✓ Úkol zpracován asistentem (${data.task.assignedAgentName} ${data.task.assignedAgentEmoji}). Odpověď je připravena níže — v tomto režimu se e-mailem reálně neodesílá.`);
                 await this.loadEmailTasks();
                 this.renderInbox();
             } else {
@@ -3736,6 +3753,7 @@ Generováno systémem LexisLocal. 100% soukromé a šifrované.`;
                                     <input type="checkbox" id="em-smtp-ssl" /> SSL/TLS
                                 </div>
                             </div>
+                            <input type="password" id="em-smtp-pass" placeholder="Heslo k SMTP (pro odesílání)" autocomplete="new-password" style="width: 100%; padding: 8px; background: rgba(0,0,0,0.25); border: 1px solid var(--border-glass); border-radius: 6px; color: white; font-size: 0.8rem;" />
                         </div>
                         
                         <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 10px;">
@@ -3770,6 +3788,8 @@ Generováno systémem LexisLocal. 100% soukromé a šifrované.`;
         document.getElementById('em-smtp-port').value = s.smtp_port || '';
         document.getElementById('em-smtp-user').value = s.smtp_user || '';
         document.getElementById('em-smtp-ssl').checked = s.smtp_ssl !== false;
+        const smtpPassEl = document.getElementById('em-smtp-pass');
+        if (smtpPassEl) smtpPassEl.value = s.smtp_pass || '';
     }
 }
 

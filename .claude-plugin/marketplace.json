@@ -1,0 +1,14 @@
+{
+  "name": "lexis",
+  "description": "Pluginy ekosystému LexisLocal / LexisEditor.",
+  "owner": { "name": "Advokátní kancelář Lexis" },
+  "plugins": [
+    {
+      "name": "lexislocal",
+      "source": ".",
+      "description": "MCP přístup k LexisLocalu: RAG vyhledávání, dokumenty, právní AI agenti, kalendář a lhůty.",
+      "version": "1.0.0",
+      "author": { "name": "Advokátní kancelář Lexis" }
+    }
+  ]
+}

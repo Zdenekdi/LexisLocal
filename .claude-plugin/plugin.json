@@ -1,0 +1,36 @@
+{
+  "name": "lexislocal",
+  "displayName": "LexisLocal",
+  "version": "1.0.0",
+  "description": "Přístup k LexisLocalu (lokální AI právní ekosystém) přes MCP — vyhledávání ve spisech (RAG), nahrávání dokumentů, spouštění právních AI agentů, kalendář a lhůty.",
+  "author": { "name": "Advokátní kancelář Lexis" },
+  "repository": "https://github.com/Zdenekdi/LexisLocal",
+  "license": "ISC",
+  "keywords": ["legal", "mcp", "lexislocal", "rag", "czech-law", "advokat"],
+  "skills": "./skills/",
+  "userConfig": {
+    "api_token": {
+      "type": "string",
+      "title": "LexisLocal API token",
+      "description": "Token z .env LexisLocalu (admin) nebo per-agent token vytvořený přes scripts/agent-token.js. Pro zápisy je potřeba scope 'write'.",
+      "sensitive": true,
+      "required": true
+    },
+    "api_url": {
+      "type": "string",
+      "title": "LexisLocal URL",
+      "description": "Adresa běžícího LexisLocal backendu.",
+      "default": "http://127.0.0.1:4000"
+    }
+  },
+  "mcpServers": {
+    "lexislocal": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/mcp/index.js"],
+      "env": {
+        "LEXISLOCAL_API_TOKEN": "${user_config.api_token}",
+        "LEXISLOCAL_URL": "${user_config.api_url}"
+      }
+    }
+  }
+}
