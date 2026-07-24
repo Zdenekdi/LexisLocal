@@ -31,4 +31,13 @@ function safePathInWatchDir(fileName) {
     return resolved;
 }
 
-module.exports = { safePathInWatchDir };
+/**
+ * Očistí libovolný text na bezpečný název souboru (povolí písmena včetně
+ * české diakritiky, číslice a podtržítko; ostatní znaky nahradí `_`) a ořízne
+ * na 100 znaků. Sdílené generátory .ics (kalendář, upomínky insolvence).
+ */
+function sanitizeFileName(name) {
+    return String(name == null ? '' : name).replace(/[^a-zA-Z0-9_á-žÁ-Ž]/g, '_').substring(0, 100);
+}
+
+module.exports = { safePathInWatchDir, sanitizeFileName };
