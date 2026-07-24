@@ -72,6 +72,13 @@ app.use('/api/agents', require('./routes/agents'));
 app.use('/api/document', require('./routes/document'));
 app.use('/api/workflows', require('./routes/workflows'));
 app.use('/api/audit', require('./routes/audit'));
+app.use('/api/activity', require('./routes/activity'));
+app.use('/api/conflicts', require('./routes/conflicts'));
+app.use('/api/judikatura', require('./routes/judikatura'));
+app.use('/api/managerial', require('./routes/managerial'));
+app.use('/api/alerts', require('./routes/alerts'));
+app.use('/api/rag', require('./routes/rag'));
+app.use('/api/watcher', require('./routes/watcher'));
 
 // Root Status
 app.get('/api/status', (req, res) => {
@@ -122,41 +129,8 @@ app.post('/api/models/pull', async (req, res) => {
     }
 });
 
-// Helper to resolve ragFilters from request body
-async function resolveRagFilters(reqBody) {
-    if (!reqBody || !reqBody.ragFilters) return null;
-    const { ragFilters } = reqBody;
-    
-    let fileNames = [];
-    if (Array.isArray(ragFilters.fileNames)) {
-        fileNames = [...ragFilters.fileNames];
-    }
-    
-    if (ragFilters.caseNumber) {
-        try {
-            const inbox = await loadInbox();
-            const caseFiles = Object.values(inbox.files || {})
-                .filter(f => f.caseNumber === ragFilters.caseNumber)
-                .map(f => f.relativePath || f.fileName);
-            fileNames = [...new Set([...fileNames, ...caseFiles])];
-        } catch (err) {
-            console.warn("⚠️ RAG Filter: Nepodařilo se načíst spisy pro caseNumber:", err.message);
-        }
-    }
-    
-    const filters = {};
-    if (fileNames.length > 0) {
-        filters.fileNames = fileNames;
-    }
-    if (ragFilters.directory) {
-        filters.directory = ragFilters.directory;
-    }
-    if (ragFilters.strict !== undefined) {
-        filters.strict = ragFilters.strict;
-    }
-    
-    return Object.keys(filters).length > 0 ? filters : null;
-}
+// Helper to resolve ragFilters from request body (sdílený s routes/rag.js)
+const { resolveRagFilters } = require('./lib/rag_request');
 
 // AI Agent Swarm Orchestration Endpoint with Custom Model Selector
 app.post('/api/agent/:agentId', async (req, res) => {
@@ -503,250 +477,10 @@ app.post('/api/agent-swarm/orchestrate', async (req, res) => {
     }
 });
 
-// POST /api/activity/log - Log active heartbeat from LexisEditor (supports /api/activity/heartbeat alias)
-app.post(['/api/activity/log', '/api/activity/heartbeat'], (req, res) => {
-    const { documentName, activeSeconds, actionType } = req.body;
-    try {
-        const entry = TimeTracker.logActivity(documentName, activeSeconds, actionType);
-        
-        // Trigger workflow event asynchronously
-        WorkflowEngine.triggerEvent('document_saved', { documentName: documentName || "", actionType: actionType || "edit" })
-            .catch(err => console.error("⚠️ Asynchronní workflow trigger selhal:", err.message));
-
-        res.json({ success: true, entry });
-    } catch (err) {
-        res.status(500).json({ error: `Nelze uložit aktivitu: ${err.message}` });
-    }
-});
-
-// POST /api/activity/custom - Add manual custom time-tracking entry
-app.post('/api/activity/custom', (req, res) => {
-    const { documentName, hours, actionType, date } = req.body;
-    if (!documentName || !hours || !date) {
-        return res.status(400).json({ error: "Spis, počet hodin a datum jsou povinné parametry." });
-    }
-    try {
-        const activeSeconds = parseFloat(hours) * 3600;
-        const isoDate = new Date(date).toISOString();
-        const entry = TimeTracker.logActivity(documentName, activeSeconds, actionType || 'write', isoDate);
-        res.json({ success: true, entry });
-    } catch (err) {
-        res.status(500).json({ error: `Nelze zapsat ruční úkon: ${err.message}` });
-    }
-});
-
-
-// GET /api/activity/today - Get aggregated activities for today
-app.get('/api/activity/today', (req, res) => {
-    try {
-        const todayStr = new Date().toISOString().split('T')[0];
-        const rawLogs = TimeTracker.getDailyActivities(todayStr);
-        const aggregated = TimeTracker.aggregateActivities(rawLogs);
-        res.json({ success: true, date: todayStr, rawLogsCount: rawLogs.length, aggregated });
-    } catch (err) {
-        res.status(500).json({ error: `Nelze načíst dnešní aktivity: ${err.message}` });
-    }
-});
-
-// POST /api/activity/timesheet - Generate daily timesheet report
-app.post('/api/activity/timesheet', async (req, res) => {
-    const { date, model } = req.body;
-    const targetDate = date || new Date().toISOString().split('T')[0];
-    const selectedModel = model || "llama3";
-    
-    try {
-        const result = await TimeTracker.generateDailyTimesheet(targetDate, selectedModel);
-        
-        if (result.success) {
-            logEvent('LexisEditor', 'Time-tracking', `Generován timesheet pro ${targetDate}`, {
-                date: targetDate,
-                model: selectedModel,
-                totalHours: result.timesheet.totalHours
-            });
-        }
-        
-        res.json(result);
-    } catch (err) {
-        res.status(500).json({ error: `Selhalo generování timesheetu: ${err.message}` });
-    }
-});
-
-// GET /api/activity/timesheets - Retrieve all generated timesheets from encrypted database
-app.get('/api/activity/timesheets', (req, res) => {
-    try {
-        const timesheets = db.get('timesheets');
-        res.json({ success: true, timesheets });
-    } catch (err) {
-        res.status(500).json({ error: `Nelze načíst výkazy práce: ${err.message}` });
-    }
-});
-
-// /api/workflows/* → routes/workflows.js
-
-// --- CONFLICT OF INTEREST ENDPOINTS ---
-
-// POST /api/conflicts/check - Perform conflict of interest check
-app.post('/api/conflicts/check', async (req, res) => {
-    const { clientName, counterpartyName } = req.body;
-    if (!clientName || !counterpartyName) {
-        return res.status(400).json({ error: "Jména klienta i protistrany jsou povinná." });
-    }
-    try {
-        const report = await ConflictDetector.checkConflict(clientName, counterpartyName);
-        
-        logEvent('LexisEditor', 'Conflicts Check', `Ověřeno: ${clientName} vs ${counterpartyName}`, {
-            clientName,
-            counterpartyName,
-            riskLevel: report.riskLevel
-        });
-
-        res.json({ success: true, report });
-    } catch (err) {
-        res.status(500).json({ error: `Nelze provést prověrku střetu zájmů: ${err.message}` });
-    }
-});
-
-// GET /api/conflicts/history - Get conflicts checks history log
-app.get('/api/conflicts/history', (req, res) => {
-    try {
-        const history = ConflictDetector.getHistory();
-        res.json({ success: true, history });
-    } catch (err) {
-        res.status(500).json({ error: `Nelze načíst historii prověrek: ${err.message}` });
-    }
-});
-
-// --- JUDIKATURA & COMPLIANCE ENDPOINTS ---
-
-// POST /api/judikatura/check - Run compliance check on document text content
-app.post('/api/judikatura/check', (req, res) => {
-    const { content, documentName } = req.body;
-    if (!content) {
-        return res.status(400).json({ error: "Obsah dokumentu (content) je povinný." });
-    }
-    try {
-        const result = JudikaturaWatcher.checkTemplateCompliance(content, documentName || "Aktivní dokument");
-        
-        logEvent('LexisEditor', 'Compliance Check', `Ověřeno: ${documentName || "Dokument"}`, {
-            documentName: documentName || "Dokument",
-            compliant: result.compliant,
-            alertsCount: result.alerts.length
-        });
-
-        res.json(result);
-    } catch (err) {
-        res.status(500).json({ error: `Nelze provést kontrolu compliance: ${err.message}` });
-    }
-});
-
-// GET /api/judikatura/benchmarks - Get active Supreme Court benchmarks list
-app.get('/api/judikatura/benchmarks', (req, res) => {
-    try {
-        const benchmarks = JudikaturaWatcher.getBenchmarks();
-        res.json({ success: true, benchmarks });
-    } catch (err) {
-        res.status(500).json({ error: `Nelze načíst judikáty: ${err.message}` });
-    }
-});
-
-// GET /api/judikatura/history - Retrieve compliance checks runs history logs
-app.get('/api/judikatura/history', (req, res) => {
-    try {
-        const history = JudikaturaWatcher.getHistory();
-        res.json({ success: true, history });
-    } catch (err) {
-        res.status(500).json({ error: `Nelze načíst historii compliance: ${err.message}` });
-    }
-});
-
-// --- MANAGERIAL INTELLIGENCE ENDPOINTS ---
-
-// GET /api/managerial/profitability - Get profitability report
-app.get('/api/managerial/profitability', (req, res) => {
-    try {
-        const report = ManagerialIntelligence.getProfitabilityReport();
-        res.json({ success: true, report });
-    } catch (err) {
-        res.status(500).json({ error: `Nelze načíst ziskovost: ${err.message}` });
-    }
-});
-
-// POST /api/managerial/budgets - Set budget limits for document
-app.post('/api/managerial/budgets', (req, res) => {
-    const { documentName, budgetType, limitHours, hourlyRate } = req.body;
-    if (!documentName) {
-        return res.status(400).json({ error: "Název dokumentu (documentName) je povinný." });
-    }
-    try {
-        const budget = ManagerialIntelligence.setBudget({ documentName, budgetType, limitHours, hourlyRate });
-        res.json({ success: true, budget });
-    } catch (err) {
-        res.status(500).json({ error: `Nelze uložit rozpočet: ${err.message}` });
-    }
-});
-
-// GET /api/managerial/capacity - Get allocation and lawyer capacities workload
-app.get('/api/managerial/capacity', (req, res) => {
-    try {
-        const allocation = ManagerialIntelligence.getCapacityAllocation();
-        res.json({ success: true, allocation });
-    } catch (err) {
-        res.status(500).json({ error: `Nelze načíst vytížení týmu: ${err.message}` });
-    }
-});
-
-// GET /api/managerial/settings - Get office billing/hourly rate settings
-app.get('/api/managerial/settings', (req, res) => {
-    try {
-        const settings = ManagerialIntelligence.getOfficeSettings();
-        res.json({ success: true, settings });
-    } catch (err) {
-        res.status(500).json({ error: `Nelze načíst nastavení sazeb: ${err.message}` });
-    }
-});
-
-// POST /api/managerial/settings - Update office billing/hourly rate settings
-app.post('/api/managerial/settings', (req, res) => {
-    try {
-        const result = ManagerialIntelligence.updateOfficeSettings(req.body);
-        res.json({ success: true, settings: result });
-    } catch (err) {
-        res.status(500).json({ error: `Nelze uložit nastavení sazeb: ${err.message}` });
-    }
-});
-
-// --- FEE SCHEDULE (CENÍK ODMĚN) ENDPOINTS ---
-
-// GET /api/managerial/fees - Retrieve all fee items
-app.get('/api/managerial/fees', (req, res) => {
-    try {
-        const fees = ManagerialIntelligence.getFees();
-        res.json({ success: true, fees });
-    } catch (err) {
-        res.status(500).json({ error: `Nelze načíst ceník odměn: ${err.message}` });
-    }
-});
-
-// POST /api/managerial/fees - Create or update a fee item
-app.post('/api/managerial/fees', (req, res) => {
-    try {
-        const fee = ManagerialIntelligence.saveFee(req.body);
-        res.json({ success: true, fee });
-    } catch (err) {
-        res.status(500).json({ error: `Nelze uložit položku ceníku: ${err.message}` });
-    }
-});
-
-// DELETE /api/managerial/fees/:id - Delete a fee item
-app.delete('/api/managerial/fees/:id', (req, res) => {
-    const { id } = req.params;
-    try {
-        const deleted = ManagerialIntelligence.deleteFee(id);
-        res.json({ success: true, deleted });
-    } catch (err) {
-        res.status(500).json({ error: `Nelze smazat položku ceníku: ${err.message}` });
-    }
-});
+// /api/activity/* → routes/activity.js
+// /api/conflicts/* → routes/conflicts.js
+// /api/judikatura/* → routes/judikatura.js
+// /api/managerial/* → routes/managerial.js
 
 // GET /api/inbox - Retrieve unread parsed documents
 app.get('/api/inbox', async (req, res) => {
@@ -1399,33 +1133,7 @@ function generateAgentFallback(agentId, prompt) {
     return `🤖 **[Agent ${agentId}]**\n\nZpracoval jsem Váš dotaz ohledně: "${prompt}". Služba Ollama je offline, toto je záložní odpověď.`;
 }
 
-// GET /api/rag/search - Perform semantic vector search
-app.get('/api/rag/search', async (req, res) => {
-    const { query, limit, caseNumber, fileNames } = req.query;
-    if (!query) {
-        return res.status(400).json({ error: "Vyhledávací dotaz je povinný." });
-    }
-    const searchLimit = limit ? parseInt(limit) : 5;
-    try {
-        let resolvedFilters = null;
-        let filterPayload = { ragFilters: {} };
-        if (fileNames) {
-            filterPayload.ragFilters.fileNames = fileNames.split(',').map(f => f.trim());
-        }
-        if (caseNumber) {
-            filterPayload.ragFilters.caseNumber = caseNumber.trim();
-        }
-        
-        if (fileNames || caseNumber) {
-            resolvedFilters = await resolveRagFilters(filterPayload);
-        }
-
-        const matches = await searchSimilar(query, searchLimit, resolvedFilters);
-        res.json({ query, matches });
-    } catch (err) {
-        res.status(500).json({ error: `Chyba sémantického vyhledávání: ${err.message}` });
-    }
-});
+// /api/rag/* → routes/rag.js
 
 // GET /api/system/green-metrics - Aggregate energy and CO2 statistics
 app.get('/api/system/green-metrics', (req, res) => {
@@ -1639,116 +1347,10 @@ app.post('/api/registries/save-report', async (req, res) => {
 });
 
 // GET /api/alerts - Retrieve active insolvency alerts
-app.get('/api/alerts', async (req, res) => {
-    try {
-        const inbox = await loadInbox();
-        const activeAlerts = (inbox.alerts || []).filter(a => a.status === 'active');
-        res.json({ alerts: activeAlerts });
-    } catch (err) {
-        res.status(500).json({ error: `Nepodařilo se získat upozornění: ${err.message}` });
-    }
-});
-
-// POST /api/alerts/check - Manually trigger background insolvency verification for all IČOs
-app.post('/api/alerts/check', async (req, res) => {
-    try {
-        const stats = await checkAllInsolvencies();
-        res.json({ success: true, ...stats });
-    } catch (err) {
-        res.status(500).json({ error: `Hromadná prověrka insolvencí selhala: ${err.message}` });
-    }
-});
-
-// POST /api/alerts/dismiss/:alertId - Dismiss/mute an active alert
-app.post('/api/alerts/dismiss/:alertId', async (req, res) => {
-    const { alertId } = req.params;
-    try {
-        const inbox = await loadInbox();
-        if (inbox.alerts) {
-            inbox.alerts = inbox.alerts.map(a => {
-                if (a.id === alertId) {
-                    return { ...a, status: 'dismissed', dismissedAt: new Date().toISOString() };
-                }
-                return a;
-            });
-            await saveInbox(inbox);
-        }
-        res.json({ success: true });
-    } catch (err) {
-        res.status(500).json({ error: `Nepodařilo se skrýt upozornění: ${err.message}` });
-    }
-});
-
-// GET /api/rag/status - Retrieve vector database size and metrics
-app.get('/api/rag/status', async (req, res) => {
-    try {
-        const index = await loadIndex();
-        const uniqueFiles = new Set(index.chunks.map(c => c.fileName));
-        res.json({
-            chunksCount: index.chunks.length,
-            filesCount: uniqueFiles.size,
-            embeddingModel: 'nomic-embed-text'
-        });
-    } catch (err) {
-        res.status(500).json({ error: `Chyba při čtení stavu RAG: ${err.message}` });
-    }
-});
-
-// POST /api/rag/reindex-all - Reindex all documents from inbox on-demand
-app.post('/api/rag/reindex-all', async (req, res) => {
-    console.log("⚡ RAG: Spouštím kompletní re-indexaci všech souborů...");
-    try {
-        const inbox = await loadInbox();
-        const files = Object.values(inbox.files);
-        
-        let successCount = 0;
-        for (const file of files) {
-            if (file.filePath && fs.existsSync(file.filePath)) {
-                let content = "";
-                const ext = path.extname(file.filePath).toLowerCase();
-                try {
-                    if (ext === '.pdf') {
-                        const pdfParser = require('pdf-parse');
-                        const dataBuffer = await fs.promises.readFile(file.filePath);
-                        const parsedPdf = await pdfParser(dataBuffer);
-                        content = parsedPdf.text;
-                    } else {
-                        content = await fs.promises.readFile(file.filePath, 'utf-8');
-                    }
-                    if (content && content.trim()) {
-                        await indexDocument(file.relativePath || file.fileName, content);
-                        successCount++;
-                    }
-                } catch (parseErr) {
-                    console.warn(`⚠️ RAG: Přeskakuji soubor ${file.fileName} kvůli chybě:`, parseErr.message);
-                }
-            }
-        }
-        logEvent('LexisLocal Dashboard', 'Re-indexace spisy', 'Všechny spisy', {
-            successCount
-        });
-
-        res.json({
-            success: true,
-            message: `Re-indexace dokončena. Úspěšně přegenerováno ${successCount} z ${files.length} souborů.`
-        });
-    } catch (err) {
-        res.status(500).json({ error: `Chyba při re-indexaci: ${err.message}` });
-    }
-});
-
-// GET /api/audit/logs - Retrieve audit trail log events
+// /api/alerts/* → routes/alerts.js
+// /api/rag/status a /api/rag/reindex-all → routes/rag.js
 // /api/audit/logs a /api/audit/clear → routes/audit.js
-
-// POST /api/watcher/toggle - Toggle dynamic Desktop Spisy folder watching activity state
-app.post('/api/watcher/toggle', (req, res) => {
-    const { active } = req.query;
-    const isActive = active === 'true';
-    setWatcherState(isActive);
-    res.json({ success: true, active: isActive });
-});
-
-// GET /api/agents - List all active agents
+// /api/watcher/* → routes/watcher.js
 // /api/agents/* → routes/agents.js
 
 // ─── E-mailové úkoly a AI Asistenti ──────────────────────────────────────────────
