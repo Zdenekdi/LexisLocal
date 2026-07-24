@@ -81,6 +81,9 @@ app.use('/api/watcher', require('./routes/watcher'));
 app.use('/api/calendar', require('./routes/calendar'));
 app.use('/api/models', require('./routes/models'));
 app.use('/api/system', require('./routes/system'));
+app.use('/api/registry', require('./routes/registry'));
+app.use('/api/registries', require('./routes/registries'));
+app.use('/api/paperless', require('./routes/paperless'));
 
 // Root Status
 app.get('/api/status', (req, res) => {
@@ -730,23 +733,7 @@ Soud vyzývá žalovaného, aby se ve lhůtě 15 dnů od doručení tohoto usnes
 });
 
 // GET /api/registry/check - Check subject against ARES and ISIR public registries
-app.get('/api/registry/check', async (req, res) => {
-    const { ico } = req.query;
-    if (!ico) {
-        return res.status(400).json({ error: "IČO je povinný parametr." });
-    }
-    
-    try {
-        const result = await checkSubject(ico);
-        if (result.error) {
-            return res.status(400).json({ error: result.error });
-        }
-        res.json(result);
-    } catch (err) {
-        res.status(500).json({ error: `Chyba při lustraci subjektu: ${err.message}` });
-    }
-});
-
+// /api/registry/* → routes/registry.js
 
 // POST /api/campaigns/validate-recipients - Validate a list of ICOs
 app.post('/api/campaigns/validate-recipients', async (req, res) => {
@@ -928,77 +915,7 @@ function generateAgentFallback(agentId, prompt) {
 // /api/document/* → routes/document.js
 
 // GET /api/registries/check - Query all registries for an ICO
-app.get('/api/registries/check', async (req, res) => {
-    const { ico } = req.query;
-    if (!ico) {
-        return res.status(400).json({ error: "IČO je povinný údaj." });
-    }
-    try {
-        const result = await checkSubject(ico);
-        
-        // Add Simulated Executions (CEE) and Simulated Cadastre (Katastr) for full professional coverage
-        const cleanIco = ico.replace(/\s+/g, '').trim();
-        const lastDigit = parseInt(cleanIco.slice(-1)) || 0;
-        
-        // CEE Simulation based on deterministic seed (ICO last digit)
-        // simulated:true je strojově čitelný příznak — frontend NESMÍ tato data
-        // prezentovat jako ověřená (jde o odhad, ne o reálné dotazy do CEE).
-        if (lastDigit % 3 === 0) {
-            result.cee = {
-                simulated: true,
-                activeExecutions: 2,
-                totalAmount: 184500,
-                disclaimer: "SIMULOVÁNO (neověřeno) z CEE. Pro ostrý přístup doplňte přihlašovací údaje Exekutorské komory v nastavení."
-            };
-        } else {
-            result.cee = {
-                simulated: true,
-                activeExecutions: 0,
-                totalAmount: 0,
-                disclaimer: "SIMULOVÁNO (neověřeno) z CEE. Pro ostrý přístup doplňte přihlašovací údaje Exekutorské komory v nastavení."
-            };
-        }
-
-        // Katastr Simulation based on seed
-        result.katastr = {
-            simulated: true,
-            propertiesCount: lastDigit % 2 === 0 ? 1 : 0,
-            hasPlomba: lastDigit % 4 === 0,
-            disclaimer: "SIMULOVÁNO (neověřeno) z Katastru nemovitostí (dálkový přístup)."
-        };
-        
-        res.json(result);
-    } catch (err) {
-        res.status(500).json({ error: `Lustrace selhala: ${err.message}` });
-    }
-});
-
-// POST /api/registries/save-report - Save structured registry audit to Desktop case directory
-app.post('/api/registries/save-report', async (req, res) => {
-    const { ico, name, reportText, caseNumber } = req.body;
-    if (!ico || !name || !reportText) {
-        return res.status(400).json({ error: "Chybí povinná data pro uložení prověrky." });
-    }
-    
-    // IČO smí obsahovat pouze číslice (obrana proti path traversal přes ico).
-    const cleanIco = String(ico).replace(/\D/g, '').slice(0, 12);
-    if (!cleanIco) {
-        return res.status(400).json({ error: "Neplatné IČO." });
-    }
-
-    try {
-        const cleanName = name.replace(/[^a-zA-Z0-9čšžýáíéóúůďťňĎŤŇČŠŽÝÁÍÉÓÚŮ\s-_]/g, '').replace(/\s+/g, '_');
-        const fileName = `Proverka_${cleanName}_${cleanIco}.txt`;
-        const filePath = safePathInWatchDir(fileName);
-
-        await fs.promises.writeFile(filePath, reportText, 'utf-8');
-        console.log(`📥 Lustrační centrum: Uložena nová prověrka do: ${filePath}`);
-        
-        res.json({ success: true, fileName, filePath });
-    } catch (err) {
-        res.status(500).json({ error: `Nepodařilo se uložit prověrku: ${err.message}` });
-    }
-});
+// /api/registries/* → routes/registries.js
 
 // GET /api/alerts - Retrieve active insolvency alerts
 // /api/alerts/* → routes/alerts.js
@@ -1225,18 +1142,7 @@ ${replyText}`;
 });
 
 // --- PAPERLESS-NGX INTEGRATION WEBHOOK ---
-const { handlePaperlessWebhook } = require('./lib/paperless');
-
-app.post('/api/paperless/webhook', async (req, res) => {
-    try {
-        const payload = req.body;
-        const result = await handlePaperlessWebhook(payload);
-        res.json({ success: true, file: result });
-    } catch (err) {
-        console.error("❌ Paperless Webhook Error:", err.message);
-        res.status(500).json({ error: err.message });
-    }
-});
+// /api/paperless/* → routes/paperless.js
 
 // Spouštět kontrolu změn soudních jednání na pozadí (každou hodinu)
 setInterval(() => {
