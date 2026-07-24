@@ -7,10 +7,11 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const secureCrypto = require('./secure_crypto'); // jediný zdroj: klíč mimo data + AES-256-GCM
 
-const { WATCH_DIR } = require('./config'); // jeden zdroj pravdy, viz lib/config.js
-const secureCrypto = require('./secure_crypto'); // klíč mimo data + AES-GCM (jeden zdroj)
+const WATCH_DIR = process.env.WATCH_DIR || path.join(require('os').homedir(), 'Desktop', 'LexisSpisy');
 const DB_FILE = path.join(WATCH_DIR, '.lexis.db');
+// Klíč už NEleží u dat ve WATCH_DIR — spravuje ho secure_crypto (viz secureCrypto.KEY_FILE).
 
 class LexisDatabase {
     constructor() {
@@ -52,9 +53,14 @@ class LexisDatabase {
     }
 
     loadOrCreateKey() {
-        // Klíč se řeší centrálně: nové umístění mimo WATCH_DIR + migrace starého
-        // klíče od dat + generování nového (viz lib/secure_crypto.js).
-        this.encryptionKey = secureCrypto.resolveKey();
+        // Deleguje na secure_crypto: klíč se drží MIMO WATCH_DIR (~/.lexislocal/lexis.key,
+        // resp. LEXIS_KEY_DIR), starý klíč od dat se při prvním startu zmigruje a smaže.
+        try {
+            this.encryptionKey = secureCrypto.resolveKey();
+        } catch (err) {
+            console.error("⚠️ Nelze získat šifrovací klíč, používám paměťový (volatilní):", err.message);
+            this.encryptionKey = crypto.randomBytes(32);
+        }
     }
 
     /**
@@ -63,7 +69,7 @@ class LexisDatabase {
     save() {
         try {
             const rawText = JSON.stringify(this.collections, null, 2);
-            // AES-256-GCM (integrita) přes sdílený secure_crypto.
+            // AES-256-GCM přes sdílený secure_crypto (autentizační tag → integrita).
             const payload = JSON.stringify(secureCrypto.encrypt(this.encryptionKey, rawText));
 
             // Write atomically using temporary file to prevent corruption
@@ -83,8 +89,11 @@ class LexisDatabase {
             const rawPayload = fs.readFileSync(DB_FILE, 'utf8');
             const payload = JSON.parse(rawPayload);
 
-            // Dešifrování přes secure_crypto — přečte GCM i starší CBC (zpětná kompatibilita).
+            // secure_crypto.decrypt zvládne nový GCM formát i starší CBC (zpětná
+            // kompatibilita) — existující databáze zůstanou čitelné a přemigrují se
+            // na GCM při prvním dalším uložení.
             const decrypted = secureCrypto.decrypt(this.encryptionKey, payload);
+
             this.collections = JSON.parse(decrypted);
         } catch (err) {
             console.error("❌ Selhalo dešifrování DB (pravděpodobně změněný klíč). Vytvářím záložní DB:", err.message);
@@ -227,7 +236,7 @@ class LexisDatabase {
             // Generate a secure new 256-bit key
             const newKey = crypto.randomBytes(32);
 
-            // Re-encrypt collections with new key (GCM přes secure_crypto)
+            // Re-encrypt collections with new key (do paměti + na disk pod NOVÝM klíčem)
             this.encryptionKey = newKey;
             this.save();
 
@@ -241,7 +250,7 @@ class LexisDatabase {
                 console.warn("⚠️ Nebylo možné přeregistrovat partitions (může chybět RAG modul):", ragErr.message);
             }
 
-            // Klíč se ukládá atomicky do bezpečného umístění mimo data.
+            // Atomicky ulož nový klíč přes secure_crypto (mimo WATCH_DIR, práva 0600).
             secureCrypto.saveKey(newKey);
             console.log("🔑 Úspěšně rotován lokální šifrovací klíč (mimo datovou složku).");
             return true;

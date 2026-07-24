@@ -36,17 +36,20 @@ function anonymizeText(text) {
     // 2. Anonymize Czech Birth Numbers (rodná čísla: e.g. 850708/1234 or 901231/123)
     result = result.replace(/\b\d{6}\/\d{3,4}\b/g, '[RODNÉ ČÍSLO]');
     
-    // 3. Anonymize Czech Phone Numbers.
-    //    Telefon se rediguje JEN když je jako telefon jasně označený — buď
-    //    mezinárodní předvolbou (+420 / +421, i legacy 00420), nebo klíčovým
-    //    slovem (Tel.:, Mobil:, Fax:, GSM). Holé 9místné číslo bez označení se
-    //    NEredIGuje — v právním textu jde častěji o spisovou značku, IČO,
-    //    částku apod. než o telefon (viz úřední konvence: před číslem musí být
-    //    jasné, o jaký kontakt jde).
-    // 3a. S mezinárodní předvolbou (+420 / 00420), s oddělovači i bez.
-    result = result.replace(/(?:\+|00)(?:420|421)\s*[1-9](?:[\s\-]?\d){8}\b/g, '[TELEFON]');
-    // 3b. Po telefonním/faxovém označení — číslo s oddělovači i bez, i s předvolbou.
-    result = result.replace(/\b(tel\.?|telefon|mobil|mob\.?|gsm|fax)(\s*:?\s*)((?:\+|00)?(?:420|421)?\s*[1-9](?:[\s\-]?\d){8})\b/gi,
+    // 3. Anonymize Czech Phone Numbers. Dřívější vzor bral JAKÉKOLI 9místné číslo
+    //    (spisové značky, částky, IČO). Nově vyžadujeme předvolbu, oddělovače,
+    //    nebo telefonní klíčové slovo, aby nedocházelo k nadměrné redakci.
+    // 3a. S mezinárodní předvolbou: +420 123 456 789
+    result = result.replace(/\+(?:420|421)\s*\d{3}\s*\d{3}\s*\d{3}\b/g, '[TELEFON]');
+    // 3b. Klasický zápis s oddělovači (mezery/pomlčky): 777 123 456
+    result = result.replace(/\b[1-9]\d{2}[ \-]\d{3}[ \-]\d{3}\b/g, '[TELEFON]');
+    // 3c. Po telefonním klíčovém slově i bez oddělovačů: "tel: 777123456"
+    result = result.replace(/\b(tel\.?|telefon|mobil|mob\.?|gsm)(\s*:?\s*)(\+?(?:420|421)?\s*[1-9](?:[\s\-]?\d){8})\b/gi,
+        (m, kw, sep) => `${kw}${sep}[TELEFON]`);
+    // 3d. Po výzvě k volání ("volejte / zavolejte 602987654") i bez oddělovačů.
+    //     Klíčové slovo drží redakci u skutečných čísel — holé 9místné číslo bez
+    //     tohoto kontextu (spisové značky, IČO, částky) se dál záměrně neredaguje.
+    result = result.replace(/\b(volejte|zavolejte|zavolej|volej|volat)(\s+)(\+?(?:420|421)?\s*[1-9](?:[\s\-]?\d){8})\b/gi,
         (m, kw, sep) => `${kw}${sep}[TELEFON]`);
     
     // 4. Anonymize Czech Academics/Titles + Name patterns (e.g. Mgr. Novák, JUDr. Petr Novotný)

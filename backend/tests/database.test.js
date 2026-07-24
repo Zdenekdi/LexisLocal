@@ -5,10 +5,9 @@ const crypto = require('crypto');
 
 // Setup temporary environment variables BEFORE loading the database
 const tempWatchDir = path.join(os.tmpdir(), `lexis_test_db_${Date.now()}`);
+const tempKeyDir = path.join(os.tmpdir(), `lexis_test_db_key_${Date.now()}`);
 process.env.WATCH_DIR = tempWatchDir;
-// Klíč se nově ukládá MIMO WATCH_DIR (bezpečnost) — izolovaný temp adresář pro test.
-const tempKeyDir = path.join(os.tmpdir(), `lexis_test_key_${Date.now()}`);
-process.env.LEXIS_KEY_DIR = tempKeyDir;
+process.env.LEXIS_KEY_DIR = tempKeyDir; // klíč patří MIMO datovou složku (WATCH_DIR)
 
 const db = require('../lib/database');
 
@@ -20,8 +19,8 @@ describe('Database Utility', () => {
     });
 
     afterAll(() => {
-        if (fs.existsSync(tempWatchDir)) {
-            fs.rmSync(tempWatchDir, { recursive: true, force: true });
+        for (const d of [tempWatchDir, tempKeyDir]) {
+            if (fs.existsSync(d)) fs.rmSync(d, { recursive: true, force: true });
         }
     });
 
@@ -33,8 +32,8 @@ describe('Database Utility', () => {
         db.save();
     });
 
-    it('should create the key OUTSIDE the data folder (not in WATCH_DIR)', () => {
-        // Bezpečnost: klíč nesmí ležet u dat (jinak by se syncoval do cloudu s daty).
+    it('should initialize and create key file MIMO datovou složku', () => {
+        // Klíč musí vzniknout v bezpečném (nesynchronizovaném) umístění, ne u dat.
         expect(fs.existsSync(path.join(tempKeyDir, 'lexis.key'))).toBe(true);
         expect(fs.existsSync(path.join(tempWatchDir, '.lexis.key'))).toBe(false);
     });

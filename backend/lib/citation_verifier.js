@@ -222,12 +222,15 @@ function verifyCitations(text, opts = {}) {
             paragraph: c.paragraph || null,
             status: res.status,
             reason: res.reason,
-            verified: res.status === 'verified' || res.status === 'no_reference_context_ok',
+            // „no_reference_context_ok" NENÍ ověřeno: bez indexu i bez kontextu nemáme
+            // podle čeho existenci citace potvrdit — falešná jistota by porušila zásadu
+            // „nevymýšlet právo". Ověřené je jen to, co je doložené v indexu nebo podkladech.
+            verified: res.status === 'verified',
             sourceId
         };
     });
 
-    const VERIFIED = new Set(['verified', 'no_reference_context_ok']);
+    const VERIFIED = new Set(['verified']);
     const unverified = citations.filter(c => !VERIFIED.has(c.status));
 
     const counts = citations.reduce((acc, c) => {

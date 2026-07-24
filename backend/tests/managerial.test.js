@@ -43,39 +43,41 @@ describe('Managerial Intelligence', () => {
             });
         });
 
-        it('should assign load correctly for Advokat (odvolání/rozsudek)', () => {
+        it('odvolání/rozsudek zatíží seniora (partner) po 1.5', () => {
             db.insert('alerts', { title: 'Nové odvolání v případu', status: 'pending' });
             db.insert('alerts', { title: 'Přišel rozsudek KS', status: 'pending' });
 
             const result = managerial.getCapacityAllocation();
+            expect(result.demo).toBe(true); // bez konfigurace týmu = neutrální ukázka
 
-            const advokat = result.staff.find(s => s.id === 'advokat');
-            expect(advokat.load).toBe(3.0); // 1.5 + 1.5
-            expect(advokat.status).toBe('optimal'); // 3.0 is not > 3.0
+            const partner = result.staff.find(s => s.id === 'partner');
+            expect(partner.load).toBe(3.0); // 1.5 + 1.5
+            expect(partner.status).toBe('optimal'); // 3.0 není > 3.0
 
-            // Others should be 0
+            // Koncipienti zůstávají nevytížení
             expect(result.staff.find(s => s.id === 'koncipient_a').load).toBe(0);
         });
 
-        it('should assign load correctly for Koncipient A (smlouva/lustrace)', () => {
+        it('smlouva/lustrace se rozloží mezi koncipienty (round-robin, po 1.0)', () => {
             db.insert('alerts', { title: 'Příprava smlouva o dílo', status: 'pending' });
             db.insert('alerts', { title: 'Lustrace klienta', status: 'pending' });
 
             const result = managerial.getCapacityAllocation();
 
-            const koncipientA = result.staff.find(s => s.id === 'koncipient_a');
-            expect(koncipientA.load).toBe(2.0); // 1.0 + 1.0
-            expect(koncipientA.status).toBe('optimal');
+            // Dva úkoly po 1.0 padnou po jednom na každého koncipienta.
+            expect(result.staff.find(s => s.id === 'koncipient_a').load).toBe(1.0);
+            expect(result.staff.find(s => s.id === 'koncipient_b').load).toBe(1.0);
+            expect(result.staff.find(s => s.id === 'partner').load).toBe(0);
         });
 
-        it('should assign load correctly for Koncipient B (other tasks)', () => {
+        it('běžný úkol (0.8) padne na prvního koncipienta', () => {
             db.insert('alerts', { title: 'Běžný úkol', status: 'pending' });
 
             const result = managerial.getCapacityAllocation();
 
-            const koncipientB = result.staff.find(s => s.id === 'koncipient_b');
-            expect(koncipientB.load).toBe(0.8);
-            expect(koncipientB.status).toBe('underloaded'); // 0.8 < 1.0
+            const koncipientA = result.staff.find(s => s.id === 'koncipient_a');
+            expect(koncipientA.load).toBe(0.8);
+            expect(koncipientA.status).toBe('underloaded'); // 0.8 < 1.0
         });
 
         it('should ignore alerts that are not pending', () => {
@@ -97,9 +99,9 @@ describe('Managerial Intelligence', () => {
 
             const result = managerial.getCapacityAllocation();
 
-            const advokat = result.staff.find(s => s.id === 'advokat');
-            expect(advokat.load).toBe(4.5); // 1.5 * 3
-            expect(advokat.status).toBe('overloaded');
+            const partner = result.staff.find(s => s.id === 'partner');
+            expect(partner.load).toBe(4.5); // 1.5 * 3
+            expect(partner.status).toBe('overloaded');
         });
     });
 

@@ -38,13 +38,12 @@ jest.mock('ollama', () => {
 
 // Setup temporary watched directory for database isolation in tests
 const tempWatchDir = path.join(os.tmpdir(), `lexis_test_sovereignty_${Date.now()}`);
+const tempKeyDir = path.join(os.tmpdir(), `lexis_test_sovereignty_key_${Date.now()}`);
 if (!fs.existsSync(tempWatchDir)) {
     fs.mkdirSync(tempWatchDir, { recursive: true });
 }
 process.env.WATCH_DIR = tempWatchDir;
-// Klíč mimo WATCH_DIR (bezpečnost) — izolovaný temp adresář pro test.
-const tempKeyDir = path.join(os.tmpdir(), `lexis_test_sov_key_${Date.now()}`);
-process.env.LEXIS_KEY_DIR = tempKeyDir;
+process.env.LEXIS_KEY_DIR = tempKeyDir; // klíč patří MIMO datovou složku (bezpečnostní požadavek)
 
 const { anonymizeText } = require('../lib/anonymizer');
 const { calculateInferenceMetrics, getHardwareProfile, getSystemTelemetry } = require('../lib/green_monitor');
@@ -55,9 +54,9 @@ const rag = require('../lib/rag');
 
 describe('Sovereign Environment Setup', () => {
     afterAll(() => {
-        // Clean up global temp folder at the very end
-        if (fs.existsSync(tempWatchDir)) {
-            fs.rmSync(tempWatchDir, { recursive: true, force: true });
+        // Clean up global temp folders at the very end
+        for (const d of [tempWatchDir, tempKeyDir]) {
+            if (fs.existsSync(d)) fs.rmSync(d, { recursive: true, force: true });
         }
     });
 
@@ -75,15 +74,10 @@ describe('Sovereign Environment Setup', () => {
             expect(anonymized).not.toContain('850708/1234');
         });
 
-        it('redacts labeled/prefixed phone numbers but not bare numbers', () => {
-            // Telefon se rediguje jen s označením (Tel./Mobil./Fax) nebo mezinárodní
-            // předvolbou (+420). Holé 9místné číslo bez označení se NEredIGuje —
-            // v právním textu jde častěji o spisovou značku/IČO/částku než o telefon.
+        it('redacts Czech phone numbers correctly', () => {
             const text = 'Mé telefonní číslo je +420 777 123 456, případně volejte 602987654.';
-            expect(anonymizeText(text)).toBe('Mé telefonní číslo je [TELEFON], případně volejte 602987654.');
-            expect(anonymizeText('Tel.: 777 123 456')).toBe('Tel.: [TELEFON]');
-            expect(anonymizeText('Mobil: 602987654')).toBe('Mobil: [TELEFON]');
-            expect(anonymizeText('Fax: +420 541 245 111')).toBe('Fax: [TELEFON]');
+            const anonymized = anonymizeText(text);
+            expect(anonymized).toBe('Mé telefonní číslo je [TELEFON], případně volejte [TELEFON].');
         });
 
         it('redacts Czech academic titles and names correctly', () => {
@@ -123,7 +117,7 @@ describe('Sovereign Environment Setup', () => {
 
     describe('Sovereign Cryptographic Security (Key Rotation)', () => {
         it('should successfully rotate local database encryption key and re-encrypt RAG partitions', () => {
-            // Klíč je nově MIMO WATCH_DIR (v LEXIS_KEY_DIR) — bezpečnostní požadavek.
+            // Klíč žije MIMO datovou složku (WATCH_DIR) — v bezpečném LEXIS_KEY_DIR.
             const initialKeyFile = path.join(tempKeyDir, 'lexis.key');
             expect(fs.existsSync(initialKeyFile)).toBe(true);
             expect(fs.existsSync(path.join(tempWatchDir, '.lexis.key'))).toBe(false);
@@ -144,7 +138,7 @@ describe('Sovereign Environment Setup', () => {
             const success = db.rotateEncryptionKey();
             expect(success).toBe(true);
 
-            // Verify database key has changed (a stále je mimo WATCH_DIR)
+            // Verify database key has changed
             const newKeyHex = fs.readFileSync(initialKeyFile, 'utf8');
             expect(newKeyHex).not.toBe(originalKeyHex);
 

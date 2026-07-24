@@ -27,6 +27,31 @@ const KEY_DIR = process.env.LEXIS_KEY_DIR || path.join(os.homedir(), '.lexisloca
 const KEY_FILE = path.join(KEY_DIR, 'lexis.key');
 const LEGACY_KEY_FILE = path.join(WATCH_DIR, '.lexis.key'); // původní umístění (u dat)
 
+/**
+ * Adresář, kam patří lokální tajemství (klíč, per-agent tokeny). Řeší se dynamicky
+ * (za běhu), aby respektoval změnu LEXIS_KEY_DIR a testovací prostředí:
+ *  1) explicitní LEXIS_KEY_DIR má vždy přednost,
+ *  2) v testech (NODE_ENV=test) míří do temp, aby se nešahalo do domovské složky,
+ *  3) jinak výchozí `~/.lexislocal`.
+ * Používá např. agent_tokens.js pro umístění agent_tokens.json mimo WATCH_DIR.
+ */
+function resolveKeyDir() {
+    if (process.env.LEXIS_KEY_DIR) return process.env.LEXIS_KEY_DIR;
+    if (process.env.NODE_ENV === 'test') return path.join(os.tmpdir(), 'lexislocal-test-keys');
+    return path.join(os.homedir(), '.lexislocal');
+}
+
+/**
+ * Porovnání dvou řetězců v konstantním čase (obrana proti timing-attackům při
+ * ověřování hashů tokenů). Vrací false už při rozdílné délce.
+ */
+function timingSafeEqualStr(a, b) {
+    const bufA = Buffer.from(String(a == null ? '' : a), 'utf8');
+    const bufB = Buffer.from(String(b == null ? '' : b), 'utf8');
+    if (bufA.length !== bufB.length) return false;
+    return crypto.timingSafeEqual(bufA, bufB);
+}
+
 function readHexKey(file) {
     try {
         const hex = fs.readFileSync(file, 'utf8').trim();
@@ -95,7 +120,9 @@ function encrypt(key, plaintext) {
     let data = cipher.update(String(plaintext == null ? '' : plaintext), 'utf8', 'hex');
     data += cipher.final('hex');
     const tag = cipher.getAuthTag().toString('hex');
-    return { v: 2, iv: iv.toString('hex'), tag, data };
+    // `tag` + `v:2` = původní formát; `authTag` + `alg` = novější pojmenování.
+    // Vydáváme obojí, aby byl payload čitelný oběma verzemi kódu i testů.
+    return { v: 2, alg: 'aes-256-gcm', iv: iv.toString('hex'), tag, authTag: tag, data };
 }
 
 /**
@@ -107,9 +134,10 @@ function decrypt(key, payload) {
     if (!payload || !payload.iv || !payload.data) {
         throw new Error('Neplatný formát zašifrovaného souboru.');
     }
-    if (payload.v === 2 || payload.tag) {
+    const authTagHex = payload.authTag || payload.tag; // preferuj authTag (novější), fallback tag
+    if (payload.v === 2 || payload.alg === 'aes-256-gcm' || authTagHex) {
         const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(payload.iv, 'hex'));
-        decipher.setAuthTag(Buffer.from(payload.tag, 'hex'));
+        decipher.setAuthTag(Buffer.from(authTagHex, 'hex'));
         let out = decipher.update(payload.data, 'hex', 'utf8');
         out += decipher.final('utf8'); // vyhodí, pokud tag nesedí (data byla změněna)
         return out;
@@ -121,4 +149,4 @@ function decrypt(key, payload) {
     return out;
 }
 
-module.exports = { resolveKey, saveKey, encrypt, decrypt, KEY_FILE, KEY_DIR, LEGACY_KEY_FILE };
+module.exports = { resolveKey, resolveKeyDir, timingSafeEqualStr, saveKey, encrypt, decrypt, KEY_FILE, KEY_DIR, LEGACY_KEY_FILE };
