@@ -26,8 +26,7 @@ const { generateDublinCoreXml } = require('./lib/archival');
 
 
 // Robust Ollama module import supporting both CommonJS and ESM default exports
-const ollamaLib = require('ollama');
-const ollama = ollamaLib.default || ollamaLib;
+const ollama = require('./lib/ollama_client');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -38,7 +37,7 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // --- Ochrana proti path traversal (sdílený helper) ---
-const { safePathInWatchDir } = require('./lib/pathsafe');
+const { safePathInWatchDir, sanitizeFileName } = require('./lib/pathsafe');
 
 // Secure API Token Middleware
 const API_TOKEN = process.env.API_TOKEN;
@@ -79,6 +78,9 @@ app.use('/api/managerial', require('./routes/managerial'));
 app.use('/api/alerts', require('./routes/alerts'));
 app.use('/api/rag', require('./routes/rag'));
 app.use('/api/watcher', require('./routes/watcher'));
+app.use('/api/calendar', require('./routes/calendar'));
+app.use('/api/models', require('./routes/models'));
+app.use('/api/system', require('./routes/system'));
 
 // Root Status
 app.get('/api/status', (req, res) => {
@@ -93,41 +95,7 @@ app.get('/api/status', (req, res) => {
 });
 
 // Dynamic Model Listing Endpoint
-app.get('/api/models', async (req, res) => {
-    try {
-        console.log("🔍 Dotazuji lokální Ollama na stažené modely...");
-        const response = await ollama.list();
-        res.json({
-            models: response.models || []
-        });
-    } catch (err) {
-        console.warn("⚠️ Nelze se spojit s Ollama službou na pozadí. Vracím výchozí simulovaný seznam modelů.");
-        res.json({
-            models: [
-                { name: "llama3:latest", size: 4700000000 },
-                { name: "mistral:latest", size: 4100000000 },
-                { name: "lia:latest", size: 3800000000 }
-            ],
-            warning: "Ollama server není spuštěn. Zobrazen simulovaný přehled."
-        });
-    }
-});
-
-// Model Downloader Endpoint
-app.post('/api/models/pull', async (req, res) => {
-    const { model } = req.body;
-    if (!model) {
-        return res.status(400).json({ error: "Název modelu je povinný." });
-    }
-    
-    console.log(`📥 Spouštím stahování modelu Ollama: ${model}`);
-    try {
-        await ollama.pull({ model });
-        res.json({ success: true, message: `Model ${model} byl úspěšně stažen.` });
-    } catch (err) {
-        res.status(500).json({ error: `Chyba při stahování modelu ${model}: ${err.message}` });
-    }
-});
+// /api/models/* → routes/models.js
 
 // Helper to resolve ragFilters from request body (sdílený s routes/rag.js)
 const { resolveRagFilters } = require('./lib/rag_request');
@@ -933,189 +901,7 @@ app.post('/api/campaigns/send', async (req, res) => {
     }
 });
 
-// Helper function to sanitize calendar file names
-function sanitizeFileName(name) {
-    return name.replace(/[^a-zA-Z0-9_á-žÁ-Ž]/g, '_').substring(0, 100);
-}
-
-// POST /api/calendar/add - Generate standard .ics file inside LexisSpisy/Kalendar folder
-app.post('/api/calendar/add', async (req, res) => {
-    const { id, title, dueDate, context, time, location, isHearing, courtCode, spisovaZnacka } = req.body;
-    if (!title || !dueDate) {
-        return res.status(400).json({ error: "Název a datum splatnosti jsou povinné parametry." });
-    }
-    
-    try {
-        const CALENDAR_DIR = path.join(WATCH_DIR, 'Kalendar');
-        if (!fs.existsSync(CALENDAR_DIR)) {
-            fs.mkdirSync(CALENDAR_DIR, { recursive: true });
-        }
-        
-        const cleanId = id || 'dl_' + Date.now();
-        const dtstamp = new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
-        const startDate = dueDate.replace(/-/g, '');
-        
-        let startLine, endLine;
-        if (time) {
-            const timeClean = time.replace(/:/g, '').substring(0, 4) + '00';
-            startLine = `DTSTART;TZID=Europe/Prague:${startDate}T${timeClean}`;
-            
-            // Assume 1 hour
-            const [h, m] = time.split(':');
-            const startD = new Date(`${dueDate}T${h}:${m}:00`);
-            const endD = new Date(startD.getTime() + 60 * 60 * 1000);
-            const endDateStr = endD.toISOString().split('T')[0].replace(/-/g, '');
-            const endTimeClean = endD.toTimeString().split(' ')[0].replace(/:/g, '');
-            endLine = `DTEND;TZID=Europe/Prague:${endDateStr}T${endTimeClean}`;
-        } else {
-            startLine = `DTSTART;VALUE=DATE:${startDate}`;
-            const endD = new Date(dueDate);
-            endD.setDate(endD.getDate() + 1);
-            const endDateStr = endD.toISOString().split('T')[0].replace(/-/g, '');
-            endLine = `DTEND;VALUE=DATE:${endDateStr}`;
-        }
-        
-        const prefix = isHearing ? '⚖️ JEDNÁNÍ' : '⚠️ LHŮTA';
-        const cleanTitle = `${prefix}: ${title}`;
-        const cleanDesc = context ? context.replace(/\r?\n/g, ' ') : `Detekovaná událost v systému Lexis.`;
-        
-        const lines = [
-            'BEGIN:VCALENDAR',
-            'VERSION:2.0',
-            'PRODID:-//LexisLocal//NONSGML iCalendar Generator//CS',
-            'CALSCALE:GREGORIAN',
-            'BEGIN:VEVENT',
-            `UID:${cleanId}@lexislocal`,
-            `DTSTAMP:${dtstamp}`,
-            startLine,
-            endLine,
-            `SUMMARY:${cleanTitle}`,
-            `DESCRIPTION:${cleanDesc}`
-        ];
-        
-        if (location) {
-            lines.push(`LOCATION:${location}`);
-        }
-        
-        lines.push('END:VEVENT');
-        lines.push('END:VCALENDAR');
-        
-        const icsContent = lines.join('\r\n');
-        
-        const safeName = sanitizeFileName(title);
-        const filePath = path.join(CALENDAR_DIR, `${safeName}.ics`);
-        
-        await fs.promises.writeFile(filePath, icsContent, 'utf-8');
-        console.log(`📅 ICS Kalendářová událost vygenerována: ${filePath}`);
-        
-        // Write directly to local system calendar (Apple Calendar / Outlook)
-        let syncStatus = 'unsupported';
-        try {
-            syncStatus = await writeToSystemCalendar({
-                title: cleanTitle,
-                date: dueDate,
-                time: time,
-                location: location,
-                description: cleanDesc
-            });
-        } catch (syncErr) {
-            console.error(`⚠️ Nepodařilo se zapsat do systémového kalendáře: ${syncErr.message}`);
-        }
-        
-        // Register the hearing for background tracking if isHearing is true
-        if (isHearing && courtCode && spisovaZnacka) {
-            const hearings = HearingsWatcher.loadMonitoredHearings(WATCH_DIR);
-            
-            // Remove any existing record with the same ID or same sp.zn + date
-            const filtered = hearings.filter(h => h.id !== cleanId && !(h.courtCode === courtCode && h.dueDate === dueDate && h.spisovaZnacka.cisloSenatu === spisovaZnacka.cisloSenatu && h.spisovaZnacka.druhVeci === spisovaZnacka.druhVeci && h.spisovaZnacka.bcVec === spisovaZnacka.bcVec && h.spisovaZnacka.rocnik === spisovaZnacka.rocnik));
-            
-            filtered.push({
-                id: cleanId,
-                title: title,
-                dueDate: dueDate,
-                time: time,
-                location: location,
-                courtCode: courtCode,
-                courtName: location ? location.split(',')[0] : 'Soud',
-                spisovaZnacka: spisovaZnacka,
-                icsFilePath: filePath,
-                status: 'scheduled',
-                lastChecked: new Date().toISOString()
-            });
-            
-            HearingsWatcher.saveMonitoredHearings(WATCH_DIR, filtered);
-            console.log(`⚖️ Registrováno soudní jednání pro sledování změn: sp. zn. ${spisovaZnacka.cisloSenatu} ${spisovaZnacka.druhVeci} ${spisovaZnacka.bcVec}/${spisovaZnacka.rocnik}`);
-        }
-        
-        res.json({ success: true, filePath, syncStatus, message: "ICS soubor byl úspěšně vygenerován a synchronizován do kalendáře." });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: `Chyba při generování ICS kalendáře: ${err.message}` });
-    }
-});
-
-// GET /api/calendar/events - Retrieve all events (deadlines & hearings) for dashboard calendar
-app.get('/api/calendar/events', async (req, res) => {
-    try {
-        const alerts = db.get('alerts') || [];
-        const hearings = HearingsWatcher.loadMonitoredHearings(WATCH_DIR) || [];
-        
-        const events = [];
-        
-        // Add alerts (procedural tasks/deadlines)
-        alerts.forEach(alert => {
-            let dateVal = null;
-            let timeVal = null;
-            if (alert.deadline) {
-                const parts = alert.deadline.split('T');
-                dateVal = parts[0];
-                if (parts[1]) {
-                    timeVal = parts[1].substring(0, 5); // HH:MM
-                }
-            }
-            events.push({
-                id: alert.id,
-                type: 'deadline',
-                title: alert.title,
-                date: dateVal,
-                time: timeVal,
-                status: alert.status,
-                description: alert.triggerRule || 'Procesní lhůta',
-                location: ''
-            });
-        });
-        
-        // Add monitored hearings
-        hearings.forEach(hearing => {
-            events.push({
-                id: hearing.id,
-                type: 'hearing',
-                title: hearing.title,
-                date: hearing.dueDate,
-                time: hearing.time || '',
-                status: hearing.status,
-                description: `Soudní jednání - sp. zn. ${hearing.spisovaZnacka ? (hearing.spisovaZnacka.cisloSenatu + ' ' + hearing.spisovaZnacka.druhVeci + ' ' + hearing.spisovaZnacka.bcVec + '/' + hearing.spisovaZnacka.rocnik) : ''}`,
-                location: hearing.location || ''
-            });
-        });
-        
-        res.json({ success: true, events });
-    } catch (err) {
-        res.status(500).json({ error: `Nelze načíst kalendářní události: ${err.message}` });
-    }
-});
-
-
-// POST /api/calendar/sync - Manually trigger check of all monitored hearings
-app.post('/api/calendar/sync', async (req, res) => {
-    try {
-        const result = await HearingsWatcher.checkAllHearings(WATCH_DIR);
-        res.json({ success: true, ...result });
-    } catch (err) {
-        res.status(500).json({ error: `Chyba při synchronizaci jednání: ${err.message}` });
-    }
-});
-
+// /api/calendar/* → routes/calendar.js
 
 // Resilient Fallback Engine
 function generateAgentFallback(agentId, prompt) {
@@ -1135,140 +921,8 @@ function generateAgentFallback(agentId, prompt) {
 
 // /api/rag/* → routes/rag.js
 
-// GET /api/system/green-metrics - Aggregate energy and CO2 statistics
-app.get('/api/system/green-metrics', (req, res) => {
-    try {
-        const greenLogs = db.get('green_logs') || [];
-        const profile = getHardwareProfile();
-        
-        let totalEnergyWh = 0;
-        let totalCo2Grams = 0;
-        let totalCloudWh = 0;
-        let totalCloudCo2Grams = 0;
-        let totalCarbonSavedGrams = 0;
-        
-        greenLogs.forEach(log => {
-            totalEnergyWh += log.energyWh || 0;
-            totalCo2Grams += log.co2Grams || 0;
-            totalCloudWh += log.cloudEquivalentWh || 0;
-            totalCloudCo2Grams += log.cloudCo2Grams || 0;
-            totalCarbonSavedGrams += log.carbonSavedGrams || 0;
-        });
-        
-        const co2SavingPercent = totalCloudCo2Grams > 0 
-            ? parseFloat(((totalCarbonSavedGrams / totalCloudCo2Grams) * 100).toFixed(1))
-            : 0;
-            
-        res.json({
-            hardware: profile.hardwareName,
-            tdpWatts: profile.estimatedTdp,
-            totalRuns: greenLogs.length,
-            totalEnergyWh: parseFloat(totalEnergyWh.toFixed(5)),
-            totalCo2Grams: parseFloat(totalCo2Grams.toFixed(5)),
-            cloudEquivalentWh: parseFloat(totalCloudWh.toFixed(2)),
-            cloudCo2Grams: parseFloat(totalCloudCo2Grams.toFixed(2)),
-            carbonSavedGrams: parseFloat(totalCarbonSavedGrams.toFixed(5)),
-            co2SavingPercent,
-            recentRuns: greenLogs.slice(-10)
-        });
-    } catch (err) {
-        res.status(500).json({ error: `Chyba při načítání zelených statistik: ${err.message}` });
-    }
-});
+// /api/system/* → routes/system.js
 
-// GET /api/system/export - Secure de-crypted data export for GDPR portability (Article 20)
-app.get('/api/system/export', async (req, res) => {
-    try {
-        const inbox = await loadInbox();
-        const exportData = {
-            metadata: {
-                system: "LexisLocal",
-                version: require('../package.json').version || "1.0.0",
-                exportedAt: new Date().toISOString(),
-                totalInboxFiles: Object.keys(inbox.files || {}).length
-            },
-            database: {
-                activities: db.get('activities') || [],
-                timesheets: db.get('timesheets') || [],
-                workflows: db.get('workflows') || [],
-                conflicts: db.get('conflicts') || [],
-                alerts: db.get('alerts') || [],
-                email_settings: db.get('email_settings') || [],
-                email_tasks: db.get('email_tasks') || [],
-                green_logs: db.get('green_logs') || [],
-                transparency_logs: db.get('transparency_logs') || []
-            },
-            inbox: inbox.files || {}
-        };
-        
-        res.setHeader('Content-disposition', `attachment; filename=lexis_export_${new Date().toISOString().slice(0, 10)}.json`);
-        res.setHeader('Content-type', 'application/json');
-        res.write(JSON.stringify(exportData, null, 2));
-        res.end();
-    } catch (err) {
-        res.status(500).json({ error: `Chyba při exportu dat: ${err.message}` });
-    }
-});
-
-// GET /api/audit/transparency/verify - Verify cryptographic blockchain integrity of ledger
-// /api/audit/* → routes/audit.js
-
-// POST /api/system/rotate-key - Rotate database encryption key
-app.post('/api/system/rotate-key', (req, res) => {
-    try {
-        const success = db.rotateEncryptionKey();
-        if (success) {
-            res.json({ success: true, message: "Lokální šifrovací klíč byl úspěšně rotován a databáze byla přešifrována." });
-        } else {
-            res.status(500).json({ error: "Rotace klíče selhala. Podrobnosti v serverovém logu." });
-        }
-    } catch (err) {
-        res.status(500).json({ error: `Chyba při rotaci klíče: ${err.message}` });
-    }
-});
-
-// GET /api/system/models/sovereign - Get and prioritize local European/Czech models
-app.get('/api/system/models/sovereign', async (req, res) => {
-    try {
-        // Query local Ollama installation for available models
-        const localModelsResponse = await ollama.list();
-        const availableTags = (localModelsResponse.models || []).map(m => m.name);
-        
-        // Preferred European & open-source sovereign models ordered by preference
-        const preferredSovereignModels = [
-            'mistral:latest',
-            'mistral',
-            'mixtral',
-            'gemma2:2b',
-            'gemma2',
-            'llama3-czech',
-            'llama3'
-        ];
-        
-        const matched = preferredSovereignModels.filter(pref => 
-            availableTags.some(tag => tag.toLowerCase().startsWith(pref.toLowerCase()) || pref.toLowerCase().startsWith(tag.toLowerCase()))
-        );
-        
-        res.json({
-            sovereignPreferred: preferredSovereignModels,
-            availableLocal: availableTags,
-            matchedSovereign: matched,
-            recommendedActive: matched[0] || 'llama3'
-        });
-    } catch (err) {
-        res.status(500).json({ error: `Chyba při zjišťování suverénních modelů: ${err.message}` });
-    }
-});
-
-// GET /api/system/telemetry - Retrieve system performance & VRAM telemetry
-app.get('/api/system/telemetry', (req, res) => {
-    try {
-        const stats = getSystemTelemetry();
-        res.json(stats);
-    } catch (err) {
-        res.status(500).json({ error: `Chyba při načítání systémové telemetrie: ${err.message}` });
-    }
-});
 
 // POST /api/document/archive - Generate Dublin Core XML metadata descriptor for PDF/A
 // /api/document/* → routes/document.js
