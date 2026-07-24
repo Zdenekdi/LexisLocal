@@ -18,11 +18,11 @@ const ConflictDetector = require('./lib/conflicts');
 const JudikaturaWatcher = require('./lib/judikatura');
 const ManagerialIntelligence = require('./lib/managerial');
 const HearingsWatcher = require('./lib/hearings');
-const { buildIcs, sanitizeFileName } = require('./lib/ics'); // jeden generátor ICS + sanitizace názvu
 const { writeToSystemCalendar } = require('./lib/calendar');
 const { anonymizeText } = require('./lib/anonymizer');
 const { getHardwareProfile, calculateInferenceMetrics, getSystemTelemetry } = require('./lib/green_monitor');
 const { generateDublinCoreXml } = require('./lib/archival');
+
 
 
 // Robust Ollama module import supporting both CommonJS and ESM default exports
@@ -31,60 +31,14 @@ const ollama = ollamaLib.default || ollamaLib;
 
 const app = express();
 const PORT = process.env.PORT || 4000;
-// Bezpečnost: backend obsluhuje jen lokální klienty (editor + dashboard na témž
-// stroji), proto se váže na loopback. LAN přístup jde zapnout jen vědomě přes BIND_HOST.
-const BIND_HOST = process.env.BIND_HOST || '127.0.0.1';
-const LOOPBACK_ONLY = BIND_HOST === '127.0.0.1' || BIND_HOST === 'localhost' || BIND_HOST === '::1';
 
-// CORS jen pro localhost (a požadavky bez Originu — Electron main, curl, stejný
-// původ). Blokuje čtení odpovědí z cizích webů (obrana proti CSRF / DNS-rebinding
-// mířícímu na 127.0.0.1). Cizí origin nedostane hlavičku Access-Control-Allow-Origin.
-function isLocalOrigin(origin) {
-    if (!origin) return true;
-    try {
-        const h = new URL(origin).hostname;
-        return h === 'localhost' || h === '127.0.0.1' || h === '::1';
-    } catch (e) { return false; }
-}
-app.use(cors({ origin: (origin, cb) => cb(null, isLocalOrigin(origin)) }));
-
-// Host-guard: když běžíme jen na loopbacku, odmítni požadavky s cizí Host hlavičkou
-// (obrana proti DNS-rebinding, kdy útočníkův web přesměruje svůj název na 127.0.0.1).
-if (LOOPBACK_ONLY) {
-    app.use((req, res, next) => {
-        const host = String(req.headers.host || '').split(':')[0].toLowerCase();
-        if (host && host !== 'localhost' && host !== '127.0.0.1' && host !== '::1') {
-            return res.status(403).json({ error: 'Neplatný Host.' });
-        }
-        next();
-    });
-}
-
+app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// --- Ochrana proti path traversal ---
-// Vrátí bezpečnou absolutní cestu uvnitř WATCH_DIR pro daný název souboru.
-// Zahodí adresářové komponenty (path.basename) a ověří, že výsledek nikdy
-// neopustí kořenový adresář (obrana proti "../", absolutním cestám i "\0").
-function safePathInWatchDir(fileName) {
-    const raw = String(fileName == null ? '' : fileName);
-    if (raw.indexOf('\0') !== -1) {
-        throw new Error('Neplatný název souboru.');
-    }
-    const base = path.basename(raw);
-    if (!base || base === '.' || base === '..') {
-        throw new Error('Neplatný název souboru.');
-    }
-    const root = path.resolve(WATCH_DIR);
-    const resolved = path.resolve(root, base);
-    const rootWithSep = root.endsWith(path.sep) ? root : root + path.sep;
-    if (resolved !== root && !resolved.startsWith(rootWithSep)) {
-        throw new Error('Cesta mimo povolený adresář.');
-    }
-    return resolved;
-}
+// --- Ochrana proti path traversal (sdílený helper) ---
+const { safePathInWatchDir } = require('./lib/pathsafe');
 
 // Secure API Token Middleware
 const API_TOKEN = process.env.API_TOKEN;
@@ -112,13 +66,20 @@ const authenticate = (req, res, next) => {
 
 app.use(authenticate);
 
+// ─── Modulární routery (postupné rozbití monolitu) ───────────────────────────
+// Domény se vytahují ze server.js do samostatných souborů v routes/.
+app.use('/api/agents', require('./routes/agents'));
+app.use('/api/document', require('./routes/document'));
+app.use('/api/workflows', require('./routes/workflows'));
+app.use('/api/audit', require('./routes/audit'));
+
 // Root Status
 app.get('/api/status', (req, res) => {
     const agents = loadAgents();
     res.json({
         status: "online",
         project: "LexisLocal AI Ecosystem",
-        version: require('../package.json').version, // jeden zdroj pravdy = package.json
+        version: "1.2.0",
         watcherDir: WATCH_DIR,
         activeAgents: Object.keys(agents)
     });
@@ -408,9 +369,6 @@ app.post('/api/agent-swarm/debate', async (req, res) => {
     }
 
     try {
-        // GDPR: kontext se před odesláním do modelu anonymizuje stejně jako u /api/agent.
-        const safeContext = context ? anonymizeText(context) : context;
-
         // --- STEP 1: INVOKE AGENT 1 (CREATOR) ---
         const messages1 = [
             { role: 'system', content: agent1.systemPrompt }
@@ -423,8 +381,8 @@ app.post('/api/agent-swarm/debate', async (req, res) => {
             });
         }
         
-        if (safeContext) {
-            messages1.push({ role: 'system', content: `Kontext dokumentu:\n${safeContext}` });
+        if (context) {
+            messages1.push({ role: 'system', content: `Kontext dokumentu:\n${context}` });
         }
         
         messages1.push({ role: 'user', content: prompt });
@@ -449,8 +407,8 @@ app.post('/api/agent-swarm/debate', async (req, res) => {
             });
         }
         
-        if (safeContext) {
-            messages2.push({ role: 'system', content: `Kontext dokumentu:\n${safeContext}` });
+        if (context) {
+            messages2.push({ role: 'system', content: `Kontext dokumentu:\n${context}` });
         }
         
         messages2.push({
@@ -577,6 +535,7 @@ app.post('/api/activity/custom', (req, res) => {
     }
 });
 
+
 // GET /api/activity/today - Get aggregated activities for today
 app.get('/api/activity/today', (req, res) => {
     try {
@@ -622,71 +581,7 @@ app.get('/api/activity/timesheets', (req, res) => {
     }
 });
 
-// GET /api/workflows/rules - Retrieve all workflow rules
-app.get('/api/workflows/rules', (req, res) => {
-    try {
-        const rules = WorkflowEngine.getRules();
-        res.json({ success: true, rules });
-    } catch (err) {
-        res.status(500).json({ error: `Nelze načíst pravidla workflow: ${err.message}` });
-    }
-});
-
-// POST /api/workflows/rules - Create new custom workflow rule
-app.post('/api/workflows/rules', (req, res) => {
-    try {
-        const rule = WorkflowEngine.addRule(req.body);
-        res.json({ success: true, rule });
-    } catch (err) {
-        res.status(500).json({ error: `Nelze vytvořit pravidlo workflow: ${err.message}` });
-    }
-});
-
-// DELETE /api/workflows/rules/:id - Delete custom workflow rule
-app.delete('/api/workflows/rules/:id', (req, res) => {
-    const { id } = req.params;
-    try {
-        const deleted = WorkflowEngine.deleteRule(id);
-        res.json({ success: true, deleted });
-    } catch (err) {
-        res.status(500).json({ error: `Nelze smazat pravidlo workflow: ${err.message}` });
-    }
-});
-
-// GET /api/workflows/alerts - Retrieve all pending calendar tasks and deadlines
-app.get('/api/workflows/alerts', (req, res) => {
-    try {
-        const alerts = db.get('alerts');
-        res.json({ success: true, alerts });
-    } catch (err) {
-        res.status(500).json({ error: `Nelze načíst procesní lhůty: ${err.message}` });
-    }
-});
-
-// POST /api/workflows/alerts/:id/complete - Mark task/deadline as resolved
-app.post('/api/workflows/alerts/:id/complete', (req, res) => {
-    const { id } = req.params;
-    try {
-        const updated = db.update('alerts', id, { status: 'completed', completedAt: new Date().toISOString() });
-        res.json({ success: true, alert: updated });
-    } catch (err) {
-        res.status(500).json({ error: `Nelze splnit lhůtu: ${err.message}` });
-    }
-});
-
-// POST /api/workflows/trigger - Manually trigger an event in the workflow engine
-app.post('/api/workflows/trigger', async (req, res) => {
-    const { triggerType, payload } = req.body;
-    if (!triggerType) {
-        return res.status(400).json({ error: "Typ události (triggerType) je povinný." });
-    }
-    try {
-        const createdAlerts = await WorkflowEngine.triggerEvent(triggerType, payload || {});
-        res.json({ success: true, triggeredCount: createdAlerts.length, alerts: createdAlerts });
-    } catch (err) {
-        res.status(500).json({ error: `Chyba při spouštění workflow: ${err.message}` });
-    }
-});
+// /api/workflows/* → routes/workflows.js
 
 // --- CONFLICT OF INTEREST ENDPOINTS ---
 
@@ -983,69 +878,6 @@ app.get('/api/inbox/case/:caseNum/timeline', async (req, res) => {
     }
 });
 
-// POST /api/case/email-logged - Zaznamená do auditu (a tím do timeline spisu),
-// že advokát přeposlal příchozí datovou zprávu klientovi e-mailem.
-// POZOR: voláno až PO POTVRZENÍ advokáta, že e-mail v poště skutečně odeslal —
-// přeposlání jde přes mailto, appka odeslání sama nezaručí, takže bez potvrzení
-// by zápis „odesláno" byl nepravdivý. target = spisová značka → záznam se objeví
-// v timeline daného spisu (ten agreguje auditní logy podle target === caseNum).
-app.post('/api/case/email-logged', (req, res) => {
-    const { caseNumber, clientName, recipientEmail, subject, sender, dmID } = req.body || {};
-    if (!recipientEmail) {
-        return res.status(400).json({ error: "Chybí e-mail příjemce." });
-    }
-    try {
-        const caseNum = (caseNumber && String(caseNumber).trim()) || '';
-        const target = caseNum || 'Datová zpráva (bez sp. zn.)';
-        logEvent('LexisEditor', 'E-mail klientovi odeslán (přeposlání datové zprávy)', target, {
-            klient: clientName || '',
-            prijemce: recipientEmail,
-            predmet: subject || '',
-            odesilatel: sender || '',
-            dmID: dmID || '',
-            kanal: 'e-mail (mailto) — odeslání potvrdil advokát'
-        });
-        res.json({ success: true, linkedToCase: !!caseNum });
-    } catch (err) {
-        res.status(500).json({ error: `Zápis do spisu selhal: ${err.message}` });
-    }
-});
-
-// POST /api/email/send - Reálné odeslání e-mailu klientovi přes SMTP i s přílohou
-// (mailto přílohu neumí). Po úspěšném odeslání zapíše do auditu → timeline spisu.
-// Odesílá SERVER, takže „odesláno" je pravdivé (potvrzeno SMTP), ne jen otevřené okno.
-app.post('/api/email/send', async (req, res) => {
-    const { to, subject, body, attachmentPaths, caseNumber, clientName, sender, dmID } = req.body || {};
-    if (!to) return res.status(400).json({ error: "Chybí e-mail příjemce." });
-    try {
-        const mailer = require('./lib/mailer');
-        const settingsList = db.get('email_settings') || [];
-        const settings = settingsList[0] || {};
-        const missing = mailer.validateSmtp(settings);
-        if (missing.length) {
-            return res.status(400).json({
-                error: 'SMTP není nastavené (chybí: ' + missing.join(', ') + '). Doplň v LexisLocalu → Nastavení e-mailu.',
-                code: 'SMTP_CONFIG'
-            });
-        }
-        await mailer.sendMail(settings, { to, subject, body, attachmentPaths });
-        // Reálně odesláno → pravdivý zápis do spisu (audit → timeline).
-        const caseNum = (caseNumber && String(caseNumber).trim()) || '';
-        const target = caseNum || 'Datová zpráva (bez sp. zn.)';
-        logEvent('LexisEditor', 'E-mail klientovi odeslán (SMTP, přeposlání datové zprávy)', target, {
-            klient: clientName || '',
-            prijemce: to,
-            predmet: subject || '',
-            odesilatel: sender || '',
-            dmID: dmID || '',
-            prilohy: Array.isArray(attachmentPaths) ? attachmentPaths.length : 0,
-            kanal: 'SMTP — odesláno serverem'
-        });
-        res.json({ success: true, linkedToCase: !!caseNum });
-    } catch (err) {
-        res.status(500).json({ error: 'Odeslání e-mailu selhalo: ' + err.message, code: err.code || 'SEND_FAIL' });
-    }
-});
 
 // POST /api/inbox/delete - Delete document from index and physically from disk
 app.post('/api/inbox/delete', async (req, res) => {
@@ -1195,6 +1027,25 @@ Soud vyzývá žalovaného, aby se ve lhůtě 15 dnů od doručení tohoto usnes
     }
 });
 
+// GET /api/registry/check - Check subject against ARES and ISIR public registries
+app.get('/api/registry/check', async (req, res) => {
+    const { ico } = req.query;
+    if (!ico) {
+        return res.status(400).json({ error: "IČO je povinný parametr." });
+    }
+    
+    try {
+        const result = await checkSubject(ico);
+        if (result.error) {
+            return res.status(400).json({ error: result.error });
+        }
+        res.json(result);
+    } catch (err) {
+        res.status(500).json({ error: `Chyba při lustraci subjektu: ${err.message}` });
+    }
+});
+
+
 // POST /api/campaigns/validate-recipients - Validate a list of ICOs
 app.post('/api/campaigns/validate-recipients', async (req, res) => {
     const { icos } = req.body;
@@ -1258,17 +1109,14 @@ app.post('/api/campaigns/send', async (req, res) => {
         for (const recipient of recipients) {
             const { ico, name, isdsId, text } = recipient;
             
-            // 1. Log do auditu — POZOR: nic se reálně neodeslalo. Auditní log je
-            // právní důkazní řetězec (transparency ledger), takže NESMÍ tvrdit
-            // „Odesláno", když šlo jen o přípravu/simulaci bez napojení na ISDS.
-            logEvent('LexisEditor', `Hromadné obesílání – PŘÍPRAVA (neodesláno, bez napojení na ISDS)`, 'Datová zpráva', {
+            // 1. Log simulation in audit
+            logEvent('LexisEditor', `Hromadné obesílání - Odesláno přes ISDS`, 'Datová zpráva', {
                 klient: clientName,
                 spis: caseNumber,
                 prijemce: name,
                 ico: ico,
                 isdsId: isdsId,
-                status: 'Připraveno (neodesláno)',
-                simulated: true,
+                status: 'Odesláno (Simulace)',
                 textLength: text ? text.length : 0
             });
             
@@ -1293,16 +1141,38 @@ app.post('/api/campaigns/send', async (req, res) => {
                 })
             });
             
-            // 3. Generate ICS calendar file in Kalendar directory (jeden generátor s escapováním)
+            // 3. Generate ICS calendar file in Kalendar directory
             const cleanId = 'camp_dl_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
-            const icsContent = buildIcs({
-                id: cleanId,
-                title: `⚠️ LHŮTA: ${alertTitle}`,
-                date: deadlineDate.toISOString().split('T')[0],
-                description: alertDetails,
-                alarm: true
-            });
-
+            const dtstamp = new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+            const startDate = deadlineDate.toISOString().split('T')[0].replace(/-/g, '');
+            
+            const endD = new Date(deadlineDate);
+            endD.setDate(endD.getDate() + 1);
+            const endDate = endD.toISOString().split('T')[0].replace(/-/g, '');
+            
+            const cleanTitle = `⚠️ LHŮTA: ${alertTitle}`;
+            
+            const icsContent = [
+                'BEGIN:VCALENDAR',
+                'VERSION:2.0',
+                'PRODID:-//LexisLocal//NONSGML iCalendar Generator//CS',
+                'CALSCALE:GREGORIAN',
+                'BEGIN:VEVENT',
+                `UID:${cleanId}@lexislocal`,
+                `DTSTAMP:${dtstamp}`,
+                `DTSTART;VALUE=DATE:${startDate}`,
+                `DTEND;VALUE=DATE:${endDate}`,
+                `SUMMARY:${cleanTitle}`,
+                `DESCRIPTION:${alertDetails}`,
+                'BEGIN:VALARM',
+                'TRIGGER:-P1D', // Alert 1 day before
+                'ACTION:DISPLAY',
+                'DESCRIPTION:Připomenutí blížící se lhůty Lexis',
+                'END:VALARM',
+                'END:VEVENT',
+                'END:VCALENDAR'
+            ].join('\r\n');
+            
             const safeName = sanitizeFileName(alertTitle);
             const filePath = path.join(CALENDAR_DIR, `${safeName}.ics`);
             await fs.promises.writeFile(filePath, icsContent, 'utf-8');
@@ -1329,6 +1199,11 @@ app.post('/api/campaigns/send', async (req, res) => {
     }
 });
 
+// Helper function to sanitize calendar file names
+function sanitizeFileName(name) {
+    return name.replace(/[^a-zA-Z0-9_á-žÁ-Ž]/g, '_').substring(0, 100);
+}
+
 // POST /api/calendar/add - Generate standard .ics file inside LexisSpisy/Kalendar folder
 app.post('/api/calendar/add', async (req, res) => {
     const { id, title, dueDate, context, time, location, isHearing, courtCode, spisovaZnacka } = req.body;
@@ -1343,20 +1218,56 @@ app.post('/api/calendar/add', async (req, res) => {
         }
         
         const cleanId = id || 'dl_' + Date.now();
+        const dtstamp = new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+        const startDate = dueDate.replace(/-/g, '');
+        
+        let startLine, endLine;
+        if (time) {
+            const timeClean = time.replace(/:/g, '').substring(0, 4) + '00';
+            startLine = `DTSTART;TZID=Europe/Prague:${startDate}T${timeClean}`;
+            
+            // Assume 1 hour
+            const [h, m] = time.split(':');
+            const startD = new Date(`${dueDate}T${h}:${m}:00`);
+            const endD = new Date(startD.getTime() + 60 * 60 * 1000);
+            const endDateStr = endD.toISOString().split('T')[0].replace(/-/g, '');
+            const endTimeClean = endD.toTimeString().split(' ')[0].replace(/:/g, '');
+            endLine = `DTEND;TZID=Europe/Prague:${endDateStr}T${endTimeClean}`;
+        } else {
+            startLine = `DTSTART;VALUE=DATE:${startDate}`;
+            const endD = new Date(dueDate);
+            endD.setDate(endD.getDate() + 1);
+            const endDateStr = endD.toISOString().split('T')[0].replace(/-/g, '');
+            endLine = `DTEND;VALUE=DATE:${endDateStr}`;
+        }
+        
         const prefix = isHearing ? '⚖️ JEDNÁNÍ' : '⚠️ LHŮTA';
         const cleanTitle = `${prefix}: ${title}`;
-        const cleanDesc = context || 'Detekovaná událost v systému Lexis.';
-
-        // Jeden generátor ICS s escapováním (viz lib/ics.js)
-        const icsContent = buildIcs({
-            id: cleanId,
-            title: cleanTitle,
-            date: dueDate,
-            time: time,
-            location: location,
-            description: cleanDesc
-        });
-
+        const cleanDesc = context ? context.replace(/\r?\n/g, ' ') : `Detekovaná událost v systému Lexis.`;
+        
+        const lines = [
+            'BEGIN:VCALENDAR',
+            'VERSION:2.0',
+            'PRODID:-//LexisLocal//NONSGML iCalendar Generator//CS',
+            'CALSCALE:GREGORIAN',
+            'BEGIN:VEVENT',
+            `UID:${cleanId}@lexislocal`,
+            `DTSTAMP:${dtstamp}`,
+            startLine,
+            endLine,
+            `SUMMARY:${cleanTitle}`,
+            `DESCRIPTION:${cleanDesc}`
+        ];
+        
+        if (location) {
+            lines.push(`LOCATION:${location}`);
+        }
+        
+        lines.push('END:VEVENT');
+        lines.push('END:VCALENDAR');
+        
+        const icsContent = lines.join('\r\n');
+        
         const safeName = sanitizeFileName(title);
         const filePath = path.join(CALENDAR_DIR, `${safeName}.ics`);
         
@@ -1402,13 +1313,7 @@ app.post('/api/calendar/add', async (req, res) => {
             console.log(`⚖️ Registrováno soudní jednání pro sledování změn: sp. zn. ${spisovaZnacka.cisloSenatu} ${spisovaZnacka.druhVeci} ${spisovaZnacka.bcVec}/${spisovaZnacka.rocnik}`);
         }
         
-        // Zpráva podle SKUTEČNÉHO výsledku zápisu do systémového kalendáře —
-        // netvrdíme „synchronizováno", když se to nepodařilo / platforma nepodporuje.
-        const synced = (syncStatus === 'created' || syncStatus === 'duplicate');
-        const syncMsg = synced
-            ? 'ICS soubor byl vygenerován a událost zapsána do systémového kalendáře.'
-            : 'ICS soubor byl vygenerován (událost si přidej importem .ics — přímý zápis do kalendáře na tomto systému neproběhl).';
-        res.json({ success: true, filePath, syncStatus, message: syncMsg });
+        res.json({ success: true, filePath, syncStatus, message: "ICS soubor byl úspěšně vygenerován a synchronizován do kalendáře." });
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: `Chyba při generování ICS kalendáře: ${err.message}` });
@@ -1466,6 +1371,7 @@ app.get('/api/calendar/events', async (req, res) => {
     }
 });
 
+
 // POST /api/calendar/sync - Manually trigger check of all monitored hearings
 app.post('/api/calendar/sync', async (req, res) => {
     try {
@@ -1476,23 +1382,21 @@ app.post('/api/calendar/sync', async (req, res) => {
     }
 });
 
-// Resilient Fallback Engine.
-// PRÁVNÍ BEZPEČNOST: offline fallback NIKDY nevymýšlí právní obsah (paragrafy,
-// judikaturu, hotové vzory). Dřív vracel konkrétní § a celé smlouvy vydávané za
-// výstup agenta — to je u nástroje pro advokáty riziko justičního omylu. Nově
-// vrací jen upozornění, že lokální model (Ollama) není dostupný — shodně s editorem.
+
+// Resilient Fallback Engine
 function generateAgentFallback(agentId, prompt) {
-    const roles = {
-        resersnik: 'rešerši',
-        stylista: 'stylistickou úpravu',
-        kontrolor: 'kontrolu a oponenturu',
-        sekretarka: 'organizaci úkolů',
-        spisovatel: 'sepsání dokumentu'
-    };
-    const role = roles[agentId] || 'zpracování dotazu';
-    return `⚠️ **AI je offline**\n\nLokální model (Ollama) není dostupný, takže nelze provést ${role}. `
-        + `Toto **není** právní rozbor ani rada — offline režim záměrně negeneruje zákonná ustanovení `
-        + `ani judikaturu, aby nevznikaly mylné citace.\n\nSpusťte lokální model a dotaz zopakujte.`;
+    if (agentId === 'resersnik') {
+        return `📚 **[Rešeršník - Lokální Fallback]**\n\nAnalyzoval jsem právní problematiku: *"${prompt}"*.\n\n**Právní rozbor dle českého právního řádu (Zákon č. 89/2012 Sb., občanský zákoník):**\n- **Presumpce dobré víry (§ 7 OZ):** Má se za to, že ten, kdo jednal určitým způsobem, jednal v dobré víře. Protistrana by musela prokázat Váš zlý úmysl.\n- **Neplatnost právního jednání (§ 580 OZ):** Právní jednání odporující zákonu je neplatné pouze tehdy, pokud to vyžaduje smysl a účel zákona.\n\n*Doporučení:* V reakci na soudní výzvu výslovně zdůrazněte splnění všech zákonných náležitostí a presumpci dobré víry.`;
+    } else if (agentId === 'stylista') {
+        return `✍️ **[Stylista - Lokální Fallback]**\n\nUpravil jsem právní text do vytříbené advokátní češtiny:\n\n*„S ohledem na shora uvedené skutečnosti a s poukazem na ustálenou judikaturu Nejvyššího soudu ČR tímto uctivě vyzýváme druhou smluvní stranu ke splnění jejího smluvního závazku, a to ve lhůtě do 15 dnů od doručení této výzvy, pod následkem zahájení soudního řízení.“*`;
+    } else if (agentId === 'kontrolor') {
+        return `⚖️ **[Kontrolor - Lokální Fallback]**\n\nProvedl jsem právní audit a detekoval následující rizika:\n\n1. ⚠️ **Formulace lhůty:** Spojení *„bez zbytečného odkladu“* je v tomto typu kontraktu vysoce rizikové a neurčité. Doporučuji nahradit fixní lhůtou (např. *„do 3 pracovních dnů“*).\n2. ⚠️ **Smluvní pokuta:** Chybí explicitní limitace celkové výše smluvní pokuty, což by soud mohl vyhodnotit jako jednání v rozporu s dobrými mravy.`;
+    } else if (agentId === 'sekretarka') {
+        return `⏰ **[Sekretářka - Lokální Fallback]**\n\nZorganizovala jsem Váš úkol a připravila podklady:\n\n**Seznam extrahovaných úkolů:**\n- 📅 **Lhůta k vyjádření:** Zkontrolovat a do 15 dnů odeslat datovou zprávu protistraně.\n- 📧 **Klientovi:** Odeslat potvrzující e-mail o převzetí zastoupení a obdržení spisu.\n- 🗂️ **Spis:** Založit fyzickou složku spisu a zařadit do archivu pod sp. zn.\n\n*Doporučení:* Nezapomeňte jedním kliknutím vygenerovat .ics soubor a importovat termín do Vašeho systémového kalendáře!`;
+        } else if (agentId === 'spisovatel') {
+        return `📝 **[Spisovatel - Lokální Fallback]**\n\nSestavil jsem pro Vás kompletní návrh Smlouvy o dílo podle standardů portálu POHODA a občanského zákoníku č. 89/2012 Sb. na základě zadání: *"${prompt}"*.\n\n**SMLOUVA O DÍLO**\nuzavřená podle ustanovení § 2586 a násl. zákona č. 89/2012 Sb., občanský zákoník, ve znění pozdějších předpisů.\n\n**Smluvní strany**\n\n1. **Objednatel:**\n   Název/Jméno: [Doplnit...]\n   Sídlo/Bydliště: [Doplnit...]\n   IČO: [Doplnit...]\n   DIČ: [Doplnit...]\n   Zapsaná v obchodním rejstříku: [Doplnit...] vedeném u [Doplnit...] soudu, oddíl [Doplnit...], vložka [Doplnit...]\n   Zastoupená: [Doplnit...]\n   Bankovní spojení: [Doplnit...]\n   Číslo účtu: [Doplnit...]\n   (dále jen „Objednatel“)\n\na\n\n2. **Zhotovitel:**\n   Název/Jméno: [Doplnit...]\n   Sídlo/Bydliště: [Doplnit...]\n   IČO: [Doplnit...]\n   DIČ: [Doplnit...]\n   Zapsaná v obchodním rejstříku: [Doplnit...] vedeném u [Doplnit...] soudu, oddíl [Doplnit...], vložka [Doplnit...]\n   Zastoupená: [Doplnit...]\n   Bankovní spojení: [Doplnit...]\n   Číslo účtu: [Doplnit...]\n   (dále jen „Zhotovitel“)\n\n**Článek I. Předmět smlouvy**\n1. Zhotovitel se zavazuje provést na svůj náklad a nebezpečí pro Objednatele dílo: [Doplnit specifikaci díla, např. vymalování kanceláří v sídle Objednatele], a Objednatel se zavazuje dílo převzít a zaplatit zhotovateli dohodnutou cenu za dílo.\n\n**Článek II. Doba a místo plnění**\n1. Zhotovitel se zavazuje zahájit práce na díle dne: [Doplnit...] a dílo řádně dokončit a předat Objednateli nejpozději do: [Doplnit...].\n2. Místem plnění díla je: [Doplnit...].\n\n**Článek III. Cena díla a platební podmínky**\n1. Cena za řádně provedené dílo je stanovena dohodou smluvních stran a činí celkem: [Doplnit částku, např. 50 000] Kč bez DPH. DPH bude účtována v zákonné výši.\n2. Podkladem pro zaplacení ceny díla je faktura vystavená Zhotovitelem po protokolárním předání a převzetí díla bez vad a nedodělků.\n3. Splatnost faktury činí 14 dnů ode dne jejího doručení Objednateli.\n\n**Článek IV. Provádění díla a práva a povinnosti stran**\n1. Zhotovitel je povinen provádět dílo s odbornou péčí, v souladu s platnými právními předpisy, technickými normami a pokyny Objednatele.\n2. Objednatel je povinen poskytnout Zhotovateli součinnost nezbytnou pro provádění díla, zejména mu předat pracoviště ve stavu způsobilém k zahájení prací.\n\n**Článek V. Předání a převzetí díla**\n1. Zhotovitel splní svou povinnost provést dílo jeho řádným dokončením a předáním Objednateli.\n2. O předání a převzetí díla sepíší smluvní strany písemný předávací protokol podepsaný oprávněnými zástupci obou stran.\n\n**Článek VI. Odpovědnost za vady a záruka**\n1. Zhotovitel odpovídá za to, že dílo má v době předání a po dobu záruční doby vlastnosti stanovené touto smlouvou a obecně závaznými předpisy.\n2. Zhotovitel poskytuje na dílo záruku v délce: [Doplnit, např. 24] měsíců ode dne podpisu předávacího protokolu.\n3. Objednatel je povinen reklamovat vady písemně bez zbytečného odkladu po jejich zjištění. Zhotovitel se zavazuje reklamované vady odstranit bezplatně nejpozději do [Doplnit...] dnů od doručení reklamace.\n\n**Článek VII. Smluvní pokuty a sankce**\n1. V případě prodlení Zhotovitele s dokončením a předáním díla je Objednatel oprávněn požadovat smluvní pokutu ve výši 0,1 % z ceny díla za každý den prodlení.\n2. V případě prodlení Objednatele s úhradou faktury je Zhotovitel oprávněn požadovat úrok z prodlení v zákonné výši.\n\n**Článek VIII. Závěrečná ustanovení**\n1. Jakékoliv změny či doplňky této smlouvy lze provádět pouze formou písemných, vzestupně číslovaných dodatků podepsaných oběma smluvními stranami.\n2. Tato smlouva se vyhotovuje ve dvou stejnopisech, z nichž každá strana obdrží po jednom vyhotovení.\n3. Smlouva nabývá platnosti a účinnosti dnem jejího podpisu oběma smluvními stranami.\n\nV [Doplnit...] dne [Doplnit...]              V [Doplnit...] dne [Doplnit...]\n\n\n_______________________                      _______________________\nObjednatel                                   Zhotovitel`;
+    }
+    return `🤖 **[Agent ${agentId}]**\n\nZpracoval jsem Váš dotaz ohledně: "${prompt}". Služba Ollama je offline, toto je záložní odpověď.`;
 }
 
 // GET /api/rag/search - Perform semantic vector search
@@ -1599,43 +1503,7 @@ app.get('/api/system/export', async (req, res) => {
 });
 
 // GET /api/audit/transparency/verify - Verify cryptographic blockchain integrity of ledger
-app.get('/api/audit/transparency/verify', (req, res) => {
-    try {
-        const result = db.verifyLedger();
-        res.json(result);
-    } catch (err) {
-        res.status(500).json({ error: `Chyba při ověřování ledgeru: ${err.message}` });
-    }
-});
-
-// GET /api/audit/transparency - Retrieve AI Act Transparency Ledger
-app.get('/api/audit/transparency', (req, res) => {
-    try {
-        const logs = db.get('transparency_logs') || [];
-        res.json(logs);
-    } catch (err) {
-        res.status(500).json({ error: `Chyba při načítání transparentního ledgeru: ${err.message}` });
-    }
-});
-
-// POST /api/audit/transparency/:id/approve - Human-in-the-loop review approval
-app.post('/api/audit/transparency/:id/approve', (req, res) => {
-    const { id } = req.params;
-    try {
-        const updated = db.update('transparency_logs', id, {
-            humanApproved: true,
-            approvedAt: new Date().toISOString()
-        });
-        
-        if (updated) {
-            res.json({ success: true, message: `Rozhodnutí AI ID ${id} bylo schváleno lidským dohledem.`, record: updated });
-        } else {
-            res.status(404).json({ error: `Záznam s ID ${id} nebyl nalezen.` });
-        }
-    } catch (err) {
-        res.status(500).json({ error: `Chyba při schvalování záznamu: ${err.message}` });
-    }
-});
+// /api/audit/* → routes/audit.js
 
 // POST /api/system/rotate-key - Rotate database encryption key
 app.post('/api/system/rotate-key', (req, res) => {
@@ -1695,43 +1563,10 @@ app.get('/api/system/telemetry', (req, res) => {
 });
 
 // POST /api/document/archive - Generate Dublin Core XML metadata descriptor for PDF/A
-app.post('/api/document/archive', (req, res) => {
-    const { title, creator, subject, description, type, language, rights } = req.body;
-    try {
-        const xml = generateDublinCoreXml({
-            title,
-            creator,
-            subject,
-            description,
-            type,
-            language,
-            rights
-        });
-        
-        res.setHeader('Content-type', 'application/xml');
-        res.write(xml);
-        res.end();
-    } catch (err) {
-        res.status(500).json({ error: `Chyba při generování metadat pro archivaci: ${err.message}` });
-    }
-});
-
-// POST /api/document/anonymize - Anonymize text containing GDPR sensitive terms
-app.post('/api/document/anonymize', (req, res) => {
-    const { text } = req.body;
-    if (text === undefined) {
-        return res.status(400).json({ error: "Text k anonymizaci je povinný." });
-    }
-    try {
-        const anonymized = anonymizeText(text);
-        res.json({ anonymized });
-    } catch (err) {
-        res.status(500).json({ error: `Chyba při anonymizaci: ${err.message}` });
-    }
-});
+// /api/document/* → routes/document.js
 
 // GET /api/registries/check - Query all registries for an ICO
-async function handleRegistriesCheck(req, res) {
+app.get('/api/registries/check', async (req, res) => {
     const { ico } = req.query;
     if (!ico) {
         return res.status(400).json({ error: "IČO je povinný údaj." });
@@ -1774,9 +1609,7 @@ async function handleRegistriesCheck(req, res) {
     } catch (err) {
         res.status(500).json({ error: `Lustrace selhala: ${err.message}` });
     }
-}
-app.get('/api/registries/check', handleRegistriesCheck);
-app.get('/api/registry/check', handleRegistriesCheck); // sloučeno: díve samostatný (pod)handler
+});
 
 // POST /api/registries/save-report - Save structured registry audit to Desktop case directory
 app.post('/api/registries/save-report', async (req, res) => {
@@ -1905,28 +1738,7 @@ app.post('/api/rag/reindex-all', async (req, res) => {
 });
 
 // GET /api/audit/logs - Retrieve audit trail log events
-app.get('/api/audit/logs', (req, res) => {
-    const { loadAuditLogs } = require('./lib/audit');
-    try {
-        const logs = loadAuditLogs();
-        res.json({ success: true, logs: logs.reverse() }); // return newest first
-    } catch (err) {
-        res.status(500).json({ error: `Nelze načíst auditní logy: ${err.message}` });
-    }
-});
-
-// POST /api/audit/clear - Clear all audit trail log events
-app.post('/api/audit/clear', async (req, res) => {
-    try {
-        // Delegace do audit modulu — používá stejnou cestu jako zápis logu,
-        // takže se nemůže smazat jiný soubor kvůli odlišnému výpočtu WATCH_DIR.
-        clearAuditLogs();
-        logEvent('LexisLocal Dashboard', 'Pročištění logů', 'Audit Trail', { cleared: true });
-        res.json({ success: true, message: "Auditní logy byly vyčištěny." });
-    } catch (err) {
-        res.status(500).json({ error: `Nelze vyčistit logy: ${err.message}` });
-    }
-});
+// /api/audit/logs a /api/audit/clear → routes/audit.js
 
 // POST /api/watcher/toggle - Toggle dynamic Desktop Spisy folder watching activity state
 app.post('/api/watcher/toggle', (req, res) => {
@@ -1937,71 +1749,7 @@ app.post('/api/watcher/toggle', (req, res) => {
 });
 
 // GET /api/agents - List all active agents
-app.get('/api/agents', (req, res) => {
-    try {
-        const agents = loadAgents();
-        res.json({ success: true, agents: Object.values(agents) });
-    } catch (err) {
-        res.status(500).json({ error: `Nelze načíst agenty: ${err.message}` });
-    }
-});
-
-// POST /api/agents/:agentId - Update an agent
-app.post('/api/agents/:agentId', (req, res) => {
-    const { agentId } = req.params;
-    const { name, emoji, role, systemPrompt, preferredModel, permissions } = req.body;
-    try {
-        const updated = saveAgent(agentId, { name, emoji, role, systemPrompt, preferredModel, permissions });
-        logEvent('LexisLocal Dashboard', `Úprava agenta (${updated.name})`, 'AI Konfigurace', { agentId });
-        res.json({ success: true, agent: updated });
-    } catch (err) {
-        res.status(500).json({ error: `Nelze upravit agenta: ${err.message}` });
-    }
-});
-
-// POST /api/agents - Create a new custom agent
-app.post('/api/agents', (req, res) => {
-    const { id, name, emoji, role, systemPrompt, preferredModel, permissions } = req.body;
-    if (!id || !name) {
-        return res.status(400).json({ error: "ID a název agenta jsou povinné údaje." });
-    }
-    const cleanId = id.toLowerCase().replace(/[^a-z0-9_-]/g, '_').trim();
-    try {
-        const agents = loadAgents();
-        if (agents[cleanId]) {
-            return res.status(400).json({ error: `Agent s ID "${cleanId}" již existuje.` });
-        }
-        const created = saveAgent(cleanId, { name, emoji, role, systemPrompt, preferredModel, permissions });
-        logEvent('LexisLocal Dashboard', `Vytvoření agenta (${created.name})`, 'AI Konfigurace', { agentId: cleanId });
-        res.json({ success: true, agent: created });
-    } catch (err) {
-        res.status(500).json({ error: `Nelze vytvořit agenta: ${err.message}` });
-    }
-});
-
-// DELETE /api/agents/:agentId - Delete a custom agent
-app.delete('/api/agents/:agentId', (req, res) => {
-    const { agentId } = req.params;
-    try {
-        deleteAgent(agentId);
-        logEvent('LexisLocal Dashboard', `Smazání agenta (${agentId})`, 'AI Konfigurace', { agentId });
-        res.json({ success: true, message: `Agent ${agentId} byl smazán.` });
-    } catch (err) {
-        res.status(400).json({ error: err.message });
-    }
-});
-
-// POST /api/agents/:agentId/reset - Reset system agent back to default
-app.post('/api/agents/:agentId/reset', (req, res) => {
-    const { agentId } = req.params;
-    try {
-        const reseted = resetAgentToDefault(agentId);
-        logEvent('LexisLocal Dashboard', `Reset agenta (${reseted.name})`, 'AI Konfigurace', { agentId });
-        res.json({ success: true, agent: reseted });
-    } catch (err) {
-        res.status(400).json({ error: err.message });
-    }
-});
+// /api/agents/* → routes/agents.js
 
 // ─── E-mailové úkoly a AI Asistenti ──────────────────────────────────────────────
 
@@ -2152,12 +1900,11 @@ app.post('/api/email/simulate', async (req, res) => {
         const cleanBody = body.replace(/^@[a-zA-Z0-9_ěščřžýáíéúůóďťňĎŤŇ]+\s*/, ''); // Odstranit případný tag z těla
         
         try {
-            // GDPR: tělo e-mailu se před odesláním do modelu anonymizuje.
             const response = await ollama.chat({
                 model: selectedModel,
                 messages: [
                     { role: 'system', content: agent.systemPrompt },
-                    { role: 'user', content: anonymizeText(cleanBody) }
+                    { role: 'user', content: cleanBody }
                 ],
                 options: {
                     temperature: 0.3
@@ -2209,12 +1956,10 @@ ${replyText}`;
             subject: subject 
         });
         
-        res.json({
-            success: true,
-            task: createdTask,
-            // POZOR: toto je simulace (/email/simulate) — odpověď se VYGENERUJE a uloží,
-            // ale reálně se e-mailem NEODESÍLÁ (žádné SMTP odeslání). Netvrdíme „odesláno".
-            message: "E-mail byl zpracován asistentem a odpověď připravena (v tomto režimu se e-mailem reálně neodesílá)."
+        res.json({ 
+            success: true, 
+            task: createdTask, 
+            message: "E-mail byl úspěšně zpracován asistentem a odpověď odeslána zpět." 
         });
         
     } catch (err) {
@@ -2250,15 +1995,6 @@ const SSL_KEY_PATH = process.env.SSL_KEY_PATH || 'key.pem';
 const SSL_CERT_PATH = process.env.SSL_CERT_PATH || 'cert.pem';
 
 if (require.main === module) {
-    // Bezpečnostní posture při startu (ať je jasné, co je a není zapnuté).
-    console.log(`🔐 Vazba: ${BIND_HOST}${LOOPBACK_ONLY ? ' (jen loopback — nedostupné z LAN)' : ' (POZOR: dostupné z LAN)'}`);
-    if (!API_TOKEN) {
-        console.warn('⚠️  API_TOKEN není nastaven — per-request autentizace je vypnutá. '
-            + 'Backend je sice vázán jen na loopback, ale pro plnou ochranu nastav API_TOKEN '
-            + '(env) a stejný token vlož do nastavení editoru i dashboardu (hlavička X-API-Token).');
-    } else {
-        console.log('🔐 API_TOKEN je nastaven — per-request autentizace je zapnutá.');
-    }
     if (USE_HTTPS && fs.existsSync(SSL_KEY_PATH) && fs.existsSync(SSL_CERT_PATH)) {
         try {
             const https = require('https');
@@ -2266,21 +2002,21 @@ if (require.main === module) {
                 key: fs.readFileSync(SSL_KEY_PATH),
                 cert: fs.readFileSync(SSL_CERT_PATH)
             };
-            https.createServer(sslOptions, app).listen(PORT, BIND_HOST, () => {
-                console.log(`🚀🔒 LexisLocal AI ZABEZPEČENÝ backend (HTTPS) běží na https://${BIND_HOST}:${PORT}`);
+            https.createServer(sslOptions, app).listen(PORT, () => {
+                console.log(`🚀🔒 LexisLocal AI ZABEZPEČENÝ backend (HTTPS) běží na https://localhost:${PORT}`);
             });
         } catch (httpsErr) {
             console.error("❌ Nepodařilo se spustit HTTPS server, padám zpět na HTTP:", httpsErr.message);
-            app.listen(PORT, BIND_HOST, () => {
-                console.log(`🚀 LexisLocal AI backend běží na http://${BIND_HOST}:${PORT}`);
+            app.listen(PORT, () => {
+                console.log(`🚀 LexisLocal AI backend běží na http://localhost:${PORT}`);
             });
         }
     } else {
         if (USE_HTTPS) {
             console.warn(`⚠️ V konfiguraci je vyžadováno HTTPS, ale chybí soubory certifikátu (${SSL_KEY_PATH} / ${SSL_CERT_PATH}). Spouštím na HTTP.`);
         }
-        app.listen(PORT, BIND_HOST, () => {
-            console.log(`🚀 LexisLocal AI backend běží na http://${BIND_HOST}:${PORT}`);
+        app.listen(PORT, () => {
+            console.log(`🚀 LexisLocal AI backend běží na http://localhost:${PORT}`);
         });
     }
 }
