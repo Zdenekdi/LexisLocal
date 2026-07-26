@@ -21,28 +21,14 @@ app.use(express.static(path.join(__dirname, 'public')));
 // --- Ochrana proti path traversal (sdílený helper) ---
 const { safePathInWatchDir, sanitizeFileName } = require('./lib/pathsafe');
 
-// Secure API Token Middleware
+// Secure API Token Middleware — rozhodovací logika je v lib/auth.js (čistá,
+// bezstavová, pokrytá testy). Chování zůstává OPT-IN (bez API_TOKEN se nevynucuje).
+const { checkAuth } = require('./lib/auth');
 const API_TOKEN = process.env.API_TOKEN;
 const authenticate = (req, res, next) => {
-    // Allow static files in the public directory and OPTIONS preflight requests without auth
-    if (req.method === 'OPTIONS' || req.path === '/' || req.path === '/index.html' || req.path.endsWith('.css') || req.path.endsWith('.js') || req.path.endsWith('.ico')) {
-        return next();
-    }
-    
-    // Only enforce auth if API_TOKEN is set in environment
-    if (API_TOKEN) {
-        const authHeader = req.headers['authorization'];
-        let token = req.headers['x-api-token'] || req.query.token;
-        if (authHeader && authHeader.startsWith('Bearer ')) {
-            token = authHeader.substring(7);
-        }
-        
-        if (token !== API_TOKEN) {
-            console.warn(`🔒 Nepovolený přístup k API: ${req.method} ${req.path}`);
-            return res.status(401).json({ error: "Přístup odepřen: Neplatný nebo chybějící API token." });
-        }
-    }
-    next();
+    if (checkAuth(API_TOKEN, req).allowed) return next();
+    console.warn(`🔒 Nepovolený přístup k API: ${req.method} ${req.path}`);
+    return res.status(401).json({ error: "Přístup odepřen: Neplatný nebo chybějící API token." });
 };
 
 app.use(authenticate);
