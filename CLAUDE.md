@@ -36,6 +36,8 @@ Seřazeno podle priority. Frontendové položky (LexisEditor) jsou v CLAUDE.md t
   = `API_TOKEN` v env, nebo `LEXIS_ENFORCE_TOKEN=1`) — jádro je hotové, chybí jen reálný smoke test editoru
   (`LEXIS_ENFORCE_TOKEN=1`, spustit editor, vyzkoušet AI dotaz; nouzový vypínač `LEXIS_ENFORCE_TOKEN=0`)
   a pak přepnout na výchozí zapnuto. Pokryto testy (`apiToken.test.js`, `auth.test.js`).
+  Přidán skript **`scripts/smoke-token.sh`**, který 401/200 ověří automaticky — zbývá ho jen spustit
+  na Macu a otevřít editor s AI dotazem.
 
 ### 🟡 Střední
 
