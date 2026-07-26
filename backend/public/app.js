@@ -3791,7 +3791,6 @@ Generováno systémem LexisLocal. 100% soukromé a šifrované.`;
         const smtpPassEl = document.getElementById('em-smtp-pass');
         if (smtpPassEl) smtpPassEl.value = s.smtp_pass || '';
     }
-}
 
     async loadGreenMetricsAndTelemetry() {
         try {
@@ -3934,6 +3933,7 @@ Generováno systémem LexisLocal. 100% soukromé a šifrované.`;
             resultDiv.innerHTML = `❌ Chyba při ověřování ledgeru: ${e.message}`;
         }
     }
+}
 
 // Bind to window for global inline onclick callbacks
 window.addEventListener('DOMContentLoaded', () => {
