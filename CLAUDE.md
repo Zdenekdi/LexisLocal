@@ -65,6 +65,10 @@ Seřazeno podle priority. Frontendové položky (LexisEditor) jsou v CLAUDE.md t
 - [x] **HOTOVO — Sjednotit verze.** `/api/status` v `server.js` nově čte verzi z `package.json`
   (jeden zdroj pravdy).
 
+- [x] **HOTOVO — Behaviorální testy dashboardu.** XSS-kritický `escapeHtml` vytažen z `public/app.js`
+  do `public/app-helpers.js` (jeden zdroj pravdy, načítá se před `app.js`) a pokryt testy
+  `tests/appHelpers.test.js` (escapování, `<script>` payload, atributový breakout).
+
 - [x] **HOTOVO — Rozšířené testy.** Přibyly testy kolem nových/kritických míst: `frontend_syntax.test.js`
   (`node --check` nad `public/*.js`), `pathsafe.test.js`, `mutex.test.js`, `ragRequest.test.js`,
   `hearings.test.js`, `apiToken.test.js`. Živé ARES testy jsou gatované (`RUN_LIVE_ARES`), aby CI nezávisel

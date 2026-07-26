@@ -9,16 +9,7 @@ document.addEventListener('DOMContentLoaded', () => {
     window.appInstance = app;
 });
 
-function escapeHtml(unsafe) {
-    if (!unsafe) return '';
-    return unsafe
-         .toString()
-         .replace(/&/g, "&amp;")
-         .replace(/</g, "&lt;")
-         .replace(/>/g, "&gt;")
-         .replace(/"/g, "&quot;")
-         .replace(/'/g, "&#039;");
-}
+// escapeHtml je vytažen do app-helpers.js (načítá se před app.js) — jeden zdroj pravdy.
 
 class LexisLocalApp {
     constructor() {
