@@ -13,19 +13,43 @@ const HearingsWatcher = require('./lib/hearings');
 const app = express();
 const PORT = process.env.PORT || 4000;
 
+// API token je vždy k dispozici (z prostředí, jinak vygenerovaný a perzistovaný
+// mimo datovou složku). VYNUCENÍ je opt-in: zapne se, když je API_TOKEN v prostředí
+// (zpětná kompatibilita) nebo LEXIS_ENFORCE_TOKEN=1. Jinak backend jede bez vynucení
+// (chrání ho bind na loopback), ale token je připravený pro klienty i pro přepnutí.
+const { resolveApiToken } = require('./lib/api_token');
+const API_TOKEN = resolveApiToken();
+const ENFORCE_TOKEN = !!process.env.API_TOKEN || process.env.LEXIS_ENFORCE_TOKEN === '1';
+if (ENFORCE_TOKEN && !process.env.API_TOKEN) {
+    // Dashboard token dostane automaticky (vstřikuje se). Editor si ho vlož ručně
+    // do nastavení poskytovatele LexisLocal (pole klíč).
+    console.log(`🔑 Vynucení API tokenu ZAPNUTO. Token pro editor: ${API_TOKEN}`);
+}
+
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+// Dashboard servírujeme s vstříknutým API tokenem (jen loopback), aby ho klient
+// nemusel vkládat ručně, až se vynucení zapne. Musí být PŘED express.static.
+app.get(['/', '/index.html'], (req, res, next) => {
+    try {
+        const html = fs.readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf8');
+        const inject = `<script>window.LEXIS_API_TOKEN=${JSON.stringify(API_TOKEN)};</script>`;
+        res.type('html').send(html.includes('</head>') ? html.replace('</head>', inject + '</head>') : inject + html);
+    } catch (e) {
+        next();
+    }
+});
 app.use(express.static(path.join(__dirname, 'public')));
 
 // --- Ochrana proti path traversal (sdílený helper) ---
 const { safePathInWatchDir, sanitizeFileName } = require('./lib/pathsafe');
 
 // Secure API Token Middleware — rozhodovací logika je v lib/auth.js (čistá,
-// bezstavová, pokrytá testy). Chování zůstává OPT-IN (bez API_TOKEN se nevynucuje).
+// bezstavová, pokrytá testy). Vynucení je opt-in (ENFORCE_TOKEN, viz výše).
 const { checkAuth } = require('./lib/auth');
-const API_TOKEN = process.env.API_TOKEN;
 const authenticate = (req, res, next) => {
+    if (!ENFORCE_TOKEN) return next();
     if (checkAuth(API_TOKEN, req).allowed) return next();
     console.warn(`🔒 Nepovolený přístup k API: ${req.method} ${req.path}`);
     return res.status(401).json({ error: "Přístup odepřen: Neplatný nebo chybějící API token." });

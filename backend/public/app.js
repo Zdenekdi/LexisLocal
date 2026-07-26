@@ -29,7 +29,7 @@ class LexisLocalApp {
         this.models = [];
         this.inbox = [];
         this.watcherActive = true;
-        this.apiToken = localStorage.getItem('lexis_api_token') || '';
+        this.apiToken = (typeof window !== 'undefined' && window.LEXIS_API_TOKEN) || localStorage.getItem('lexis_api_token') || '';
         
         // Calendar state
         this.calendarState = {
