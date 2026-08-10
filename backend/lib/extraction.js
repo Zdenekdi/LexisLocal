@@ -45,16 +45,94 @@ function _isWorkingDay(d) {
     return !_czechHolidays(d.getFullYear()).has(_dateKey(d));
 }
 
-// Spočítá datum lhůty (YYYY-MM-DD). Základ = zadané datum (default dnešek) + N dní;
-// padne-li poslední den na So/Ne/svátek, posune se na nejbližší NÁSLEDUJÍCÍ pracovní den.
-function calculateDeadlineDate(days, baseDate) {
-    if (!days) return null;
-    const d = baseDate ? new Date(baseDate) : new Date();
-    d.setHours(12, 0, 0, 0); // vyhne se posunu přes půlnoc/DST
-    d.setDate(d.getDate() + parseInt(days, 10));
+// Přičte měsíce s ošetřením konce měsíce (§ 57 odst. 2 o.s.ř.): stejné číslo dne,
+// jinak poslední den cílového měsíce (31. 1. + 1 měsíc → 28./29. 2.). Rok = 12 měsíců.
+function _addMonthsClamped(base, months) {
+    const total = base.getMonth() + (parseInt(months, 10) || 0);
+    const y = base.getFullYear() + Math.floor(total / 12);
+    const m = ((total % 12) + 12) % 12;
+    const last = new Date(y, m + 1, 0).getDate();
+    return new Date(y, m, Math.min(base.getDate(), last), 12, 0, 0, 0);
+}
+
+// Obecný výpočet data lhůty podle jednotky (YYYY-MM-DD). § 57 o.s.ř.:
+//   • dny/týdny: základ + N (resp. 7·N) dní,
+//   • měsíce/roky (odst. 2): stejné číslo dne s ošetřením konce měsíce.
+// V každém případě: padne-li konec na So/Ne/svátek, posun na následující pracovní den.
+// unit ∈ {'day','week','month','year'} (default 'day'). Vrací null pro amount ≤ 0.
+function calculateDeadlineByUnit(amount, unit, baseDate) {
+    const n = parseInt(amount, 10);
+    if (!n || n <= 0) return null;
+    const base = baseDate ? new Date(baseDate) : new Date();
+    base.setHours(12, 0, 0, 0); // vyhne se posunu přes půlnoc/DST
+    let d;
+    switch (unit) {
+        case 'week':  d = new Date(base); d.setDate(d.getDate() + n * 7); break;
+        case 'month': d = _addMonthsClamped(base, n); break;
+        case 'year':  d = _addMonthsClamped(base, n * 12); break;
+        case 'day':
+        default:      d = new Date(base); d.setDate(d.getDate() + n); break;
+    }
+    d.setHours(12, 0, 0, 0);
     let guard = 0;
     while (!_isWorkingDay(d) && guard < 30) { d.setDate(d.getDate() + 1); guard++; }
     return _dateKey(d);
+}
+
+// Spočítá datum lhůty zadané POČTEM DNÍ (YYYY-MM-DD). Deleguje na obecný výpočet;
+// chování zachováno pro zpětnou kompatibilitu (watcher.js, paperless.js).
+function calculateDeadlineDate(days, baseDate) {
+    if (!days) return null;
+    return calculateDeadlineByUnit(days, 'day', baseDate);
+}
+
+// Deterministická detekce lhůt v textu (dny/týdny/měsíce/roky, číslicí i slovní
+// číslovkou), zrcadlí editorový lexis-calendar.detectDeadlines. Vrací
+// [{ amount, unit, context }]. Měsíce/týdny/roky bere jen v lhůtovém kontextu
+// (ochrana proti false-positive typu „smlouva na 2 roky").
+const _CZ_NUM = {
+    'jeden':1,'jednoho':1,'jedne':1,'jednu':1,'jedna':1,'dva':2,'dvou':2,'dve':2,'dvema':2,
+    'tri':3,'trech':3,'trem':3,'ctyri':4,'ctyr':4,'ctyrech':4,'pet':5,'peti':5,'sest':6,'sesti':6,
+    'sedm':7,'sedmi':7,'osm':8,'osmi':8,'devet':9,'deviti':9,'deset':10,'desiti':10,
+    'patnact':15,'patnacti':15,'dvacet':20,'dvaceti':20,'tricet':30,'triceti':30
+};
+function _deaccent(s) { return String(s == null ? '' : s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); }
+function _parseNum(tok) {
+    if (tok == null) return null;
+    const s = String(tok).trim();
+    if (/^\d+$/.test(s)) return parseInt(s, 10);
+    const k = _deaccent(s);
+    return Object.prototype.hasOwnProperty.call(_CZ_NUM, k) ? _CZ_NUM[k] : null;
+}
+function detectDeadlines(text) {
+    if (!text) return [];
+    const NUM = '(\\d+|jed(?:en|noho|n[eé]|nu|na)|dv(?:a|ou|[eě]|[eě]ma)|t[rř][ií]|t[rř]ech|t[rř]em|[cč]ty[rř](?:i|ech)?|p[eě]t|p[eě]ti|[sš]est|[sš]esti|sedm|sedmi|osm|osmi|dev[eě]t|dev[ií]ti|deset|des[ií]ti|patn[aá]ct|patn[aá]cti|dvacet|dvaceti|t[rř]icet|t[rř]iceti)';
+    const END = '(?![a-zá-žA-ZÁ-Ž])';
+    const pat = {
+        day:   new RegExp(NUM + '\\s+(?:pracovn[ií]ch\\s+)?(?:den|dnech|dn[uůíey])' + END, 'gi'),
+        week:  new RegExp(NUM + '\\s+(?:t[yý]dnech|t[yý]den|t[yý]dn[uůyeí])' + END, 'gi'),
+        month: new RegExp(NUM + '\\s+m[eě]s[ií]c[uůeieí]*' + END, 'gi'),
+        year:  new RegExp(NUM + '\\s+(?:let|roky|rok[uůy]?|roce)' + END, 'gi')
+    };
+    const ctxRe = /(lh[uů]t|nejpozd|ve lh[uů]t|do\s+\d|do\s+[a-zá-ž]+\s+(?:m[eě]s|t[yý]d|dn|rok|let)|podat|vyj[aá]d[rř]|odvol|dovol|n[aá]mitk|[zž]alob|st[ií][zž]nost|kasa[cč]n|term[ií]n)/i;
+    const out = [];
+    String(text).split(/[\n\r]+/).forEach(function (line) {
+        if (line.trim().length < 8) return;
+        const hasCtx = ctxRe.test(line);
+        const ctx = line.trim().replace(/\s+/g, ' ');
+        ['day', 'week', 'month', 'year'].forEach(function (unit) {
+            if (unit !== 'day' && !hasCtx) return;
+            const re = pat[unit]; re.lastIndex = 0; let m;
+            while ((m = re.exec(line)) !== null) {
+                const amount = _parseNum(m[1]);
+                if (!amount || amount <= 0) continue;
+                if (!out.some(function (d) { return d.amount === amount && d.unit === unit && d.context === ctx; })) {
+                    out.push({ amount: amount, unit: unit, context: ctx });
+                }
+            }
+        });
+    });
+    return out;
 }
 
 // Ollama AI extraktor strukturovaných metadat z českého právního textu.
@@ -89,4 +167,4 @@ ${text.substring(0, 3000)}`;
     return null;
 }
 
-module.exports = { calculateDeadlineDate, runAIExtractor };
+module.exports = { calculateDeadlineDate, calculateDeadlineByUnit, detectDeadlines, runAIExtractor };
