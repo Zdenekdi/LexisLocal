@@ -57,6 +57,8 @@ Seřazeno podle priority. Frontendové položky (LexisEditor) jsou v CLAUDE.md t
 
 ### 🟡 Střední
 
+- [x] **HOTOVO — Startup pojistka + config.** `server.js` hlasitě varuje při vazbě na síť (BIND_HOST mimo loopback) bez vynuceného tokenu nebo bez TLS. `.env.example` doplněn o BIND_HOST, LEXIS_ENFORCE_TOKEN, LEXIS_KEY_DIR, LEXIS_STORE, USE_HTTPS, SSL_* aj. s bezpecnymi vychozimi.
+
 - [x] **HOTOVO — Secrety z `docker-compose.yml`.** Hesla (`PAPERLESS_DB_PASSWORD`) a `PAPERLESS_SECRET_KEY`
   se načítají z `.env` (`${VAR:?...}` — bez nastavení `docker compose up` selže s hláškou). Přidán
   `.env.example`; `.env` je v `.gitignore`. (Historii commitů se starým heslem zvaž přepsat zvlášť.)

@@ -115,6 +115,22 @@ const SSL_KEY_PATH = process.env.SSL_KEY_PATH || 'key.pem';
 const SSL_CERT_PATH = process.env.SSL_CERT_PATH || 'cert.pem';
 
 if (require.main === module) {
+    // Bezpečnostní pojistka: vazba na síť (ne-loopback) BEZ ochrany je nebezpečná —
+    // API s klientskými daty by bylo na LAN dostupné komukoli. Hlasitě varujeme.
+    const _isLoopback = ['127.0.0.1', 'localhost', '::1'].includes(BIND_HOST);
+    if (!_isLoopback) {
+        if (!ENFORCE_TOKEN) {
+            console.warn('\n🛑 NEBEZPEČNÁ KONFIGURACE: backend je vázán na ' + BIND_HOST + ' (dostupné ze sítě), ale VYNUCENÍ TOKENU JE VYPNUTÉ.');
+            console.warn('   Kdokoli na síti může číst klientská data přes API. Nastavte LEXIS_ENFORCE_TOKEN=1 (a rozdejte token jen klientům).');
+        }
+        if (!USE_HTTPS) {
+            console.warn('⚠️  Backend na síti BEZ TLS (USE_HTTPS != true) — data jdou po síti nešifrovaně. Pro firemní/LAN nasazení zapněte USE_HTTPS=true.');
+        }
+        if (ENFORCE_TOKEN && USE_HTTPS) {
+            console.log('🔐 Síťové (LAN) nasazení s vynuceným tokenem i TLS — OK.');
+        }
+    }
+
     if (USE_HTTPS && fs.existsSync(SSL_KEY_PATH) && fs.existsSync(SSL_CERT_PATH)) {
         try {
             const https = require('https');
