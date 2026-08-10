@@ -71,3 +71,26 @@ describe('mailer.sendMail (mock transport)', () => {
         await expect(mailer.sendMail(SMTP, { to: '' }, mock)).rejects.toThrow(/příjemce/);
     });
 });
+
+describe('mailer.buildTransportConfig (vynucení TLS)', () => {
+    const base = { smtp_host: 'smtp.example.cz', smtp_user: 'u', smtp_pass: 'p' };
+    test('port 587 → STARTTLS s requireTLS=true (žádný plaintext)', () => {
+        const c = mailer.buildTransportConfig({ ...base, smtp_port: '587' });
+        expect(c.secure).toBe(false);
+        expect(c.requireTLS).toBe(true);
+    });
+    test('port 465 → implicit TLS, requireTLS se neřeší', () => {
+        const c = mailer.buildTransportConfig({ ...base, smtp_port: '465' });
+        expect(c.secure).toBe(true);
+        expect(c.requireTLS).toBeUndefined();
+    });
+    test('vědomý opt-out smtp_allow_insecure=true → requireTLS=false', () => {
+        const c = mailer.buildTransportConfig({ ...base, smtp_port: '587', smtp_allow_insecure: true });
+        expect(c.requireTLS).toBe(false);
+    });
+    test('výchozí port (bez smtp_port) je 587 s requireTLS', () => {
+        const c = mailer.buildTransportConfig({ ...base });
+        expect(c.port).toBe(587);
+        expect(c.requireTLS).toBe(true);
+    });
+});

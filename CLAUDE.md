@@ -65,6 +65,8 @@ Seřazeno podle priority. Frontendové položky (LexisEditor) jsou v CLAUDE.md t
 - [x] **HOTOVO — Sjednotit verze.** `/api/status` v `server.js` nově čte verzi z `package.json`
   (jeden zdroj pravdy).
 
+- [x] **HOTOVO — Mailer: vynuceni TLS.** Na STARTTLS ceste (587) chybelo requireTLS → pri SMTP serveru bez STARTTLS by se duverny e-mail poslal v PLAINTEXTU. Nove requireTLS=true jako vychozi (opt-out smtp_allow_insecure), konfigurace transportu vytazena do testovatelne buildTransportConfig + testy.
+
 - [x] **HOTOVO — Oprava hearings: reschedule na budouci udalost.** Pri 'presunuti' jednani bral modul slepe udalosti[0]; API vsak muze vratit i minula jednani → hrozilo posunuti jednani do MINULOSTI, oznaceni 'past' a ukonceni hlidani = zmeskane jednani. Nove vybira nejblizsi BUDOUCI udalost a do minulosti neposouva. Vypadek API i prazdny seznam dal jednani neru​si (bezpecne). Pridan fetch-mock test pro dosud netestovany checkAllHearings.
 
 - [x] **HOTOVO — Oprava conflicts: selhani vyhledavani != bezpecne.** Kdyz RAG vyhledavani selhalo (model offline), modul vracel riskLevel 'none' s popisem 'onboarding je bezpecny' — tj. nemoznost proverit se tvarila jako absence konfliktu. Nove pri selhani vraci riskLevel 'unknown' (konflikt nelze vyloucit, overit rucne) a priznak searchIncomplete; uspesne prazdne hledani dal vraci 'none'. Testy.

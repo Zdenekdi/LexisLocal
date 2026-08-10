@@ -50,17 +50,27 @@ function buildMessage(opts) {
     return msg;
 }
 
-function createTransport(settings) {
-    const nodemailer = require('nodemailer'); // líně — testy injektují _transport
+// Sestaví konfiguraci transportu (čistá funkce — testovatelná bez nodemaileru).
+// Šifrování: secure=true = implicit TLS (465); jinak STARTTLS (587) s VYNUCENÍM
+// (requireTLS), aby se důvěrný e-mail nikdy neodeslal v plaintextu, když server
+// STARTTLS nenabídne. Vynucení lze vypnout jen explicitně (smtp_allow_insecure=true).
+function buildTransportConfig(settings) {
     const port = parseInt(settings.smtp_port, 10) || 587;
-    // secure=true pro 465 (implicit TLS), jinak STARTTLS na 587.
     const secure = settings.smtp_ssl === true || (settings.smtp_ssl !== false && port === 465);
-    return nodemailer.createTransport({
+    const cfg = {
         host: settings.smtp_host,
         port,
         secure,
         auth: { user: settings.smtp_user, pass: settings.smtp_pass }
-    });
+    };
+    // Na nešifrované (STARTTLS) cestě vynutíme TLS, ledaže to uživatel vědomě povolí.
+    if (!secure) cfg.requireTLS = settings.smtp_allow_insecure !== true;
+    return cfg;
+}
+
+function createTransport(settings) {
+    const nodemailer = require('nodemailer'); // líně — testy injektují _transport
+    return nodemailer.createTransport(buildTransportConfig(settings));
 }
 
 // Odešle e-mail. settings = SMTP konfigurace, message = { to, subject, body, attachmentPaths[] }.
@@ -88,4 +98,4 @@ async function sendMail(settings, message, _transport) {
     return await transport.sendMail(msg);
 }
 
-module.exports = { sendMail, buildMessage, validateSmtp, resolveAttachments, createTransport };
+module.exports = { sendMail, buildMessage, validateSmtp, resolveAttachments, createTransport, buildTransportConfig };
