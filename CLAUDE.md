@@ -13,6 +13,13 @@ Build/test: `npm run dev` (nodemon), `npm test` (jest), `npm run electron:dev`, 
 
 ## TODO / Známé problémy
 
+> ℹ️ **K rozhodnutí (orchestrator + GDPR):** editorový kontext se před modelem anonymizuje
+> (`anonymizeText`), ale RAG text z klientských spisů (`m.text`) jde do modelu i do
+> `transparency_logs` NEanonymizovaný. U lokálního modelu je riziko nízké (data neopouštějí stroj),
+> ale je to nekonzistentní. Anonymizace precedentů by mohla zhoršit kvalitu výstupu — rozhodnutí
+> (anonymizovat / nechat / anonymizovat jen v logu) je na tobě.
+
+
 Seřazeno podle priority. Frontendové položky (LexisEditor) jsou v CLAUDE.md tamního repa.
 
 ### 🔴 Kritické (bezpečnost)
