@@ -38,8 +38,8 @@ class TimeTracker {
         const todayStr = targetDate || new Date().toISOString().split('T')[0];
         const allActivities = db.get('activities');
         
-        // Filter by calendar date part of timestamp
-        return allActivities.filter(act => act.timestamp.startsWith(todayStr));
+        // Filter by calendar date part of timestamp (guard: přeskoč záznamy bez timestampu)
+        return allActivities.filter(act => act.timestamp && act.timestamp.startsWith(todayStr));
     }
 
     /**
@@ -73,6 +73,17 @@ class TimeTracker {
             saves: doc.saves,
             primaryAction: Array.from(doc.actions).join(', ')
         }));
+    }
+
+    /**
+     * Přesný součet hodin za den PRO FAKTURACI. Počítá z CELKOVÝCH sekund a
+     * zaokrouhlí až JEDNOU — na rozdíl od sčítání už zaokrouhlených hodin po
+     * dokumentech (to nepřesně pod/nadfakturovalo a zaváděl se float šum, např.
+     * 2.8500000000000001 hod ve výkazu klientovi).
+     */
+    totalHoursFromSummary(summary) {
+        const secs = (summary || []).reduce((s, i) => s + (i.totalSeconds || 0), 0);
+        return parseFloat((secs / 3600).toFixed(2));
     }
 
     /**
@@ -127,7 +138,7 @@ Nepiš žádný úvodní ani závěrečný komentář (např. "Zde je váš výk
                 date: todayStr,
                 rawSummary: summaryText,
                 synthesizedOutput: synthesizedText,
-                totalHours: summary.reduce((sum, item) => sum + item.totalHours, 0)
+                totalHours: this.totalHoursFromSummary(summary)
             });
 
             return {
@@ -148,7 +159,7 @@ Nepiš žádný úvodní ani závěrečný komentář (např. "Zde je váš výk
                 date: todayStr,
                 rawSummary: summaryText,
                 synthesizedOutput: fallbackText,
-                totalHours: summary.reduce((sum, item) => sum + item.totalHours, 0),
+                totalHours: this.totalHoursFromSummary(summary),
                 isFallback: true
             });
 

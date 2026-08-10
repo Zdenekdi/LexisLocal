@@ -81,3 +81,32 @@ describe('TimeTracker Utility (Mocked DB)', () => {
         expect(result.activeSeconds).toBe(30);
     });
 });
+
+describe('aggregateActivities + totalHoursFromSummary (přesnost fakturace)', () => {
+    const tt = require('../lib/timetracking');
+    const acts = (arr) => arr.map(([documentName, activeSeconds, actionType]) =>
+        ({ documentName, activeSeconds, actionType, timestamp: '2025-01-01T10:00:00Z' }));
+
+    test('agregace sčítá sekundy a sbírá akce po dokumentech', () => {
+        const s = tt.aggregateActivities(acts([['A', 3600, 'edit'], ['A', 1800, 'review'], ['B', 900, 'edit']]));
+        const a = s.find(x => x.documentName === 'A');
+        expect(a.totalSeconds).toBe(5400);
+        expect(a.saves).toBe(2);
+    });
+
+    test('celkový součet se počítá z SEKUND, ne ze zaokrouhlených hodin (3×50s → 0.04, ne 0.03)', () => {
+        const s = tt.aggregateActivities(acts([['A', 50, 'e'], ['B', 50, 'e'], ['C', 50, 'e']]));
+        expect(tt.totalHoursFromSummary(s)).toBe(0.04);
+    });
+
+    test('bez float šumu (0.1 h + 0.2 h → 0.3)', () => {
+        const s = tt.aggregateActivities(acts([['A', 360, 'e'], ['B', 720, 'e']]));
+        expect(tt.totalHoursFromSummary(s)).toBe(0.3);
+    });
+
+    test('1 h + 0,5 h → 1.5; prázdné → 0', () => {
+        const s = tt.aggregateActivities(acts([['A', 3600, 'e'], ['B', 1800, 'e']]));
+        expect(tt.totalHoursFromSummary(s)).toBe(1.5);
+        expect(tt.totalHoursFromSummary([])).toBe(0);
+    });
+});

@@ -65,6 +65,8 @@ Seřazeno podle priority. Frontendové položky (LexisEditor) jsou v CLAUDE.md t
 - [x] **HOTOVO — Sjednotit verze.** `/api/status` v `server.js` nově čte verzi z `package.json`
   (jeden zdroj pravdy).
 
+- [x] **HOTOVO — Oprava timetracking: presny soucet hodin pro fakturaci.** Denni totalHours se scital z UZ zaokrouhlenych hodin po dokumentech (3x50s davalo 0.03 misto 0.04 hod) a zaval float sum (napr. 2.8500000000000001 hod ve vykazu klientovi). Nove se pocita z celkovych sekund a zaokrouhli jednou (totalHoursFromSummary). Guard na chybejici timestamp. Testy.
+
 - [x] **HOTOVO — Mailer: vynuceni TLS.** Na STARTTLS ceste (587) chybelo requireTLS → pri SMTP serveru bez STARTTLS by se duverny e-mail poslal v PLAINTEXTU. Nove requireTLS=true jako vychozi (opt-out smtp_allow_insecure), konfigurace transportu vytazena do testovatelne buildTransportConfig + testy.
 
 - [x] **HOTOVO — Oprava hearings: reschedule na budouci udalost.** Pri 'presunuti' jednani bral modul slepe udalosti[0]; API vsak muze vratit i minula jednani → hrozilo posunuti jednani do MINULOSTI, oznaceni 'past' a ukonceni hlidani = zmeskane jednani. Nove vybira nejblizsi BUDOUCI udalost a do minulosti neposouva. Vypadek API i prazdny seznam dal jednani neru​si (bezpecne). Pridan fetch-mock test pro dosud netestovany checkAllHearings.
