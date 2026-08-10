@@ -41,8 +41,12 @@ function anonymizeText(text) {
     //    nebo telefonní klíčové slovo, aby nedocházelo k nadměrné redakci.
     // 3a. S mezinárodní předvolbou: +420 123 456 789
     result = result.replace(/\+(?:420|421)\s*\d{3}\s*\d{3}\s*\d{3}\b/g, '[TELEFON]');
-    // 3b. Klasický zápis s oddělovači (mezery/pomlčky): 777 123 456
-    result = result.replace(/\b[1-9]\d{2}[ \-]\d{3}[ \-]\d{3}\b/g, '[TELEFON]');
+    // 3b. Klasický zápis s oddělovači (mezery/pomlčky): 777 123 456.
+    //     České telefony nezačínají 0 ani 1 (mobil 6/7, pevná 2–5) → [2-9] vyloučí
+    //     částky jako „123 456 789". Negativní lookahead navíc vyloučí čísla následovaná
+    //     měnou (Kč/EUR/…) nebo další skupinou číslic (delší částky), aby se neredigovaly
+    //     peněžní částky (jinak by z „Dluh činí 123 456 789 Kč" vzniklo „[TELEFON] Kč").
+    result = result.replace(/\b[2-9]\d{2}[ \-]\d{3}[ \-]\d{3}\b(?!\s*(?:\d|Kč|Kc|CZK|EUR|€|USD|\$))/g, '[TELEFON]');
     // 3c. Po telefonním klíčovém slově i bez oddělovačů: "tel: 777123456"
     result = result.replace(/\b(tel\.?|telefon|mobil|mob\.?|gsm)(\s*:?\s*)(\+?(?:420|421)?\s*[1-9](?:[\s\-]?\d){8})\b/gi,
         (m, kw, sep) => `${kw}${sep}[TELEFON]`);

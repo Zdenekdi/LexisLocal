@@ -65,6 +65,8 @@ Seřazeno podle priority. Frontendové položky (LexisEditor) jsou v CLAUDE.md t
 - [x] **HOTOVO — Sjednotit verze.** `/api/status` v `server.js` nově čte verzi z `package.json`
   (jeden zdroj pravdy).
 
+- [x] **HOTOVO — Oprava anonymizeru (GDPR) + testy.** Pravidlo pro telefon bralo i penezni castky seskupene po tisicich (napr. castka v Kc se prepsala na [TELEFON]). Zuzeno na ceske telefonni prefixy [2-9] a s negativnim lookaheadem na menu/dalsi cislice — castky i spisove znacky zustavaji nedotcene, PII (e-mail, rodne cislo, telefon, jmeno) se dal rediguje. Pridan dedikovany `anonymizer.test.js`.
+
 - [x] **HOTOVO — Behaviorální testy dashboardu.** XSS-kritický `escapeHtml` vytažen z `public/app.js`
   do `public/app-helpers.js` (jeden zdroj pravdy, načítá se před `app.js`) a pokryt testy
   `tests/appHelpers.test.js` (escapování, `<script>` payload, atributový breakout).
