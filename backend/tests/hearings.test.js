@@ -60,3 +60,56 @@ describe('generateIcs', () => {
         expect(ics).toContain('DESCRIPTION:řádek1\\nřádek2');
     });
 });
+
+describe('checkAllHearings — přesun jednání (mock InfoJednání)', () => {
+    const os = require('os');
+    const { checkAllHearings } = require('../lib/hearings');
+    const WD = path.join(os.tmpdir(), `lexis_hear_test_${Date.now()}`);
+    const off = (n) => { const x = new Date(); x.setDate(x.getDate() + n); return x; };
+    const iso = (x) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+    const ddmm = (x) => `${String(x.getDate()).padStart(2, '0')}.${String(x.getMonth() + 1).padStart(2, '0')}.${x.getFullYear()}`;
+
+    const seed = () => {
+        fs.mkdirSync(WD, { recursive: true });
+        fs.writeFileSync(path.join(WD, '.hearings.json'), JSON.stringify([{
+            id: 'h1', title: 'Jednání X', courtName: 'OS X', courtCode: 'OS0001',
+            spisovaZnacka: { cisloSenatu: '12', druhVeci: 'C', bcVec: '34', rocnik: '2025' },
+            dueDate: iso(off(5)), time: '09:00', location: 'stará síň', status: 'active',
+            icsFilePath: path.join(WD, 'nope.ics')
+        }]));
+    };
+    const read = () => JSON.parse(fs.readFileSync(path.join(WD, '.hearings.json'), 'utf-8'))[0];
+    const mockFetch = (udalosti) => { global.fetch = jest.fn(async () => ({ ok: true, json: async () => ({ organizace: 'OS X', udalosti }) })); };
+
+    afterEach(() => { if (fs.existsSync(WD)) fs.rmSync(WD, { recursive: true, force: true }); delete global.fetch; });
+
+    test('minulá + budoucí událost, žádná na náš den → přesun na BUDOUCÍ (ne minulou)', async () => {
+        seed();
+        mockFetch([
+            { datum: ddmm(off(-10)), cas: '08:00', jednaciSin: '9', jednaciZruseno: 'Ne' },
+            { datum: ddmm(off(7)), cas: '10:30', jednaciSin: '3', jednaciZruseno: 'Ne' }
+        ]);
+        await checkAllHearings(WD);
+        const h = read();
+        expect(h.dueDate).toBe(iso(off(7)));
+        expect(h.status).toBe('updated');
+    });
+
+    test('jen minulé události → NEPŘESOUVAT do minulosti (beze změny)', async () => {
+        seed();
+        mockFetch([{ datum: ddmm(off(-10)), cas: '08:00', jednaciSin: '9', jednaciZruseno: 'Ne' }]);
+        await checkAllHearings(WD);
+        const h = read();
+        expect(h.dueDate).toBe(iso(off(5)));
+        expect(h.status).toBe('active');
+    });
+
+    test('prázdný seznam událostí → beze změny (možný výpadek, neruší)', async () => {
+        seed();
+        mockFetch([]);
+        await checkAllHearings(WD);
+        const h = read();
+        expect(h.dueDate).toBe(iso(off(5)));
+        expect(h.status).toBe('active');
+    });
+});

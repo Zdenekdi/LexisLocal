@@ -65,6 +65,8 @@ Seřazeno podle priority. Frontendové položky (LexisEditor) jsou v CLAUDE.md t
 - [x] **HOTOVO — Sjednotit verze.** `/api/status` v `server.js` nově čte verzi z `package.json`
   (jeden zdroj pravdy).
 
+- [x] **HOTOVO — Oprava hearings: reschedule na budouci udalost.** Pri 'presunuti' jednani bral modul slepe udalosti[0]; API vsak muze vratit i minula jednani → hrozilo posunuti jednani do MINULOSTI, oznaceni 'past' a ukonceni hlidani = zmeskane jednani. Nove vybira nejblizsi BUDOUCI udalost a do minulosti neposouva. Vypadek API i prazdny seznam dal jednani neru​si (bezpecne). Pridan fetch-mock test pro dosud netestovany checkAllHearings.
+
 - [x] **HOTOVO — Oprava conflicts: selhani vyhledavani != bezpecne.** Kdyz RAG vyhledavani selhalo (model offline), modul vracel riskLevel 'none' s popisem 'onboarding je bezpecny' — tj. nemoznost proverit se tvarila jako absence konfliktu. Nove pri selhani vraci riskLevel 'unknown' (konflikt nelze vyloucit, overit rucne) a priznak searchIncomplete; uspesne prazdne hledani dal vraci 'none'. Testy.
 
 - [x] **HOTOVO — Oprava citation_verifier: prirazeni zakona k paragrafu.** Heuristika brala nejblizsi PREDCHAZEJICI zakon; u ceskeho pořadi '§ X zakona c. Y' s vice zakony priradila paragraf ke spatnemu (drivejsimu) zakonu → falesne 'neexistuje'/'overeno'. Zmeneno na nejblizsi zakon dle absolutni vzdalenosti (pokryva oba bezne zapisy). Doplneny testy.

@@ -139,18 +139,34 @@ async function checkAllHearings(WATCH_DIR) {
             } else {
                 // If there are events, but none on our day/time, it was rescheduled!
                 if (udalosti.length > 0) {
-                    const newEv = udalosti[0];
-                    const newIso = toIsoDate(newEv.datum);
-                    const isEvCancelled = newEv.jednaciZruseno === 'Ano' || newEv.jednaciZruseno === true;
-                    
-                    console.log(`⚖️ Hlídač jednání: DETEKOVÁNO PŘESUNUTÍ JEDNÁNÍ u ${h.title} na ${newIso} v ${newEv.cas}`);
-                    
-                    h.dueDate = newIso;
-                    h.time = newEv.cas;
-                    h.location = (resData.organizace || h.courtName) + ', síň ' + (newEv.jednaciSin || '');
-                    statusText = 'updated';
-                    isCancelled = isEvCancelled;
-                    shouldUpdateIcs = true;
+                    // Vyber nejbližší BUDOUCÍ událost (datum >= dnešek). API může vrátit
+                    // i minulá jednání téže věci; vzít slepě udalosti[0] by mohlo jednání
+                    // posunout do MINULOSTI → příště označeno 'past' → přestali bychom
+                    // hlídat = zmeškané jednání. Do minulosti proto nikdy neposouváme.
+                    const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+                    const future = udalosti
+                        .map(ev => ({ ev, iso: toIsoDate(ev.datum) }))
+                        .filter(x => x.iso >= todayIso)
+                        .sort((a, b) => (a.iso < b.iso ? -1 : a.iso > b.iso ? 1 : 0));
+
+                    if (future.length > 0) {
+                        const newEv = future[0].ev;
+                        const newIso = future[0].iso;
+                        const isEvCancelled = newEv.jednaciZruseno === 'Ano' || newEv.jednaciZruseno === true;
+
+                        console.log(`⚖️ Hlídač jednání: DETEKOVÁNO PŘESUNUTÍ JEDNÁNÍ u ${h.title} na ${newIso} v ${newEv.cas}`);
+
+                        h.dueDate = newIso;
+                        h.time = newEv.cas;
+                        h.location = (resData.organizace || h.courtName) + ', síň ' + (newEv.jednaciSin || '');
+                        statusText = 'updated';
+                        isCancelled = isEvCancelled;
+                        shouldUpdateIcs = true;
+                    } else {
+                        // Jen minulé události — nejspíš už proběhlé jednání, nikoli přesun.
+                        // Neposouváme do minulosti, necháme hlídač doběhnout přirozeně.
+                        console.warn(`⚠️ Hlídač jednání: pro ${h.title} vrátilo API jen minulé události — neposouvám (ponechávám beze změny).`);
+                    }
                 } else {
                     // Prázdný seznam událostí NEZNAMENÁ automaticky zrušení — může jít
                     // o dočasný výpadek/nedostupnost API. Rušíme jen na EXPLICITNÍ signál
