@@ -97,12 +97,16 @@ function extractCitations(text) {
     const laws = found.filter(c => c.type === 'zakon').sort((a, b) => a.index - b.index);
     for (const c of found) {
         if (c.type !== 'paragraf') continue;
-        let nearest = null;
+        // Nejbližší zákon podle ABSOLUTNÍ vzdálenosti v textu. Pokrývá oba běžné
+        // české zápisy: "§ X zákona č. Y Sb." (zákon ZA paragrafem — nejčastější)
+        // i "podle zákona č. Y Sb. ... v § X" (zákon PŘED). Dřív se bral jen nejbližší
+        // PŘEDCHÁZEJÍCÍ zákon, což u více zákonů v pořadí "§ X zákona Y" přiřadilo
+        // paragraf ke špatnému (dřívějšímu) zákonu → chybné ověření.
+        let nearest = null, best = Infinity;
         for (const law of laws) {
-            if (law.index <= c.index) nearest = law;
+            const dist = Math.abs(law.index - c.index);
+            if (dist < best) { best = dist; nearest = law; }
         }
-        // Fallback: pokud žádný zákon nepředchází, vezmi nejbližší následující.
-        if (!nearest && laws.length) nearest = laws[0];
         c.law = nearest ? nearest.law : null;
     }
 

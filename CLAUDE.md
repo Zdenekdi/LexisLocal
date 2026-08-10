@@ -65,6 +65,8 @@ Seřazeno podle priority. Frontendové položky (LexisEditor) jsou v CLAUDE.md t
 - [x] **HOTOVO — Sjednotit verze.** `/api/status` v `server.js` nově čte verzi z `package.json`
   (jeden zdroj pravdy).
 
+- [x] **HOTOVO — Oprava citation_verifier: prirazeni zakona k paragrafu.** Heuristika brala nejblizsi PREDCHAZEJICI zakon; u ceskeho pořadi '§ X zakona c. Y' s vice zakony priradila paragraf ke spatnemu (drivejsimu) zakonu → falesne 'neexistuje'/'overeno'. Zmeneno na nejblizsi zakon dle absolutni vzdalenosti (pokryva oba bezne zapisy). Doplneny testy.
+
 - [x] **HOTOVO — Oprava anonymizeru (GDPR) + testy.** Pravidlo pro telefon bralo i penezni castky seskupene po tisicich (napr. castka v Kc se prepsala na [TELEFON]). Zuzeno na ceske telefonni prefixy [2-9] a s negativnim lookaheadem na menu/dalsi cislice — castky i spisove znacky zustavaji nedotcene, PII (e-mail, rodne cislo, telefon, jmeno) se dal rediguje. Pridan dedikovany `anonymizer.test.js`.
 
 - [x] **HOTOVO — Behaviorální testy dashboardu.** XSS-kritický `escapeHtml` vytažen z `public/app.js`
