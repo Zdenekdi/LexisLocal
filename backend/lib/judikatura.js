@@ -15,9 +15,9 @@ const LEGAL_BENCHMARKS = [
         description: "Ujednání o smluvní pokutě převyšující 0.05 % z dlužné částky za každý den prodlení bez prokazatelných mimořádných okolností je považováno za odporující dobrým mravům a absolutně neplatné.",
         triggerKeyword: "smluvní pokuta",
         badPatterns: [
-            /smluvn[í|i]\s+pokut[a|u]\s+ve\s+výši\s+0\.[1-9]\s*%/i,
+            /smluvn[íi]\s+pokut[au]\s+ve\s+výši\s+0[.,](?:0[6-9]|[1-9])\s*%/i,
             /smluvn[í|i]\s+pokut[a|u]\s+ve\s+výši\s+[1-9]\s*%/i,
-            /pokut[a|u]\s+ve\s+výši\s+0\.[1-9]\s*%\s+denně/i
+            /pokut[au]\s+ve\s+výši\s+0[.,](?:0[6-9]|[1-9])\s*%\s+denně/i
         ],
         goodAlternative: "Smluvní pokuta ve výši 0.05 % z dlužné částky za každý den prodlení.",
         severity: "high"

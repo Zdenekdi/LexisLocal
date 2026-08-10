@@ -106,3 +106,24 @@ describe('JudikaturaWatcher Compliance Checks', () => {
         expect(logs[0].alertsCount).toBe(2);
     });
 });
+
+describe('compliance vzory: české desetinné čárky (regrese)', () => {
+    const j = require('../lib/judikatura');
+    const compliant = (txt) => j.checkTemplateCompliance(txt, 't').compliant;
+
+    test('smluvní pokuta s ČÁRKOU (0,5 %) je odhalena jako nesoulad', () => {
+        expect(compliant('smluvní pokuta ve výši 0,5 % denně')).toBe(false);
+    });
+    test('smluvní pokuta s TEČKOU (0.5 %) je odhalena (zpětná kompatibilita)', () => {
+        expect(compliant('smluvní pokuta ve výši 0.5 % denně')).toBe(false);
+    });
+    test('rozsah 0,06–0,09 % (>0,05 %) je odhalen', () => {
+        expect(compliant('smluvní pokuta ve výši 0,07 % denně')).toBe(false);
+    });
+    test('mez 0,05 % je v pořádku (nekolizní hodnota se neoznačí)', () => {
+        expect(compliant('smluvní pokuta ve výši 0,05 % z dlužné částky')).toBe(true);
+    });
+    test('celé procento (2 %) je odhaleno', () => {
+        expect(compliant('smluvní pokuta ve výši 2 % denně')).toBe(false);
+    });
+});

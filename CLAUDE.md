@@ -65,6 +65,8 @@ Seřazeno podle priority. Frontendové položky (LexisEditor) jsou v CLAUDE.md t
 - [x] **HOTOVO — Sjednotit verze.** `/api/status` v `server.js` nově čte verzi z `package.json`
   (jeden zdroj pravdy).
 
+- [x] **HOTOVO — Oprava judikatura: ceske desetinne carky v compliance vzorech.** badPatterns pro smluvni pokutu matchovaly jen desetinnou TECKU (0.5%), ne ceskou CARKU (0,5%) → nesoulad v dolozce proklouzl neodhaleny. Opraveno na [.,] a doplnen rozsah 0,06–0,09 % (>0,05 %); mez 0,05 % zustava nekolizni. Testy.
+
 - [x] **HOTOVO — Oprava timetracking: presny soucet hodin pro fakturaci.** Denni totalHours se scital z UZ zaokrouhlenych hodin po dokumentech (3x50s davalo 0.03 misto 0.04 hod) a zaval float sum (napr. 2.8500000000000001 hod ve vykazu klientovi). Nove se pocita z celkovych sekund a zaokrouhli jednou (totalHoursFromSummary). Guard na chybejici timestamp. Testy.
 
 - [x] **HOTOVO — Mailer: vynuceni TLS.** Na STARTTLS ceste (587) chybelo requireTLS → pri SMTP serveru bez STARTTLS by se duverny e-mail poslal v PLAINTEXTU. Nove requireTLS=true jako vychozi (opt-out smtp_allow_insecure), konfigurace transportu vytazena do testovatelne buildTransportConfig + testy.
