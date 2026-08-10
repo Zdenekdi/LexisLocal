@@ -13,6 +13,14 @@ Build/test: `npm run dev` (nodemon), `npm test` (jest), `npm run electron:dev`, 
 
 ## TODO / Známé problémy
 
+> 🏗️ **Připraveno pro firemní (multiuživatelský) režim — 4 švy (viz `ARCHITECTURE.md`):**
+> (1) `lib/principal.js` — auth jako principal se scopy (solo = implicitní uživatel s plnými právy;
+> `req.principal` aditivně); (2) `lib/store.js` — datová vrstva za rozhraním (`LEXIS_STORE=json|sqlite|postgres`,
+> dnes deleguje na JSON); (3) `BIND_HOST` v `server.js` — VÝCHOZÍ loopback 127.0.0.1 (dřív bez hosta =
+> vazba na 0.0.0.0/LAN — OPRAVENO), LAN jen vědomě + pak povinně token+TLS; (4) klíč přes `LEXIS_KEY_DIR`
+> jako šev pro server-side klíč. Solo chování beze změny. Testy: `principal.test.js`, `store.test.js`.
+
+
 > ✅ **Vyřešeno (orchestrator + GDPR):** RAG text z klientských spisů se do `transparency_logs`
 > ukládá ANONYMIZOVANÝ (`anonymizeText` nad system promptem, hash z anonymizované verze); model
 > nadále dostává plný kontext (kvalita zachována). Volba dle rozhodnutí: „jen v transparency_logs".

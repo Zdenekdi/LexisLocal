@@ -12,6 +12,10 @@ const HearingsWatcher = require('./lib/hearings');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
+// Vazba na rozhraní: VÝCHOZÍ loopback (127.0.0.1) — bezpečné pro solo režim,
+// nedostupné z LAN. Firemní/vícouživatelský režim vědomě nastaví BIND_HOST=0.0.0.0
+// (nebo konkrétní IP) a MUSÍ zapnout vynucení tokenu + TLS.
+const BIND_HOST = process.env.BIND_HOST || '127.0.0.1';
 
 // API token je vždy k dispozici (z prostředí, jinak vygenerovaný a perzistovaný
 // mimo datovou složku). VYNUCENÍ je opt-in: zapne se, když je API_TOKEN v prostředí
@@ -48,7 +52,11 @@ const { safePathInWatchDir, sanitizeFileName } = require('./lib/pathsafe');
 // Secure API Token Middleware — rozhodovací logika je v lib/auth.js (čistá,
 // bezstavová, pokrytá testy). Vynucení je opt-in (ENFORCE_TOKEN, viz výše).
 const { checkAuth } = require('./lib/auth');
+const { resolvePrincipal } = require('./lib/principal');
 const authenticate = (req, res, next) => {
+    // Aditivně: určíme „kdo volá" (identita + scopy) pro budoucí per-user logiku.
+    // Nemění rozhodnutí allow/deny níže — solo = implicitní uživatel s plnými právy.
+    req.principal = resolvePrincipal(req, { apiToken: API_TOKEN, enforceToken: ENFORCE_TOKEN });
     if (!ENFORCE_TOKEN) return next();
     if (checkAuth(API_TOKEN, req).allowed) return next();
     console.warn(`🔒 Nepovolený přístup k API: ${req.method} ${req.path}`);
@@ -114,21 +122,21 @@ if (require.main === module) {
                 key: fs.readFileSync(SSL_KEY_PATH),
                 cert: fs.readFileSync(SSL_CERT_PATH)
             };
-            https.createServer(sslOptions, app).listen(PORT, () => {
-                console.log(`🚀🔒 LexisLocal AI ZABEZPEČENÝ backend (HTTPS) běží na https://localhost:${PORT}`);
+            https.createServer(sslOptions, app).listen(PORT, BIND_HOST, () => {
+                console.log(`🚀🔒 LexisLocal AI ZABEZPEČENÝ backend (HTTPS) běží na https://${BIND_HOST}:${PORT}`);
             });
         } catch (httpsErr) {
             console.error("❌ Nepodařilo se spustit HTTPS server, padám zpět na HTTP:", httpsErr.message);
-            app.listen(PORT, () => {
-                console.log(`🚀 LexisLocal AI backend běží na http://localhost:${PORT}`);
+            app.listen(PORT, BIND_HOST, () => {
+                console.log(`🚀 LexisLocal AI backend běží na http://${BIND_HOST}:${PORT}`);
             });
         }
     } else {
         if (USE_HTTPS) {
             console.warn(`⚠️ V konfiguraci je vyžadováno HTTPS, ale chybí soubory certifikátu (${SSL_KEY_PATH} / ${SSL_CERT_PATH}). Spouštím na HTTP.`);
         }
-        app.listen(PORT, () => {
-            console.log(`🚀 LexisLocal AI backend běží na http://localhost:${PORT}`);
+        app.listen(PORT, BIND_HOST, () => {
+            console.log(`🚀 LexisLocal AI backend běží na http://${BIND_HOST}:${PORT}`);
         });
     }
 }
