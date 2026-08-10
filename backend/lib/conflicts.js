@@ -27,15 +27,19 @@ class ConflictDetector {
         let clientMatches = [];
         let counterpartyMatches = [];
 
+        let clientSearchOk = true;
+        let opponentSearchOk = true;
         try {
             clientMatches = await searchSimilar(cleanClient, 3);
         } catch (e) {
+            clientSearchOk = false;
             console.warn("⚠️ Conflicts RAG: Selhalo vyhledávání pro klienta:", e.message);
         }
 
         try {
             counterpartyMatches = await searchSimilar(cleanCounterparty, 3);
         } catch (e) {
+            opponentSearchOk = false;
             console.warn("⚠️ Conflicts RAG: Selhalo vyhledávání pro protistranu:", e.message);
         }
 
@@ -78,6 +82,19 @@ class ConflictDetector {
             });
         }
 
+        // 2b. Selhání vyhledávání NESMÍ vypadat jako „žádný konflikt / bezpečné".
+        // Nemožnost prověřit ≠ absence konfliktu — jinak by advokát přijal možná
+        // kolizního klienta v důvěře v chybný „bezpečný" výsledek.
+        const searchIncomplete = !clientSearchOk || !opponentSearchOk;
+        if (searchIncomplete) {
+            if (riskLevel === 'none') {
+                riskLevel = 'unknown';
+                description = 'Prověření střetu zájmů se NEZDAŘILO (vyhledávání/model nedostupné). Konflikt NELZE vyloučit — ověřte ručně před přijetím klienta.';
+            } else {
+                description += ' ⚠️ Část prověření se nezdařila (vyhledávání nedostupné), výsledek nemusí být úplný — ověřte ručně.';
+            }
+        }
+
         // 3. Save report to our encrypted transactional database
         const report = db.insert('conflicts', {
             clientName: cleanClient,
@@ -85,6 +102,7 @@ class ConflictDetector {
             riskLevel,
             description,
             conflictsFound,
+            searchIncomplete,
             timestamp: new Date().toISOString()
         });
 

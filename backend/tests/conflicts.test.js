@@ -167,3 +167,29 @@ describe('ConflictDetector', () => {
         });
     });
 });
+
+    describe('selhání vyhledávání ≠ „bezpečné"', () => {
+        it('obě vyhledávání selžou → riskLevel "unknown" (ne "none"), searchIncomplete', async () => {
+            rag.searchSimilar.mockRejectedValue(new Error('model nedostupný'));
+            const r = await ConflictDetector.checkConflict('Klient A', 'Protistrana B');
+            expect(r.riskLevel).toBe('unknown');
+            expect(r.searchIncomplete).toBe(true);
+            expect(r.description).toMatch(/nezda|NELZE|ručně/i);
+        });
+
+        it('obě úspěšná, žádné shody → "none" (chování zachováno)', async () => {
+            rag.searchSimilar.mockResolvedValue([]);
+            const r = await ConflictDetector.checkConflict('Klient A', 'Protistrana B');
+            expect(r.riskLevel).toBe('none');
+            expect(r.searchIncomplete).toBe(false);
+        });
+
+        it('selže jen prověření klienta → stále "unknown" (nedokončeno)', async () => {
+            rag.searchSimilar
+                .mockRejectedValueOnce(new Error('down'))   // klient
+                .mockResolvedValueOnce([]);                 // protistrana
+            const r = await ConflictDetector.checkConflict('Klient A', 'Protistrana B');
+            expect(r.riskLevel).toBe('unknown');
+            expect(r.searchIncomplete).toBe(true);
+        });
+    });
