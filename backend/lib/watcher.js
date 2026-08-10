@@ -14,7 +14,7 @@ const { extractTextFromFile, IMAGE_EXTENSIONS } = require('./ocr');
 const { logEvent } = require('./audit');
 const Mutex = require('./mutex');
 const { anonymizeText } = require('./anonymizer');
-const { calculateDeadlineDate, runAIExtractor } = require('./extraction'); // sdílený AI-extraktor
+const { calculateDeadlineDate, calculateDeadlineByUnit, detectDeadlines, runAIExtractor } = require('./extraction'); // sdílený AI-extraktor
 
 const { WATCH_DIR } = require('./config'); // jeden zdroj pravdy, viz lib/config.js
 const INBOX_PATH = path.join(WATCH_DIR, '.inbox.json');
@@ -204,6 +204,20 @@ async function processDocument(filePath) {
         }
     }
     
+    // 2.7 Step: Deterministicky detekuj lhůty v MĚSÍCÍCH/TÝDNECH/LETECH (§ 57/2).
+    // Ukládají se s příznakem needsReview=true — advokát je má potvrdit (nic se tiše nefinalizuje).
+    let unitDeadlines = [];
+    try {
+        unitDeadlines = detectDeadlines(text)
+            .filter(d => d.unit !== 'day')
+            .map(d => ({ amount: d.amount, unit: d.unit, deadlineDate: calculateDeadlineByUnit(d.amount, d.unit), context: d.context, needsReview: true }));
+    } catch (e) { /* detekce jednotek je best-effort */ }
+    if (unitDeadlines.length) {
+        const lbl = { week: 'týd.', month: 'měs.', year: 'r.' };
+        metadata.summary = (metadata.summary || '') + ' ⏳ K OVĚŘENÍ: ' +
+            unitDeadlines.map(d => `${d.amount} ${lbl[d.unit] || d.unit} → ${d.deadlineDate}`).join(', ') + '.';
+    }
+
     // 3. Save to inbox
     const inbox = await loadInbox();
     const relativePath = path.relative(WATCH_DIR, filePath);
@@ -217,6 +231,7 @@ async function processDocument(filePath) {
         defendant: metadata.defendant || "Nezjištěn",
         deadlineDays: metadata.deadlineDays || 0,
         deadlineDate: metadata.deadlineDate || null,
+        detectedDeadlines: unitDeadlines,
         summary: metadata.summary || "Nově stažený dokument připravený ke zpracování.",
         ico: metadata.ico || null,
         inInsolvency: registryData ? registryData.inInsolvency : false,

@@ -8,7 +8,7 @@ const { checkSubject } = require('./registries');
 const { loadInbox, saveInbox } = require('./watcher');
 const { logEvent } = require('./audit');
 const { anonymizeText } = require('./anonymizer');
-const { calculateDeadlineDate, runAIExtractor } = require('./extraction'); // sdílený AI-extraktor
+const { calculateDeadlineDate, calculateDeadlineByUnit, detectDeadlines, runAIExtractor } = require('./extraction'); // sdílený AI-extraktor
 
 const PAPERLESS_API_URL = process.env.PAPERLESS_API_URL || 'http://localhost:8000';
 const PAPERLESS_API_TOKEN = process.env.PAPERLESS_API_TOKEN || '';
@@ -78,6 +78,20 @@ async function handlePaperlessWebhook(payload) {
         }
     }
 
+    // 2.7 Step: Deterministicky detekuj lhůty v MĚSÍCÍCH/TÝDNECH/LETECH (§ 57/2) —
+    // ukládají se s needsReview=true (advokát potvrzuje; nic se tiše nefinalizuje).
+    let unitDeadlines = [];
+    try {
+        unitDeadlines = detectDeadlines(docText)
+            .filter(d => d.unit !== 'day')
+            .map(d => ({ amount: d.amount, unit: d.unit, deadlineDate: calculateDeadlineByUnit(d.amount, d.unit), context: d.context, needsReview: true }));
+    } catch (e) { /* best-effort */ }
+    if (unitDeadlines.length) {
+        const lbl = { week: 'týd.', month: 'měs.', year: 'r.' };
+        metadata.summary = (metadata.summary || '') + ' ⏳ K OVĚŘENÍ: ' +
+            unitDeadlines.map(d => `${d.amount} ${lbl[d.unit] || d.unit} → ${d.deadlineDate}`).join(', ') + '.';
+    }
+
     // 3. Save to LexisLocal Inbox
     const inbox = await loadInbox();
     const fileName = `paperless_${safeDocId}_${title.replace(/[^a-zA-Z0-9-_.]/g, '_')}`;
@@ -91,6 +105,7 @@ async function handlePaperlessWebhook(payload) {
         defendant: metadata.defendant || "Nezjištěn",
         deadlineDays: metadata.deadlineDays || 0,
         deadlineDate: metadata.deadlineDate || null,
+        detectedDeadlines: unitDeadlines,
         summary: metadata.summary || `Importováno z Paperless-ngx (ID: ${safeDocId}).`,
         ico: metadata.ico || null,
         inInsolvency: registryData ? registryData.inInsolvency : false,

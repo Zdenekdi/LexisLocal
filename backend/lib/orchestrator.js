@@ -163,7 +163,11 @@ class ChiefOrchestrator {
                     ...greenMetrics
                 });
 
-                const systemPromptHash = crypto.createHash('sha256').update(systemContent).digest('hex');
+                // GDPR: v auditním logu (transparency_logs) ukládáme ANONYMIZOVANOU verzi
+                // system promptu — RAG text z klientských spisů se nesmí do logu dostat s PII.
+                // Model výše dostal plný kontext (kvalita); do trvalého logu jde očištěná verze.
+                const systemContentForLog = anonymizeText(systemContent);
+                const systemPromptHash = crypto.createHash('sha256').update(systemContentForLog).digest('hex');
                 const stepRagSources = highConfidence.map(m => ({
                     fileName: m.fileName,
                     score: m.score,
@@ -175,7 +179,7 @@ class ChiefOrchestrator {
                     agentName: agent.name,
                     model: stepModel,
                     prompt: step.instruction,
-                    systemPrompt: systemContent,
+                    systemPrompt: systemContentForLog,
                     systemPromptHash: systemPromptHash,
                     ragSources: stepRagSources,
                     timestamp: new Date().toISOString(),

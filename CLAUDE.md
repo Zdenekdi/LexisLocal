@@ -13,11 +13,12 @@ Build/test: `npm run dev` (nodemon), `npm test` (jest), `npm run electron:dev`, 
 
 ## TODO / Známé problémy
 
-> ℹ️ **K rozhodnutí (orchestrator + GDPR):** editorový kontext se před modelem anonymizuje
-> (`anonymizeText`), ale RAG text z klientských spisů (`m.text`) jde do modelu i do
-> `transparency_logs` NEanonymizovaný. U lokálního modelu je riziko nízké (data neopouštějí stroj),
-> ale je to nekonzistentní. Anonymizace precedentů by mohla zhoršit kvalitu výstupu — rozhodnutí
-> (anonymizovat / nechat / anonymizovat jen v logu) je na tobě.
+> ✅ **Vyřešeno (orchestrator + GDPR):** RAG text z klientských spisů se do `transparency_logs`
+> ukládá ANONYMIZOVANÝ (`anonymizeText` nad system promptem, hash z anonymizované verze); model
+> nadále dostává plný kontext (kvalita zachována). Volba dle rozhodnutí: „jen v transparency_logs".
+> ✅ **Vyřešeno (pipeline lhůt):** `watcher.js` i `paperless.js` nově deterministicky detekují lhůty
+> v měsících/týdnech/letech (`detectDeadlines` + `calculateDeadlineByUnit`) a ukládají je do
+> `detectedDeadlines[]` s `needsReview:true` (advokát potvrzuje; denní tok beze změny).
 
 
 Seřazeno podle priority. Frontendové položky (LexisEditor) jsou v CLAUDE.md tamního repa.
