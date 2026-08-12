@@ -51,7 +51,7 @@ LexisLocal nespoléhá na jednoho obecného chatbota. Namísto toho nasazuje spe
 ## ✨ Hlavní Inovativní Funkcionality
 
 ### 🔑 1. Šifrovaný Inbox & Databáze (Zero-Knowledge Storage)
-*   **Absolutní šifrování v klidu (Data-at-rest):** Kompletní klientský inbox (původně `.inbox.json`) i databázové tabulky jsou plně zašifrovány algoritmem **AES-256-CBC** s lokálně generovaným dešifrovacím klíčem `.lexis.key`.
+*   **Absolutní šifrování v klidu (Data-at-rest):** Kompletní klientský inbox (původně `.inbox.json`) i databázové tabulky jsou plně zašifrovány algoritmem **AES-256-GCM** (autentizované šifrování) s lokálně generovaným dešifrovacím klíčem `.lexis.key`.
 *   **Jednorázová automatická migrace:** Při startu aplikace systém detekuje nešifrovaná data na disku, bezpečně je převede do šifrované databáze `lexis.db` a původní plaintextové soubory trvale skartuje.
 *   **Izolované RAG partitionování:** Dokumenty různých klientů jsou ukládány v samostatných šifrovaných oddílech `.rag_<hash>.json`, což znemožňuje jakékoliv křížové prosakování informací mezi spisy.
 
@@ -130,7 +130,7 @@ Server se ve výchozím stavu váže na `127.0.0.1` (jen tento počítač). Pro 
 nastavte `HOST=0.0.0.0` a případně povolené originy přes `ALLOWED_ORIGINS` (čárkou oddělené).
 
 ### 🧪 Spuštění testovací sady
-Projekt obsahuje komplexní sadu 116 unit testů, které pokrývají šifrování, migraci dat, hash-chaining, anonymizaci i sémantické vyhledávání:
+Projekt obsahuje komplexní sadu **270+ unit testů (39 souborů)**, které pokrývají šifrování, migraci dat, hash-chaining, anonymizaci i sémantické vyhledávání:
 ```bash
 npm test
 ```
@@ -178,7 +178,7 @@ LexisLocal does not rely on a single generic chatbot. Instead, it deploys a team
 ## ✨ Key Innovative Features
 
 ### 🔑 1. Encrypted Inbox & DB (Zero-Knowledge Storage)
-*   **Absolute Data-at-rest Encryption:** The entire inbox metadata and database tables are encrypted using the **AES-256-CBC** algorithm with a locally generated key `.lexis.key`.
+*   **Absolute Data-at-rest Encryption:** The entire inbox metadata and database tables are encrypted using the **AES-256-GCM** authenticated algorithm with a locally generated key `.lexis.key`.
 *   **Automatic Data Migration:** Upon launch, the system automatically migrates legacy unencrypted inbox data to the secure database and unlinks the plaintext files.
 *   **Isolated RAG Partitions:** Case documents are divided into client-scoped partitions `.rag_<hash>.json`, strictly preventing any cross-contamination of case details.
 
@@ -195,6 +195,9 @@ LexisLocal does not rely on a single generic chatbot. Instead, it deploys a team
 ### 🛡️ 4. GDPR Sovereign Shield (PII Redactor)
 *   **PII Redactor:** Automatically filters and redacts birth numbers, email addresses, phone numbers, addresses, and names before text enters RAG vector databases.
 *   **GDPR Article 20 Portability:** A clean `/api/system/export` endpoint outputs decrypted system data to avoid vendor lock-in.
+
+### 📁 5. Sovereign Long-Term Archival (Dublin Core XML)
+*   **ISO 15836 Standard:** Generate a standardized XML metadata descriptor (Dublin Core) for long-term archival of legal files and PDF/A preparation.
 
 ---
 
@@ -254,7 +257,7 @@ The server binds to `127.0.0.1` by default (this machine only). For LAN/multi-de
 `HOST=0.0.0.0` and optionally allowed origins via `ALLOWED_ORIGINS` (comma-separated).
 
 ### 🧪 Running tests
-Run the full test suite (116 passing tests) validating encryption, RAG partitioning, anonymizer patterns, and ledger integrity:
+Run the full test suite (**270+ passing tests across 39 files**) validating encryption, RAG partitioning, anonymizer patterns, and ledger integrity:
 ```bash
 npm test
 ```

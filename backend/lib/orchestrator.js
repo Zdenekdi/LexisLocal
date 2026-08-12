@@ -5,6 +5,7 @@
  */
 
 const { loadAgents } = require('./agents');
+const { CHAT_MODEL } = require('./model_config');
 const { anonymizeText } = require('./anonymizer'); // GDPR: kontext se anonymizuje před modelem
 const { searchSimilar } = require('./rag');
 const { checkSubject } = require('./registries');
@@ -16,7 +17,7 @@ const { calculateInferenceMetrics } = require('./green_monitor');
 
 class ChiefOrchestrator {
     constructor() {
-        this.defaultModel = "llama3";
+        this.defaultModel = CHAT_MODEL;
     }
 
     /**
@@ -26,7 +27,7 @@ class ChiefOrchestrator {
      * @param {string} globalModel - Default fallback model if preferred not available
      * @param {function} onStepProgress - Optional callback for real-time step reporting in UI
      */
-    async orchestrate(prompt, context = "", globalModel = "llama3", onStepProgress = null, ragFilters = null) {
+    async orchestrate(prompt, context = "", globalModel = CHAT_MODEL, onStepProgress = null, ragFilters = null) {
         console.log("🧩 Chief Orchestrator: Zahajuji zpracování komplexního dotazu...");
         const startTime = Date.now();
         const stepsLog = [];
@@ -57,7 +58,7 @@ class ChiefOrchestrator {
 
             let stepModel = agent.preferredModel || globalModel;
             if (step.tier === 'light') {
-                stepModel = 'llama3'; // Route lightweight tasks to standard efficient model
+                stepModel = CHAT_MODEL; // Route lightweight tasks to standard efficient model
             }
 
             console.log(`🤖 Chief Orchestrator: Spouštím krok ${step.step} s agentem [${agent.name}] (Model: ${stepModel})`);

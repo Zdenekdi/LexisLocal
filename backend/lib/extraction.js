@@ -10,6 +10,7 @@
 
 // Robustní import Ollama (CommonJS i ESM default export).
 const ollamaLib = require('ollama');
+const { CHAT_MODEL } = require('./model_config');
 const ollama = ollamaLib.default || ollamaLib;
 
 // --- Pracovní dny / svátky (§ 57 odst. 2 o.s.ř.) ---
@@ -152,7 +153,7 @@ Text k analýze:
 ${text.substring(0, 3000)}`;
 
     const response = await ollama.chat({
-        model: "llama3",
+        model: CHAT_MODEL,
         messages: [{ role: 'user', content: prompt }],
         options: { temperature: 0.1 }
     });

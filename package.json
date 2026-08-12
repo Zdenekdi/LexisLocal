@@ -44,6 +44,8 @@
       }
     ],
     "mac": {
+      "identity": null,
+      "notarize": false,
       "category": "public.app-category.productivity",
       "target": [
         {

@@ -6,6 +6,7 @@
 'use strict';
 
 const express = require('express');
+const { CHAT_MODEL } = require('../lib/model_config');
 const router = express.Router();
 const crypto = require('crypto');
 const { loadAgents } = require('../lib/agents');
@@ -31,7 +32,7 @@ router.post('/:agentId', async (req, res) => {
     }
 
     // Choose model (default to llama3 if not specified)
-    const selectedModel = model || "llama3";
+    const selectedModel = model || CHAT_MODEL;
     console.log(`🤖 Volám agenta [${agent.name}] s modelem [${selectedModel}]`);
 
     // systemPromptText musí být viditelný i ve větvi catch (fallback loguje jeho hash).

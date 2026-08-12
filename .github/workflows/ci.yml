@@ -1,0 +1,22 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+      - name: Syntax check (server + libs + routes)
+        run: node -e "const cp=require('child_process');const fs=require('fs');const g=(d)=>fs.readdirSync(d).filter(f=>f.endsWith('.js')).map(f=>d+'/'+f);['backend/server.js',...g('backend/lib'),...g('backend/routes')].forEach(f=>cp.execSync('node --check '+f));console.log('node --check OK')"
+      - name: Run tests
+        run: npm test

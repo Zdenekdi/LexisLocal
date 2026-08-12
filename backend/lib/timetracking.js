@@ -5,6 +5,7 @@
  */
 
 const db = require('./database');
+const { CHAT_MODEL } = require('./model_config');
 const ollamaLib = require('ollama');
 const ollama = ollamaLib.default || ollamaLib;
 
@@ -91,7 +92,7 @@ class TimeTracker {
      * @param {string} targetDate - 'YYYY-MM-DD'
      * @param {string} model - LLM model name
      */
-    async generateDailyTimesheet(targetDate = null, model = "llama3") {
+    async generateDailyTimesheet(targetDate = null, model = CHAT_MODEL) {
         const todayStr = targetDate || new Date().toISOString().split('T')[0];
         const activities = this.getDailyActivities(todayStr);
         

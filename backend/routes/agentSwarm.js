@@ -7,6 +7,7 @@
 'use strict';
 
 const express = require('express');
+const { CHAT_MODEL } = require('../lib/model_config');
 const router = express.Router();
 const { loadAgents } = require('../lib/agents');
 const { searchSimilar } = require('../lib/rag');
@@ -29,7 +30,7 @@ router.post('/debate', async (req, res) => {
         return res.status(404).json({ error: "Jeden nebo oba vybraní agenti nebyli nalezeni." });
     }
 
-    const selectedModel = model || "llama3";
+    const selectedModel = model || CHAT_MODEL;
     console.log(`🤖 Spouštím Swarm Debatu: Tvůrce [${agent1.name}] & Oponent [${agent2.name}] s modelem [${selectedModel}]`);
 
     // Retrieve RAG context
@@ -163,7 +164,7 @@ router.post('/orchestrate', async (req, res) => {
         return res.status(400).json({ error: "Zadání (prompt) je povinné." });
     }
 
-    const selectedModel = model || "llama3";
+    const selectedModel = model || CHAT_MODEL;
     console.log(`🧠 Express Server: Spouštím Chief Orchestrator pro: "${prompt.substring(0, 50)}..."`);
 
     try {

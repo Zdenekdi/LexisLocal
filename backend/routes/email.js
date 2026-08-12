@@ -6,6 +6,7 @@
 'use strict';
 
 const express = require('express');
+const { CHAT_MODEL } = require('../lib/model_config');
 const router = express.Router();
 const db = require('../lib/database');
 const { logEvent } = require('../lib/audit');
@@ -151,7 +152,7 @@ router.post('/simulate', async (req, res) => {
 
         // Získat objekt asistenta (pokud neexistuje, fallback na sekretářku)
         const agent = agents[selectedAgentId] || agents['sekretarka'];
-        const selectedModel = agent.preferredModel || "llama3";
+        const selectedModel = agent.preferredModel || CHAT_MODEL;
 
         console.log(`📧 E-mail doručen. Zpracovává asistent: [${agent.name}] přes model [${selectedModel}]`);
 

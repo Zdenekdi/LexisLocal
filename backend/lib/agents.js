@@ -4,6 +4,7 @@
  */
 
 const fs = require('fs');
+const { CHAT_MODEL } = require('./model_config');
 const path = require('path');
 
 const { WATCH_DIR } = require('./config'); // jeden zdroj pravdy, viz lib/config.js
@@ -18,7 +19,7 @@ const DEFAULT_AGENTS = {
         role: "Vyhledávání v zákonech a judikatuře. Formulace právních argumentů.",
         systemPrompt: "Jsi zkušený český advokátní koncipient zaměřený na rešerše. Tvým úkolem je na základě zadaných právních předpisů a judikátů vypracovat objektivní právní rozbor.",
         isSystem: true,
-        preferredModel: "llama3",
+        preferredModel: CHAT_MODEL,
         permissions: {
             read_files: true,
             query_registries: true,
@@ -32,7 +33,7 @@ const DEFAULT_AGENTS = {
         role: "Klonování stylu advokáta. Přepisování textu do elegantní advokátní češtiny.",
         systemPrompt: "Jsi expert na stylistiku a právní psaní. Tvým úkolem je upravit text tak, aby působil nanejvýš profesionálně, autoritativně, přesvědčivě a přirozeně.",
         isSystem: true,
-        preferredModel: "llama3",
+        preferredModel: CHAT_MODEL,
         permissions: {
             read_files: false,
             query_registries: false,
@@ -60,7 +61,7 @@ const DEFAULT_AGENTS = {
         role: "Správa spisové agendy, formátování doložek, extrakce schůzek a úkolů.",
         systemPrompt: "Jsi vysoce organizovaná a profesionální advokátní sekretářka. Tvým úkolem je pomáhat advokátům strukturovat úkoly, shrnout termíny, upravovat tón e-mailové komunikace s klienty a organizovat spisové složky.",
         isSystem: true,
-        preferredModel: "llama3",
+        preferredModel: CHAT_MODEL,
         permissions: {
             read_files: false,
             query_registries: true,
@@ -74,7 +75,7 @@ const DEFAULT_AGENTS = {
         role: "Tvorba a úprava právních dokumentů (žaloby, smlouvy, odvolání) na míru.",
         systemPrompt: "Jsi špičkový český advokát a mistr legislativního a kontraktuálního draftování (Lexis Writing Agent). Tvým úkolem je na základě zadání sestavovat precizní, bezchybné a strukturované právní dokumenty (zejména smlouvy, dohody, podání k soudu, odvolání, žaloby) odpovídající standardům kvality a struktury profesionálních vzorů z portálu POHODA (portal.pohoda.cz) a aktuálnímu občanskému zákoníku (zákon č. 89/2012 Sb.). Každá generovaná smlouva musí být úplná a strukturovaná do přehledných článků označených římskými číslicemi (Článek I až Článek X, podle povahy): 1. SMLUVNÍ STRANY (název/jméno, sídlo/bydliště, IČO, DIČ, zapsaná v obchodním rejstříku, zastoupená, bankovní spojení a číslo účtu s prázdnými poli [Doplnit...]), 2. ČLÁNEK I. PŘEDMĚT SMLOUVY, 3. ČLÁNEK II. DOBA A MÍSTO PLNĚNÍ, 4. ČLÁNEK III. CENA A PLATEBNÍ PODMÍNKY (cena, DPH, splatnost 14 dnů), 5. ČLÁNEK IV. PRÁVA A POVINNOSTI STRAN, 6. ČLÁNEK V. PŘEDÁNÍ A PŘEVZETÍ, 7. ČLÁNEK VI. ODPOVĚDNOST ZA VADY A ZÁRUKA, 8. ČLÁNEK VII. SMLUVNÍ POKUTY A SANKCE, 9. ČLÁNEK VIII. ZÁVĚREČNÁ USTANOVENÍ, 10. PODPISOVÝ BLOK. Piš v českém jazyce, s vysokou právní přesností, bez jakýchkoliv neformálních komentářů či úvodních a závěrečných zdvořilostních frází. Výsledkem musí být přímo použitelný právní text.",
         isSystem: true,
-        preferredModel: "llama3",
+        preferredModel: CHAT_MODEL,
         permissions: {
             read_files: true,
             query_registries: false,
@@ -130,7 +131,7 @@ function saveAgent(agentId, agentData) {
         role: agentData.role || "Bez popisku",
         systemPrompt: agentData.systemPrompt || "Jsi užitečný AI pomocník.",
         isSystem: agents[cleanId] ? !!agents[cleanId].isSystem : false,
-        preferredModel: agentData.preferredModel || "llama3",
+        preferredModel: agentData.preferredModel || CHAT_MODEL,
         permissions: agentData.permissions || {
             read_files: false,
             query_registries: false,

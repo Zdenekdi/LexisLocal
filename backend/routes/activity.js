@@ -3,6 +3,7 @@
  * Montuje se v server.js na /api/activity.
  */
 'use strict';
+const { CHAT_MODEL } = require('../lib/model_config');
 
 const express = require('express');
 const router = express.Router();
@@ -59,7 +60,7 @@ router.get('/today', (req, res) => {
 router.post('/timesheet', async (req, res) => {
     const { date, model } = req.body;
     const targetDate = date || new Date().toISOString().split('T')[0];
-    const selectedModel = model || "llama3";
+    const selectedModel = model || CHAT_MODEL;
 
     try {
         const result = await TimeTracker.generateDailyTimesheet(targetDate, selectedModel);

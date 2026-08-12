@@ -13,6 +13,19 @@ Build/test: `npm run dev` (nodemon), `npm test` (jest), `npm run electron:dev`, 
 
 ## TODO / Známé problémy
 
+### 🔵 Backlog (nápady na později)
+
+- [ ] **Guided intake u generování dokumentů.** U obecného zadání (napr. „napis smlouvu o dilo")
+  by agent (Spisovatel) mel NEJDRIV vest kratky intake — typ stran (FO / PFO / PO a jejich kombinace),
+  predmet dila, cena, terminy, zaruka — a teprve pak generovat. Zvedne to kvalitu vic nez vetsi model
+  a odstrani zaplavu [Doplnit...]. Vetsina prace je v agentnim promptu/orchestraci (backend) + chat UI
+  v editoru. Funguje i na slabem HW.
+
+- [ ] **Doladit RAG.** Ladeni retrievalu: velikost chunku, top-k, prah podobnosti (nyni 0.70), volba
+  embedding modelu, a zajistit, ze jsou spisy vubec zaindexovane (na prazdnem indexu RAG nic nenajde).
+  Merit na realnych spisech. Izolovane a meritelne.
+
+
 > 🏗️ **Připraveno pro firemní (multiuživatelský) režim — 4 švy (viz `ARCHITECTURE.md`):**
 > (1) `lib/principal.js` — auth jako principal se scopy (solo = implicitní uživatel s plnými právy;
 > `req.principal` aditivně); (2) `lib/store.js` — datová vrstva za rozhraním (`LEXIS_STORE=json|sqlite|postgres`,
@@ -42,13 +55,13 @@ Seřazeno podle priority. Frontendové položky (LexisEditor) jsou v CLAUDE.md t
 
 ### 🟠 Vysoké
 
-- [~] **Skoro hotovo — Zúžení sítě + auto-provisioning tokenu; zbývá jen přepnout vynucení na výchozí.**
+- [x] **HOTOVO — Zúžení sítě + auto-provisioning tokenu + vynucení ZAPNUTO ve výchozím stavu.**
   `backend/server.js` se váže na **`127.0.0.1`** (nedostupné z LAN; LAN jen vědomě přes `BIND_HOST`),
   CORS je omezený na localhost originy (+ požadavky bez Originu pro Electron) a je tu **Host-guard** proti
   DNS-rebindingu. Token je teď **vždy k dispozici**: `lib/api_token.js` ho vezme z `API_TOKEN`, jinak
   vygeneruje (`crypto.randomBytes(32).hex`) a perzistuje mimo data (`<keydir>/api_token`, 0600, atomicky).
   Dashboard ho dostane automaticky (vstřikuje se `window.LEXIS_API_TOKEN` před `express.static`), editor
-  ho čte přímo ze souboru přes IPC (`get-lexislocal-token`). **Vynucení je zatím opt-in** (`ENFORCE_TOKEN`
+  ho čte přímo ze souboru přes IPC (`get-lexislocal-token`). **Vynucení je nově výchozí ZAPNUTO** (nouzový vypínač `LEXIS_ENFORCE_TOKEN=0`; `ENFORCE_TOKEN`
   = `API_TOKEN` v env, nebo `LEXIS_ENFORCE_TOKEN=1`) — jádro je hotové, chybí jen reálný smoke test editoru
   (`LEXIS_ENFORCE_TOKEN=1`, spustit editor, vyzkoušet AI dotaz; nouzový vypínač `LEXIS_ENFORCE_TOKEN=0`)
   a pak přepnout na výchozí zapnuto. Pokryto testy (`apiToken.test.js`, `auth.test.js`).
@@ -105,3 +118,32 @@ Seřazeno podle priority. Frontendové položky (LexisEditor) jsou v CLAUDE.md t
   (`node --check` nad `public/*.js`), `pathsafe.test.js`, `mutex.test.js`, `ragRequest.test.js`,
   `hearings.test.js`, `apiToken.test.js`. Živé ARES testy jsou gatované (`RUN_LIVE_ARES`), aby CI nezávisel
   na síti.
+
+---
+
+## Nasazení / build (body 2 a 4)
+
+- [x] **Onboarding Ollama (setup.js) vyladěn.** setup.js volí chat model dle RAM
+  (`<=10 GB` → `qwen2.5:3b`, jinak `llama3`), lze přepsat `CHAT_MODEL`, zvolený model
+  zapíše do `.env` (nepřepisuje existující). Stahuje embedding + chat model. Závěrečné
+  pokyny nově zmiňují tray (`npm run electron:dev`) i nutnost běžící Ollamy.
+- [x] **Jediný přepínač modelu — `backend/lib/model_config.js`.** `CHAT_MODEL`
+  (default `llama3`) + `EMBEDDING_MODEL` (default `nomic-embed-text`). Nahradilo natvrdo
+  zadané `"llama3"` na výchozích/fallback místech (orchestrator, agents, extraction,
+  timetracking, routy activity/agentSwarm/agent/email). Bez env se chování nemění.
+  `kontrolor` si ponechává `mistral` (záměrná diverzita). Kryto `modelConfig.test.js`.
+- [x] **Build integrita: ikona opravena.** `assets/icon.png` byl JPEG přejmenovaný na
+  `.png` (build ikon by selhal) → přeuložen jako skutečné PNG 1024×1024.
+- [x] **`RELEASE_CHECKLIST.md`** — postup buildu/vydání, smoke test, bezpečnost, mezery.
+  Pozn.: chybí `electron-updater` (žádný in-app auto-update).
+
+### Bez dev účtů / bez podpisu (přidáno)
+- [x] **Vynucení API tokenu ZAPNUTO ve výchozím stavu** (`server.js`: `ENFORCE_TOKEN =
+  LEXIS_ENFORCE_TOKEN !== '0'`). Ověřeno, že dashboard (`getHeaders`) i editor
+  (`getLexisLocalConnection`) posílají token na VŠECH `fetch` voláních → nic se nerozbije.
+  Nouzový vypínač `LEXIS_ENFORCE_TOKEN=0`.
+- [x] **Build bez podpisu:** `build.mac.identity=null` + `notarize=false`; `release.yml`
+  má `CSC_IDENTITY_AUTO_DISCOVERY=false`. `INSTALL_UNSIGNED.md` = návod pro betatestery.
+- [x] **CI:** `.github/workflows/ci.yml` (node --check + `npm test` při push/PR na ubuntu).
+- Pozn.: lokální jest hlásí chybu jest-circus kvůli rozjetému `node_modules`
+  (i `package-lock.json` je změněný) → spustit `npm ci` na Macu; CI dělá čistý install.

@@ -9,6 +9,7 @@ const fs = require('fs');
 const { WATCH_DIR } = require('./lib/config');
 const { loadAgents } = require('./lib/agents');
 const HearingsWatcher = require('./lib/hearings');
+const pairing = require('./lib/pairing'); // LexisLink párování (LAN)
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -18,33 +19,60 @@ const PORT = process.env.PORT || 4000;
 const BIND_HOST = process.env.BIND_HOST || '127.0.0.1';
 
 // API token je vždy k dispozici (z prostředí, jinak vygenerovaný a perzistovaný
-// mimo datovou složku). VYNUCENÍ je opt-in: zapne se, když je API_TOKEN v prostředí
-// (zpětná kompatibilita) nebo LEXIS_ENFORCE_TOKEN=1. Jinak backend jede bez vynucení
-// (chrání ho bind na loopback), ale token je připravený pro klienty i pro přepnutí.
+// mimo datovou složku). VYNUCENÍ je nově ZAPNUTÉ VE VÝCHOZÍM STAVU — dashboard i editor
+// si token berou automaticky, takže běžný uživatel nic nevkládá. Nouzový vypínač:
+// spustit s LEXIS_ENFORCE_TOKEN=0 (jen pro lokální ladění).
 const { resolveApiToken } = require('./lib/api_token');
 const API_TOKEN = resolveApiToken();
-const ENFORCE_TOKEN = !!process.env.API_TOKEN || process.env.LEXIS_ENFORCE_TOKEN === '1';
+const ENFORCE_TOKEN = process.env.LEXIS_ENFORCE_TOKEN !== '0';
 if (ENFORCE_TOKEN && !process.env.API_TOKEN) {
-    // Dashboard token dostane automaticky (vstřikuje se). Editor si ho vlož ručně
-    // do nastavení poskytovatele LexisLocal (pole klíč).
-    console.log(`🔑 Vynucení API tokenu ZAPNUTO. Token pro editor: ${API_TOKEN}`);
+    // Dashboard token dostane automaticky (vstřikuje se); editor si ho čte ze souboru.
+    console.log(`🔑 Vynucení API tokenu ZAPNUTO (výchozí). Token pro editor: ${API_TOKEN}`);
+    console.log('   Nouzové vypnutí: spusťte backend s LEXIS_ENFORCE_TOKEN=0');
+} else if (!ENFORCE_TOKEN) {
+    console.warn('⚠️  Vynucení API tokenu VYPNUTO (LEXIS_ENFORCE_TOKEN=0) — API je bez tokenu, jen pro lokální ladění.');
 }
 
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
-// Dashboard servírujeme s vstříknutým API tokenem (jen loopback), aby ho klient
-// nemusel vkládat ručně, až se vynucení zapne. Musí být PŘED express.static.
-app.get(['/', '/index.html'], (req, res, next) => {
+// Je požadavek z loopbacku (stejný stroj)? Jen tehdy je bezpečné vstříknout
+// token přímo do HTML — přes LAN by to byl únik tokenu komukoli na síti.
+// Pozn.: běžíme bez reverzní proxy, takže se díváme na skutečnou remoteAddress
+// (ne na X-Forwarded-For, které lze podvrhnout). IPv4-mapped ::ffff:127.x počítáme taky.
+const isLoopbackReq = (req) => {
+    const a = (req.socket && req.socket.remoteAddress) || req.connection?.remoteAddress || '';
+    return a === '127.0.0.1' || a === '::1' || a === '::ffff:127.0.0.1' || a.startsWith('127.');
+};
+
+// HTML shell + (jen na loopbacku) vstříknutý API token. Přes LAN se servíruje
+// čistý statický soubor bez tokenu — telefon si token dodá přes ⚙ Připojení
+// nebo LexisLink párování. Musí být PŘED express.static.
+const serveWithToken = (fileRelPath) => (req, res, next) => {
     try {
-        const html = fs.readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf8');
+        const html = fs.readFileSync(path.join(__dirname, 'public', fileRelPath), 'utf8');
+        if (!isLoopbackReq(req)) return next(); // LAN → statický soubor bez tokenu
         const inject = `<script>window.LEXIS_API_TOKEN=${JSON.stringify(API_TOKEN)};</script>`;
         res.type('html').send(html.includes('</head>') ? html.replace('</head>', inject + '</head>') : inject + html);
     } catch (e) {
         next();
     }
-});
+};
+app.get(['/', '/index.html'], serveWithToken('index.html'));
+app.get(['/m', '/m/', '/m/index.html'], serveWithToken(path.join('m', 'index.html')));
+// Párovací stránka (QR) — jen loopback dostane vstříknutý token, kterým si vyžádá kód.
+app.get(['/pair', '/pair.html'], serveWithToken('pair.html'));
 app.use(express.static(path.join(__dirname, 'public')));
+
+// ─── LexisLink párování ──────────────────────────────────────────────────────
+// claim MUSÍ být PŘED authenticate: telefon token teprve získává, takže tento
+// bootstrap endpoint token nevyžaduje. Bezpečnost stojí na tom, že kód je
+// jednorázový, krátkodobý a náhodný (viz lib/pairing.js).
+app.post('/api/pair/claim', (req, res) => {
+    const token = pairing.claim(req.body && req.body.code);
+    if (!token) return res.status(404).json({ error: 'Neplatný nebo expirovaný párovací kód.' });
+    res.json({ token });
+});
 
 // --- Ochrana proti path traversal (sdílený helper) ---
 const { safePathInWatchDir, sanitizeFileName } = require('./lib/pathsafe');
@@ -64,6 +92,14 @@ const authenticate = (req, res, next) => {
 };
 
 app.use(authenticate);
+
+// Vytvoření párovacího kódu — ZA authenticate, takže o kód smí požádat jen
+// klient s tokenem (v praxi dashboard/pair na loopbacku). Vrací kód + hotové
+// URL do QR (http://<LAN-IP>:PORT/m?pair=<kód>). Token v odpovědi NENÍ.
+app.post('/api/pair/new', (req, res) => {
+    const { code, ttl } = pairing.createCode(API_TOKEN);
+    res.json({ code, ttl, urls: pairing.buildUrls(PORT, code) });
+});
 
 // ─── Modulární routery (postupné rozbití monolitu) ───────────────────────────
 // Domény se vytahují ze server.js do samostatných souborů v routes/.
