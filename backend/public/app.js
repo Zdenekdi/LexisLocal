@@ -393,6 +393,14 @@ class LexisLocalApp {
                 title: "Hlídač rizik & Legislativa",
                 sub: "Detektor střetu zájmů klienta a kontrola souladu doložek s judikaturou Nejvyššího soudu."
             },
+            spisova: {
+                title: "Spisová služba",
+                sub: "Spisy jako entita, centrální lhůtník, skartační režim a fakturace na jednom místě."
+            },
+            aml: {
+                title: "AML / Onboarding klienta",
+                sub: "Identifikace a kontrola klienta dle zák. 253/2008 Sb., ověření registrů a PEP/sankční screening."
+            },
             managerial: {
                 title: "Manažerská inteligence & Přehledy",
                 sub: "Ekonomické řízení ziskovosti spisů, rozpočty a přehled kapacitního vytížení týmu."
@@ -425,6 +433,10 @@ class LexisLocalApp {
             this.loadRisksTab();
         } else if (tabName === 'managerial') {
             this.loadManagerialTab();
+        } else if (tabName === 'spisova') {
+            this.loadSpisovaTab();
+        } else if (tabName === 'aml') {
+            this.loadAmlTab();
         }
 
         // Auto close mobile drawer on tab switch

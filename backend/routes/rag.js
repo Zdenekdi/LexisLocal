@@ -34,8 +34,11 @@ router.get('/search', async (req, res) => {
             resolvedFilters = await resolveRagFilters(filterPayload);
         }
 
-        const matches = await searchSimilar(query, searchLimit, resolvedFilters);
-        res.json({ query, matches });
+        // Lexikální fallback zapnut: dashboard vyhledávání funguje i bez modelu
+        // (degradovaný, klíčový režim). Výsledky nesou method:'lexical'/degraded:true.
+        const matches = await searchSimilar(query, searchLimit, resolvedFilters, { lexicalFallback: true });
+        const degraded = matches.some(m => m.degraded);
+        res.json({ query, matches, degraded });
     } catch (err) {
         res.status(500).json({ error: `Chyba sémantického vyhledávání: ${err.message}` });
     }

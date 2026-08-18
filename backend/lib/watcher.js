@@ -14,7 +14,7 @@ const { extractTextFromFile, IMAGE_EXTENSIONS } = require('./ocr');
 const { logEvent } = require('./audit');
 const Mutex = require('./mutex');
 const { anonymizeText } = require('./anonymizer');
-const { calculateDeadlineDate, calculateDeadlineByUnit, detectDeadlines, runAIExtractor } = require('./extraction'); // sdílený AI-extraktor
+const { calculateDeadlineDate, collectUnitDeadlines, runAIExtractor } = require('./extraction'); // sdílený AI-extraktor
 
 const { WATCH_DIR } = require('./config'); // jeden zdroj pravdy, viz lib/config.js
 const INBOX_PATH = path.join(WATCH_DIR, '.inbox.json');
@@ -169,8 +169,9 @@ async function processDocument(filePath) {
     const metadata = runRegexExtractor(text);
     
     // 2. Step: Refine metadata with Local Ollama AI if online
+    let refinedMetadata = null;
     try {
-        const refinedMetadata = await runAIExtractor(text);
+        refinedMetadata = await runAIExtractor(text);
         if (refinedMetadata) {
             if (refinedMetadata.caseNumber) metadata.caseNumber = refinedMetadata.caseNumber;
             if (refinedMetadata.plaintiff) metadata.plaintiff = refinedMetadata.plaintiff;
@@ -204,13 +205,12 @@ async function processDocument(filePath) {
         }
     }
     
-    // 2.7 Step: Deterministicky detekuj lhůty v MĚSÍCÍCH/TÝDNECH/LETECH (§ 57/2).
-    // Ukládají se s příznakem needsReview=true — advokát je má potvrdit (nic se tiše nefinalizuje).
+    // 2.7 Step: Lhůty v MĚSÍCÍCH/TÝDNECH/LETECH (§ 57/2) z deterministické detekce
+    // I z AI-extraktoru (collectUnitDeadlines je sjednotí a dedupuje). Vše s
+    // needsReview=true — advokát je má potvrdit (nic se tiše nefinalizuje).
     let unitDeadlines = [];
     try {
-        unitDeadlines = detectDeadlines(text)
-            .filter(d => d.unit !== 'day')
-            .map(d => ({ amount: d.amount, unit: d.unit, deadlineDate: calculateDeadlineByUnit(d.amount, d.unit), context: d.context, needsReview: true }));
+        unitDeadlines = collectUnitDeadlines(text, refinedMetadata);
     } catch (e) { /* detekce jednotek je best-effort */ }
     if (unitDeadlines.length) {
         const lbl = { week: 'týd.', month: 'měs.', year: 'r.' };
@@ -241,6 +241,13 @@ async function processDocument(filePath) {
         processedAt: new Date().toISOString()
     };
     await saveInbox(inbox);
+    // Automatické roztřídění do spisu podle sp. zn. (spisová služba). Best-effort —
+    // selhání nesmí shodit zpracování dokumentu.
+    try {
+        require('./spisy').ensureSpisForCase(metadata.caseNumber, {
+            klient: metadata.plaintiff, protistrana: metadata.defendant, ico: metadata.ico, source: 'watcher'
+        });
+    } catch (e) { console.warn('⚠️ Spis auto-sort (watcher) selhal:', e.message); }
     console.log(`✅ Dokument ${fileName} (${relativePath}) byl úspěšně analyzován a uložen do lokálního indexu.`);
     
     logEvent('FileWatcher', wasOcr ? 'Zpracování OCR' : 'Zpracování dokumentu', fileName, {

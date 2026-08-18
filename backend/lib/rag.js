@@ -2,7 +2,14 @@
  * LexisLocal RAG & Embedded Vector Database Module
  * Implements a lightweight, zero-dependency, pure JavaScript vector storage.
  * Stores chunked text and vectors in WATCH_DIR/ under encrypted partitions.
- * Uses Ollama for embedding generation with a robust deterministic offline fallback.
+ *
+ * Embeddingy počítá lokální Ollama (sémantické vyhledávání). Když model NEBĚŽÍ,
+ * modul degraduje na deterministický LEXIKÁLNÍ (klíčový) fallback nad textem
+ * chunků — RAG tak funguje i bez modelu (viz lexicalScore / searchSimilar opts).
+ * Indexace bez modelu ukládá chunky TEXTOVĚ (bez vektoru), lexikálně dohledatelné.
+ * POZOR: fallback je OPT-IN (searchSimilar(..., { lexicalFallback:true })), aby
+ * bezpečnostně kritická cesta (conflicts.js) při výpadku modelu stále FAIL-CLOSED
+ * vyhodila chybu místo neúplného „žádný konflikt".
  */
 
 const fs = require('fs');
@@ -208,8 +215,39 @@ async function getEmbedding(text) {
     if (response && response.embedding) {
         return response.embedding;
     }
-    
+
     throw new Error("Ollama returned an empty embedding.");
+}
+
+// --- Lexikální (deterministický, offline) fallback ---
+// Když embedding model neběží, RAG degraduje na klíčové vyhledávání nad TEXTEM
+// chunků: kosinová podobnost frekvencí termů. Bez závislostí, deterministické,
+// funguje i nad chunky uloženými bez vektoru (indexace proběhla offline).
+function _deaccent(s) {
+    return String(s == null ? '' : s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+// Krátká česká/anglická stop-slova — nenesou rozlišovací význam pro shodu.
+const _STOP = new Set(['a', 'i', 'o', 'u', 'v', 'k', 's', 'z', 'na', 'do', 'od', 'po', 'za', 'se', 'si',
+    'je', 'to', 've', 'ke', 'ze', 'pro', 'nad', 'pod', 'pri', 'ci', 'ze', 'by', 'byl', 'byla', 'bylo',
+    'jako', 'tak', 'ale', 'nebo', 'aby', 'jsou', 'jsem', 'the', 'of', 'and', 'or', 'in', 'on', 'at']);
+function _lexTokens(text) {
+    return _deaccent(text).split(/[^a-z0-9]+/).filter(t => t.length >= 2 && !_STOP.has(t));
+}
+function _termFreq(tokens) {
+    const tf = Object.create(null);
+    for (const t of tokens) tf[t] = (tf[t] || 0) + 1;
+    return tf;
+}
+// Kosinová podobnost term-frekvencí mezi dotazem a textem chunku. query může být
+// řetězec i předtokenizované pole (rychlejší při skórování mnoha chunků).
+function lexicalScore(query, text) {
+    const q = _termFreq(Array.isArray(query) ? query : _lexTokens(query));
+    const d = _termFreq(_lexTokens(text));
+    let dot = 0, nq = 0, nd = 0;
+    for (const k in q) { nq += q[k] * q[k]; if (d[k]) dot += q[k] * d[k]; }
+    for (const k in d) { nd += d[k] * d[k]; }
+    if (nq === 0 || nd === 0) return 0;
+    return dot / (Math.sqrt(nq) * Math.sqrt(nd));
 }
 
 /**
@@ -275,14 +313,23 @@ async function indexDocument(fileName, text) {
 
     // Embeddings (síťová/CPU operace) počítáme MIMO zámek, abychom neblokovali
     // ostatní; kritickou sekci load→merge→save serializuje mutex.
+    // Když model neběží, NEshazujeme celou indexaci — chunk uložíme TEXTOVĚ
+    // (vector=null) a je pak dohledatelný lexikálně; po zapnutí modelu stačí
+    // spustit re-indexaci (POST /api/rag/reindex-all), která vektory doplní.
     const vectors = [];
-    try {
-        for (let i = 0; i < chunks.length; i++) {
+    let embeddedCount = 0;
+    for (let i = 0; i < chunks.length; i++) {
+        try {
             vectors.push(await getEmbedding(chunks[i]));
+            embeddedCount++;
+        } catch (e) {
+            vectors.push(null);
         }
-    } catch (e) {
-        console.error(`❌ RAG: Chyba při generování embeddings pro ${fileName}:`, e.message);
-        throw e;
+    }
+    if (embeddedCount === 0) {
+        console.warn(`⚠️ RAG: Embedding model nedostupný — „${fileName}" indexován TEXTOVĚ (lexikální vyhledávání). Po zapnutí modelu spusťte re-indexaci.`);
+    } else if (embeddedCount < chunks.length) {
+        console.warn(`⚠️ RAG: „${fileName}" — část chunků bez vektoru (${chunks.length - embeddedCount}/${chunks.length}); po zapnutí modelu doindexujte.`);
     }
 
     await ragMutex.acquire();
@@ -296,6 +343,7 @@ async function indexDocument(fileName, text) {
                 fileName: fileName,
                 text: chunks[i],
                 vector: vectors[i],
+                embedded: vectors[i] != null,
                 chunkIndex: i,
                 totalChunks: chunks.length
             });
@@ -330,15 +378,25 @@ async function deleteDocumentIndex(fileName) {
 /**
  * API: Queries the vector index for semantically similar chunks.
  */
-async function searchSimilar(query, limit = 5, filters = null) {
+async function searchSimilar(query, limit = 5, filters = null, opts = {}) {
     if (!query || !query.trim()) return [];
-    
-    let queryVector;
+
+    // Fallback je OPT-IN: přísné volání (bez opts) při výpadku modelu vyhodí chybu
+    // (fail-closed) — kritické pro conflicts.js, kde „nemožnost prověřit" ≠ „bez
+    // konfliktu". Obecné vyhledávání zapne { lexicalFallback:true } a degraduje.
+    const allowLexicalFallback = !!(opts && opts.lexicalFallback);
+
+    let queryVector = null;
+    let embeddingFailed = false;
     try {
         queryVector = await getEmbedding(query);
     } catch (e) {
-        console.error(`❌ RAG: Vyhledávání selhalo, model nedostupný:`, e.message);
-        throw e;
+        if (!allowLexicalFallback) {
+            console.error(`❌ RAG: Vyhledávání selhalo, model nedostupný:`, e.message);
+            throw e;
+        }
+        embeddingFailed = true;
+        console.warn(`⚠️ RAG: Embedding model nedostupný — lexikální (klíčový) fallback:`, e.message);
     }
 
     let chunks = [];
@@ -373,17 +431,24 @@ async function searchSimilar(query, limit = 5, filters = null) {
         }
     }
 
+    // Sémantický režim: kosinová podobnost vektorů (chunky bez vektoru → 0, jako dřív).
+    // Lexikální fallback: kosinová podobnost term-frekvencí nad textem chunku.
+    const qTokens = embeddingFailed ? _lexTokens(query) : null;
     const results = chunks.map(chunk => {
-        const score = cosineSimilarity(queryVector, chunk.vector);
+        const score = embeddingFailed
+            ? lexicalScore(qTokens, chunk.text || '')
+            : cosineSimilarity(queryVector, chunk.vector);
         return {
             fileName: chunk.fileName,
             text: chunk.text,
             score: score,
+            method: embeddingFailed ? 'lexical' : 'semantic',
+            degraded: embeddingFailed,
             chunkIndex: chunk.chunkIndex,
             totalChunks: chunk.totalChunks
         };
     });
-    
+
     return results
         .sort((a, b) => b.score - a.score)
         .slice(0, limit);
@@ -396,6 +461,7 @@ module.exports = {
     loadIndex,
     getEmbedding,
     cosineSimilarity,
+    lexicalScore,
     reencryptAllPartitions,
     loadPartition,
     savePartition,

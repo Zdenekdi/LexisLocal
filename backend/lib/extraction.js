@@ -105,6 +105,53 @@ function _parseNum(tok) {
     const k = _deaccent(s);
     return Object.prototype.hasOwnProperty.call(_CZ_NUM, k) ? _CZ_NUM[k] : null;
 }
+
+// Normalizuje jednotku lhůty (české slovo i anglický klíč) na kanonický klíč
+// 'day' | 'week' | 'month' | 'year'. Vrací null pro neznámé/prázdné vstupy —
+// slouží k ošetření toho, co vrátí AI-extraktor (viz runAIExtractor).
+function normalizeDeadlineUnit(u) {
+    if (u == null) return null;
+    const k = _deaccent(String(u).trim());
+    if (!k) return null;
+    if (/^(day|days|den|dny|dnu|dni|dnech|dnu)$/.test(k)) return 'day';
+    if (/^(week|weeks|tyden|tydny|tydnu|tydne|tydnech)$/.test(k)) return 'week';
+    if (/^(month|months|mesic|mesice|mesicu|mesici|mesicich)$/.test(k)) return 'month';
+    if (/^(year|years|rok|roku|roky|roce|let|leta)$/.test(k)) return 'year';
+    return null;
+}
+
+// Sestaví seznam lhůt v JINÝCH jednotkách než dny (týdny/měsíce/roky) ze dvou
+// zdrojů: deterministické detekce v textu (detectDeadlines) i strukturovaného
+// AI-extraktoru (aiResult.deadlineAmount + deadlineUnit). Sjednotí je (dedup dle
+// amount+unit), spočítá datum (§ 57/2) a KAŽDOU označí needsReview=true — advokát
+// musí potvrdit; nic se tiše nefinalizuje (dny řeší primární deadlineDays cesta).
+function collectUnitDeadlines(text, aiResult) {
+    const seen = new Set();
+    const out = [];
+    function add(amount, unit, context, source) {
+        const a = parseInt(amount, 10);
+        const u = normalizeDeadlineUnit(unit);
+        if (!a || a <= 0 || !u || u === 'day') return;
+        const key = a + ':' + u;
+        if (seen.has(key)) return;
+        seen.add(key);
+        out.push({
+            amount: a,
+            unit: u,
+            deadlineDate: calculateDeadlineByUnit(a, u),
+            context: context ? String(context).trim().replace(/\s+/g, ' ').slice(0, 300) : '',
+            source: source,
+            needsReview: true
+        });
+    }
+    try {
+        detectDeadlines(text).forEach(function (d) { add(d.amount, d.unit, d.context, 'regex'); });
+    } catch (e) { /* deterministická detekce je best-effort */ }
+    if (aiResult && aiResult.deadlineAmount != null && aiResult.deadlineUnit) {
+        add(aiResult.deadlineAmount, aiResult.deadlineUnit, aiResult.deadlineContext || aiResult.summary, 'ai');
+    }
+    return out;
+}
 function detectDeadlines(text) {
     if (!text) return [];
     const NUM = '(\\d+|jed(?:en|noho|n[eé]|nu|na)|dv(?:a|ou|[eě]|[eě]ma)|t[rř][ií]|t[rř]ech|t[rř]em|[cč]ty[rř](?:i|ech)?|p[eě]t|p[eě]ti|[sš]est|[sš]esti|sedm|sedmi|osm|osmi|dev[eě]t|dev[ií]ti|deset|des[ií]ti|patn[aá]ct|patn[aá]cti|dvacet|dvaceti|t[rř]icet|t[rř]iceti)';
@@ -145,7 +192,9 @@ Reaguj VÝHRADNĚ validním JSON objektem s těmito poli:
   "caseNumber": "spisová značka ve formátu např. '23 C 120/2026'",
   "plaintiff": "jméno žalobce",
   "defendant": "jméno žalovaného",
-  "deadlineDays": 15, // lhůta k vyjádření v dnech jako číslo, pokud je uvedena
+  "deadlineDays": 15, // lhůta k vyjádření VE DNECH jako číslo (pouze pokud je uvedena přímo ve dnech, jinak null)
+  "deadlineAmount": null, // číslo lhůty, pokud je uvedena v TÝDNECH / MĚSÍCÍCH / LETECH (jinak null)
+  "deadlineUnit": null, // jednotka k deadlineAmount: "week" | "month" | "year" (jinak null)
   "summary": "krátké shrnutí obsahu jednou větou"
 }
 
@@ -163,9 +212,21 @@ ${text.substring(0, 3000)}`;
     // Parse the JSON blocks safely
     const jsonMatch = content.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
-        return JSON.parse(jsonMatch[0]);
+        const parsed = JSON.parse(jsonMatch[0]);
+        // Normalizuj jednotku lhůty od AI; když AI vrátí jednotku 'day', převeď
+        // ji na deadlineDays (jedna pravda pro denní lhůty), ať se nezdvojuje.
+        if (parsed && parsed.deadlineUnit != null) {
+            const nu = normalizeDeadlineUnit(parsed.deadlineUnit);
+            parsed.deadlineUnit = nu;
+            if (nu === 'day' && (parsed.deadlineDays == null || parsed.deadlineDays === '') && parsed.deadlineAmount != null) {
+                parsed.deadlineDays = parseInt(parsed.deadlineAmount, 10) || parsed.deadlineDays;
+                parsed.deadlineAmount = null;
+                parsed.deadlineUnit = null;
+            }
+        }
+        return parsed;
     }
     return null;
 }
 
-module.exports = { calculateDeadlineDate, calculateDeadlineByUnit, detectDeadlines, runAIExtractor };
+module.exports = { calculateDeadlineDate, calculateDeadlineByUnit, detectDeadlines, normalizeDeadlineUnit, collectUnitDeadlines, runAIExtractor };

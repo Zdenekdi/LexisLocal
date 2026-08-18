@@ -91,13 +91,16 @@ describe('ConflictDetector', () => {
             expect(result.conflictsFound).toHaveLength(0);
         });
 
-        it('should handle searchSimilar throwing an error gracefully and default to none', async () => {
+        it('should handle searchSimilar throwing an error gracefully → riskLevel "unknown" (ne "none")', async () => {
+            // Bezpečnostní pravidlo (REVIEW_SERIE #3): nemožnost prověřit ≠ absence
+            // konfliktu. Při selhání vyhledávání se NESMÍ hlásit „bezpečné/none".
             const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
             rag.searchSimilar.mockRejectedValue(new Error('Network error'));
 
             const result = await ConflictDetector.checkConflict('Client Corp', 'Opponent LLC');
 
-            expect(result.riskLevel).toBe('none');
+            expect(result.riskLevel).toBe('unknown');
+            expect(result.searchIncomplete).toBe(true);
             expect(result.conflictsFound).toHaveLength(0);
             expect(consoleWarnSpy).toHaveBeenCalledTimes(2); // One for client, one for counterparty
         });

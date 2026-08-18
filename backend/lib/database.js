@@ -25,7 +25,13 @@ class LexisDatabase {
             email_tasks: [],
             green_logs: [],
             transparency_logs: [],
-            inbox_files: []
+            inbox_files: [],
+            spisy: [],
+            spis_events: [],
+            skartace_protokoly: [],
+            invoices: [],
+            aml_checks: [],
+            aml_watchlist: []
         };
         this.encryptionKey = null;
         this.init();

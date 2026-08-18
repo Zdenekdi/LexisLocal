@@ -80,7 +80,9 @@ class ChiefOrchestrator {
             if (agent.permissions && agent.permissions.read_files) {
                 try {
                     // Agent má právo číst klientské spisy -> dotážeme sémantické vyhledávání
-                    const matches = await searchSimilar(step.instruction, 2, ragFilters);
+                    // Best-effort kontext pro agenta — lexikální fallback zapnut,
+                    // ať RAG precedenty fungují i při vypnutém modelu (degradovaně).
+                    const matches = await searchSimilar(step.instruction, 2, ragFilters, { lexicalFallback: true });
                     highConfidence = matches.filter(m => m.score >= 0.70);
                     if (highConfidence.length > 0) {
                         ragContext = highConfidence

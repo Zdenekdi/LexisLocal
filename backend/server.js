@@ -123,6 +123,11 @@ app.use('/api/paperless', require('./routes/paperless'));
 app.use('/api/email', require('./routes/email'));
 app.use('/api/campaigns', require('./routes/campaigns'));
 app.use('/api/inbox', require('./routes/inbox'));
+app.use('/api/spisy', require('./routes/spisy'));
+app.use('/api/lhutnik', require('./routes/lhutnik'));
+app.use('/api/skartace', require('./routes/skartace'));
+app.use('/api/fakturace', require('./routes/fakturace'));
+app.use('/api/aml', require('./routes/aml'));
 app.use('/api/agent', require('./routes/agent'));
 app.use('/api/agent-swarm', require('./routes/agentSwarm'));
 

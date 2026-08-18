@@ -1,0 +1,317 @@
+/**
+ * app-spisova.js — dashboard: Spisová služba (spisy, lhůtník, skartace,
+ * fakturace, nezařazené dokumenty) a AML / Onboarding klienta.
+ * Prototype-mixin nad LexisLocalApp (načítá se po app.js). Vše přes API
+ * /api/spisy, /api/lhutnik, /api/skartace, /api/fakturace, /api/aml.
+ * Veškerá data z API se escapují (escapeHtml) — XSS obrana.
+ */
+Object.assign(LexisLocalApp.prototype, {
+
+    // --- Fetch helpery ------------------------------------------------------
+    async ssGet(path) {
+        const res = await fetch(`${this.apiBase}${path}`, { headers: this.getHeaders() });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+    },
+    async ssSend(path, method, body) {
+        const res = await fetch(`${this.apiBase}${path}`, {
+            method: method,
+            headers: this.getHeaders({ 'Content-Type': 'application/json' }),
+            body: body ? JSON.stringify(body) : undefined
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+        return data;
+    },
+
+    // ===================== SPISOVÁ SLUŽBA ==================================
+    async loadSpisovaTab() {
+        this.loadSpisyList();
+        this.loadLhutnik();
+        this.loadSkartace();
+        this.loadFakturace();
+        this.loadUnfiled();
+    },
+
+    async loadSpisyList() {
+        const el = document.getElementById('ss-spisy-list');
+        if (!el) return;
+        try {
+            const { spisy } = await this.ssGet('/spisy');
+            if (!spisy.length) {
+                el.innerHTML = '<div style="opacity:0.6;padding:20px;text-align:center;">Zatím žádné spisy. Použij „Synchronizovat z inboxu".</div>';
+                return;
+            }
+            const stavBadge = { aktivni: '#22c55e', archiv: '#eab308', skartace: '#ef4444' };
+            el.innerHTML = spisy.map(s => `
+                <div class="glass" style="padding:14px;border-radius:12px;border:1px solid var(--border-glass);display:flex;justify-content:space-between;align-items:center;gap:10px;cursor:pointer;"
+                     onclick="window.appInstance.openSpis('${s.id}')">
+                    <div>
+                        <div style="font-weight:600;">${escapeHtml(s.spisZn || s.nazev || 'Bez značky')}</div>
+                        <div style="font-size:0.8rem;opacity:0.7;">${escapeHtml(s.klient || 'Klient nezadán')}${s.protistrana ? ' × ' + escapeHtml(s.protistrana) : ''}</div>
+                    </div>
+                    <span style="font-size:0.7rem;padding:3px 8px;border-radius:20px;background:${stavBadge[s.stav] || '#64748b'}22;color:${stavBadge[s.stav] || '#94a3b8'};">${escapeHtml(s.stav)}</span>
+                </div>`).join('');
+        } catch (e) {
+            el.innerHTML = `<div style="color:#f87171;padding:12px;">Chyba: ${escapeHtml(e.message)}</div>`;
+        }
+    },
+
+    async openSpis(id) {
+        const el = document.getElementById('ss-spis-detail');
+        if (!el) return;
+        el.innerHTML = '<div style="opacity:0.6;padding:20px;">Načítám spis…</div>';
+        try {
+            const d = await this.ssGet(`/spisy/${id}`);
+            const s = d.spis;
+            const m = d.metrics;
+            const docs = d.documents.map(f => `<li>${escapeHtml(f.fileName || f.id)}</li>`).join('') || '<li style="opacity:0.6;">žádné</li>';
+            const dls = d.deadlines.map(dl => `<li>${escapeHtml(dl.date || '—')} — ${escapeHtml(String(dl.amount || ''))} ${escapeHtml(dl.unit)}${dl.needsReview ? ' <span style="color:#eab308;">(k ověření)</span>' : ''}</li>`).join('') || '<li style="opacity:0.6;">žádné</li>';
+            const events = d.events.slice(-8).reverse().map(ev => `<li style="font-size:0.8rem;"><b>${escapeHtml(ev.type)}</b> — ${escapeHtml(ev.note)} <span style="opacity:0.5;">${escapeHtml((ev.createdAt || '').split('T')[0])}</span></li>`).join('') || '<li style="opacity:0.6;">žádné</li>';
+            el.innerHTML = `
+                <h3 style="margin-top:0;">${escapeHtml(s.spisZn || s.nazev)}</h3>
+                <div style="font-size:0.85rem;opacity:0.8;margin-bottom:12px;">
+                    Klient: ${escapeHtml(s.klient || '—')} · Protistrana: ${escapeHtml(s.protistrana || '—')} · Stav: <b>${escapeHtml(s.stav)}</b>
+                    ${s.retentionUntil ? ' · Retence do: ' + escapeHtml(s.retentionUntil) : ''}
+                </div>
+                <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:14px;font-size:0.85rem;">
+                    <span>📄 Dokumentů: <b>${m.documentsCount}</b></span>
+                    <span>⏳ Lhůt: <b>${m.deadlinesCount}</b> (${m.deadlinesNeedsReview} k ověření)</span>
+                    <span>⚖️ Jednání: <b>${m.hearingsCount}</b></span>
+                    <span>🕒 Čas: <b>${m.timeHours} hod</b></span>
+                    <span>📅 Nejbližší lhůta: <b>${escapeHtml(m.nextDeadline || '—')}</b></span>
+                </div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
+                    <button class="btn btn-secondary" style="font-size:0.8rem;padding:6px 12px;" onclick="window.appInstance.setSpisStav('${s.id}','aktivni')">Aktivní</button>
+                    <button class="btn btn-secondary" style="font-size:0.8rem;padding:6px 12px;" onclick="window.appInstance.setSpisStav('${s.id}','archiv')">Archivovat</button>
+                    <button class="btn btn-secondary" style="font-size:0.8rem;padding:6px 12px;" onclick="window.appInstance.setSpisStav('${s.id}','skartace')">Ke skartaci</button>
+                    <button class="btn btn-primary" style="font-size:0.8rem;padding:6px 12px;" onclick="window.appInstance.fakturaZeSpisu('${s.id}')">💶 Vystavit fakturu</button>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+                    <div><h4 style="margin:0 0 6px;">Dokumenty</h4><ul style="margin:0;padding-left:18px;font-size:0.85rem;">${docs}</ul></div>
+                    <div><h4 style="margin:0 0 6px;">Lhůty</h4><ul style="margin:0;padding-left:18px;font-size:0.85rem;">${dls}</ul></div>
+                </div>
+                <h4 style="margin:14px 0 6px;">Spisový deník</h4>
+                <ul style="margin:0;padding-left:18px;">${events}</ul>`;
+        } catch (e) {
+            el.innerHTML = `<div style="color:#f87171;padding:12px;">Chyba: ${escapeHtml(e.message)}</div>`;
+        }
+    },
+
+    async syncSpisy() {
+        try {
+            const r = await this.ssSend('/spisy/sync', 'POST');
+            alert(`Synchronizace hotova: založeno ${r.created} spisů, napojeno ${r.linkedFiles} dokumentů (${r.skippedNoCase} bez sp. zn.).`);
+            this.loadSpisovaTab();
+        } catch (e) { alert('Chyba synchronizace: ' + e.message); }
+    },
+
+    async novySpis() {
+        const spisZn = prompt('Spisová značka (např. 23 C 120/2026):');
+        if (spisZn === null) return;
+        const klient = prompt('Klient (nepovinné):') || '';
+        try {
+            await this.ssSend('/spisy', 'POST', { spisZn: spisZn, klient: klient });
+            this.loadSpisyList();
+        } catch (e) { alert('Chyba: ' + e.message); }
+    },
+
+    async setSpisStav(id, stav) {
+        try {
+            await this.ssSend(`/spisy/${id}/stav`, 'POST', { stav: stav });
+            this.openSpis(id);
+            this.loadSpisyList();
+            this.loadSkartace();
+        } catch (e) { alert('Chyba: ' + e.message); }
+    },
+
+    // --- Lhůtník ------------------------------------------------------------
+    async loadLhutnik() {
+        const el = document.getElementById('ss-lhutnik');
+        if (!el) return;
+        try {
+            const { items, summary } = await this.ssGet('/lhutnik');
+            const color = { overdue: '#ef4444', urgent: '#f97316', soon: '#eab308', ok: '#22c55e', unknown: '#64748b' };
+            const head = `<div style="display:flex;gap:12px;flex-wrap:wrap;font-size:0.8rem;margin-bottom:10px;">
+                <span style="color:#ef4444;">Po termínu: ${summary.overdue}</span>
+                <span style="color:#f97316;">Urgentní: ${summary.urgent}</span>
+                <span style="color:#eab308;">Brzy: ${summary.soon}</span>
+                <span style="color:#94a3b8;">K ověření: ${summary.needsReview}</span></div>`;
+            if (!items.length) { el.innerHTML = head + '<div style="opacity:0.6;">Žádné lhůty.</div>'; return; }
+            const rows = items.map(i => `
+                <tr>
+                    <td style="padding:6px;color:${color[i.urgency]};">${escapeHtml(i.date || '—')}</td>
+                    <td style="padding:6px;">${escapeHtml(String(i.amount || ''))} ${escapeHtml(i.unit)}</td>
+                    <td style="padding:6px;font-size:0.8rem;">${escapeHtml(i.caseNumber || '—')}</td>
+                    <td style="padding:6px;">${i.daysLeft === null ? '—' : i.daysLeft + ' dní'}</td>
+                    <td style="padding:6px;">${i.needsReview
+                        ? `<button class="btn btn-primary" style="font-size:0.7rem;padding:3px 8px;" onclick="window.appInstance.confirmLhuta('${i.fileId}',${i.index})">Potvrdit</button>
+                           <button class="btn btn-secondary" style="font-size:0.7rem;padding:3px 8px;" onclick="window.appInstance.dismissLhuta('${i.fileId}',${i.index})">Odložit</button>`
+                        : '<span style="opacity:0.5;font-size:0.75rem;">✓</span>'}</td>
+                </tr>`).join('');
+            el.innerHTML = head + `<table style="width:100%;border-collapse:collapse;font-size:0.85rem;">
+                <thead><tr style="opacity:0.6;text-align:left;"><th style="padding:6px;">Datum</th><th style="padding:6px;">Lhůta</th><th style="padding:6px;">Sp. zn.</th><th style="padding:6px;">Zbývá</th><th style="padding:6px;"></th></tr></thead>
+                <tbody>${rows}</tbody></table>`;
+        } catch (e) {
+            el.innerHTML = `<div style="color:#f87171;">Chyba: ${escapeHtml(e.message)}</div>`;
+        }
+    },
+    async confirmLhuta(fileId, index) {
+        try { await this.ssSend('/lhutnik/confirm', 'POST', { fileId, index }); this.loadLhutnik(); }
+        catch (e) { alert('Chyba: ' + e.message); }
+    },
+    async dismissLhuta(fileId, index) {
+        try { await this.ssSend('/lhutnik/dismiss', 'POST', { fileId, index }); this.loadLhutnik(); }
+        catch (e) { alert('Chyba: ' + e.message); }
+    },
+
+    // --- Skartace -----------------------------------------------------------
+    async loadSkartace() {
+        const el = document.getElementById('ss-skartace');
+        if (!el) return;
+        try {
+            const n = await this.ssGet('/skartace/navrh');
+            const line = (arr, label, color) => arr.length
+                ? `<div style="margin-bottom:8px;"><b style="color:${color};">${label} (${arr.length})</b><ul style="margin:4px 0;padding-left:18px;font-size:0.85rem;">${arr.map(s => `<li>${escapeHtml(s.spisZn)} ${s.retentionUntil ? '· do ' + escapeHtml(s.retentionUntil) : ''}</li>`).join('')}</ul></div>`
+                : '';
+            el.innerHTML =
+                line(n.expired, '⚠️ Retence uplynula — návrh ke skartaci', '#ef4444') +
+                line(n.inSkartace, '🗑️ Ve stavu skartace', '#f97316') +
+                line(n.retained, '📦 V archivu (retence běží)', '#eab308') +
+                (n.summary.expired + n.summary.inSkartace + n.summary.retained === 0 ? '<div style="opacity:0.6;">Žádné archivované spisy.</div>' : '') +
+                (n.expired.length ? `<button class="btn btn-primary" style="font-size:0.8rem;padding:6px 12px;margin-top:6px;" onclick="window.appInstance.vytvorProtokol(${JSON.stringify(n.expired.map(s => s.id)).replace(/"/g, '&quot;')})">Vytvořit skartační protokol</button>` : '');
+        } catch (e) {
+            el.innerHTML = `<div style="color:#f87171;">Chyba: ${escapeHtml(e.message)}</div>`;
+        }
+    },
+    async vytvorProtokol(ids) {
+        if (!confirm(`Vytvořit skartační protokol pro ${ids.length} spisů? (nic se nesmaže, jen se zaeviduje návrh)`)) return;
+        try {
+            const r = await this.ssSend('/skartace/protokol', 'POST', { spisIds: ids });
+            alert(`Protokol vytvořen (${r.protokol.pocet} spisů). Skartaci proveďte vědomě podle předpisů ČAK.`);
+            this.loadSkartace();
+        } catch (e) { alert('Chyba: ' + e.message); }
+    },
+
+    // --- Fakturace ----------------------------------------------------------
+    async loadFakturace() {
+        const el = document.getElementById('ss-fakturace');
+        if (!el) return;
+        try {
+            const o = await this.ssGet('/fakturace/outstanding');
+            const rows = o.invoices.map(i => `<li>${escapeHtml(i.variabilniSymbol)} — ${escapeHtml(i.klient || i.spisZn || '')} — <b>${i.toPay} Kč</b>
+                <button class="btn btn-secondary" style="font-size:0.7rem;padding:2px 8px;" onclick="window.appInstance.oznacUhrazeno('${i.id}')">Uhrazeno</button></li>`).join('');
+            el.innerHTML = `<div style="margin-bottom:8px;">Neuhrazeno: <b style="color:#f97316;">${o.totalDue} Kč</b> (${o.count} faktur)</div>
+                <ul style="margin:0;padding-left:18px;font-size:0.85rem;">${rows || '<li style="opacity:0.6;">Žádné neuhrazené.</li>'}</ul>`;
+        } catch (e) {
+            el.innerHTML = `<div style="color:#f87171;">Chyba: ${escapeHtml(e.message)}</div>`;
+        }
+    },
+    async fakturaZeSpisu(spisId) {
+        const rateStr = prompt('Hodinová sazba (Kč, prázdné = výchozí z nastavení):', '');
+        const dphStr = prompt('Sazba DPH v % (0 pro neplátce):', '21');
+        const body = { spisId, dphRate: parseFloat(dphStr) || 0 };
+        if (rateStr && parseFloat(rateStr) > 0) body.rate = parseFloat(rateStr);
+        try {
+            const r = await this.ssSend('/fakturace/from-spis', 'POST', body);
+            alert(`Faktura ${r.invoice.variabilniSymbol} vystavena: ${r.invoice.toPay} Kč.`);
+            this.loadFakturace();
+        } catch (e) { alert('Chyba: ' + e.message); }
+    },
+    async oznacUhrazeno(id) {
+        try { await this.ssSend(`/fakturace/${id}/paid`, 'POST', {}); this.loadFakturace(); }
+        catch (e) { alert('Chyba: ' + e.message); }
+    },
+
+    // --- Nezařazené dokumenty ----------------------------------------------
+    async loadUnfiled() {
+        const el = document.getElementById('ss-unfiled');
+        if (!el) return;
+        try {
+            const [{ files }, { spisy }] = await Promise.all([this.ssGet('/spisy/unfiled'), this.ssGet('/spisy')]);
+            if (!files.length) { el.innerHTML = '<div style="opacity:0.6;">Vše zařazeno. 👍</div>'; return; }
+            const opts = spisy.filter(s => s.spisZn).map(s => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.spisZn)}</option>`).join('');
+            el.innerHTML = files.map(f => `
+                <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;font-size:0.85rem;">
+                    <span style="flex:1;">${escapeHtml(f.fileName || f.id)}</span>
+                    <select id="assign-${escapeHtml(f.id)}" style="background:#0f172a;color:white;border:1px solid var(--border-glass);border-radius:6px;padding:4px;">${opts}</select>
+                    <button class="btn btn-secondary" style="font-size:0.7rem;padding:3px 8px;" onclick="window.appInstance.zaradit('${f.id}')">Zařadit</button>
+                </div>`).join('');
+        } catch (e) {
+            el.innerHTML = `<div style="color:#f87171;">Chyba: ${escapeHtml(e.message)}</div>`;
+        }
+    },
+    async zaradit(fileId) {
+        const sel = document.getElementById(`assign-${fileId}`);
+        if (!sel || !sel.value) { alert('Nejdřív vytvoř nějaký spis se sp. zn.'); return; }
+        try {
+            await this.ssSend(`/spisy/${sel.value}/assign-file`, 'POST', { fileId });
+            this.loadUnfiled();
+            this.loadSpisyList();
+        } catch (e) { alert('Chyba: ' + e.message); }
+    },
+
+    // ===================== AML / ONBOARDING ================================
+    async loadAmlTab() {
+        this.loadAmlChecks();
+        this.loadWatchlist();
+    },
+    async loadAmlChecks() {
+        const el = document.getElementById('aml-checks');
+        if (!el) return;
+        try {
+            const { checks } = await this.ssGet('/aml/checks');
+            const color = { high: '#ef4444', medium: '#eab308', low: '#22c55e' };
+            if (!checks.length) { el.innerHTML = '<div style="opacity:0.6;">Zatím žádné AML prověrky.</div>'; return; }
+            el.innerHTML = checks.slice().reverse().map(c => `
+                <div class="glass" style="padding:12px;border-radius:10px;border:1px solid var(--border-glass);margin-bottom:8px;">
+                    <div style="display:flex;justify-content:space-between;">
+                        <b>${escapeHtml(c.jmeno)}</b>
+                        <span style="color:${color[c.risk]};font-weight:600;">${escapeHtml(c.risk.toUpperCase())}</span>
+                    </div>
+                    <div style="font-size:0.8rem;opacity:0.8;">${escapeHtml(c.typ)}${c.ico ? ' · IČO ' + escapeHtml(c.ico) : ''}${c.registry && c.registry.inInsolvency ? ' · ⚠️ INSOLVENCE' : ''}</div>
+                    ${c.factors.length ? `<div style="font-size:0.78rem;opacity:0.7;margin-top:4px;">${c.factors.map(f => escapeHtml(f.code)).join(', ')}</div>` : ''}
+                    <div style="font-size:0.72rem;color:#eab308;margin-top:4px;">⚠️ Ověřte i vůči oficiálním PEP/sankčním seznamům.</div>
+                </div>`).join('');
+        } catch (e) {
+            el.innerHTML = `<div style="color:#f87171;">Chyba: ${escapeHtml(e.message)}</div>`;
+        }
+    },
+    async loadWatchlist() {
+        const el = document.getElementById('aml-watchlist');
+        if (!el) return;
+        try {
+            const { watchlist } = await this.ssGet('/aml/watchlist');
+            el.innerHTML = watchlist.length
+                ? watchlist.map(w => `<li>${escapeHtml(w.name)} <span style="opacity:0.6;">(${escapeHtml(w.type)})</span></li>`).join('')
+                : '<li style="opacity:0.6;">Prázdný lokální seznam.</li>';
+        } catch (e) {
+            el.innerHTML = `<li style="color:#f87171;">Chyba: ${escapeHtml(e.message)}</li>`;
+        }
+    },
+    async amlIdentify(event) {
+        if (event) event.preventDefault();
+        const val = id => (document.getElementById(id) || {}).value || '';
+        const body = {
+            typ: val('aml-typ'), jmeno: val('aml-jmeno'), ico: val('aml-ico'),
+            rc: val('aml-rc'), adresa: val('aml-adresa'), provedl: val('aml-provedl')
+        };
+        if (!body.jmeno.trim()) { alert('Zadej jméno/název klienta.'); return; }
+        try {
+            const r = await this.ssSend('/aml/identify', 'POST', body);
+            alert(`AML prověrka hotova — riziko: ${r.check.risk.toUpperCase()}. Nezapomeňte na oficiální PEP/sankční screening.`);
+            this.loadAmlChecks();
+        } catch (e) { alert('Chyba: ' + e.message); }
+    },
+    async amlAddWatch(event) {
+        if (event) event.preventDefault();
+        const name = (document.getElementById('aml-watch-name') || {}).value || '';
+        const type = (document.getElementById('aml-watch-type') || {}).value || 'PEP';
+        if (!name.trim()) { alert('Zadej jméno.'); return; }
+        try {
+            await this.ssSend('/aml/watchlist', 'POST', { name, type });
+            document.getElementById('aml-watch-name').value = '';
+            this.loadWatchlist();
+        } catch (e) { alert('Chyba: ' + e.message); }
+    }
+});

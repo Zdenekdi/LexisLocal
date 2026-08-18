@@ -8,7 +8,7 @@ const { checkSubject } = require('./registries');
 const { loadInbox, saveInbox } = require('./watcher');
 const { logEvent } = require('./audit');
 const { anonymizeText } = require('./anonymizer');
-const { calculateDeadlineDate, calculateDeadlineByUnit, detectDeadlines, runAIExtractor } = require('./extraction'); // sdílený AI-extraktor
+const { calculateDeadlineDate, collectUnitDeadlines, runAIExtractor } = require('./extraction'); // sdílený AI-extraktor
 
 const PAPERLESS_API_URL = process.env.PAPERLESS_API_URL || 'http://localhost:8000';
 const PAPERLESS_API_TOKEN = process.env.PAPERLESS_API_TOKEN || '';
@@ -42,9 +42,10 @@ async function handlePaperlessWebhook(payload) {
     const metadata = runRegexExtractor(title, cleanTags, docText);
 
     // 2. Step: Run AI Extractor if text is non-empty
+    let refined = null;
     if (docText.trim().length > 50) {
         try {
-            const refined = await runAIExtractor(docText);
+            refined = await runAIExtractor(docText);
             if (refined) {
                 if (refined.caseNumber) metadata.caseNumber = refined.caseNumber;
                 if (refined.plaintiff) metadata.plaintiff = refined.plaintiff;
@@ -78,13 +79,12 @@ async function handlePaperlessWebhook(payload) {
         }
     }
 
-    // 2.7 Step: Deterministicky detekuj lhůty v MĚSÍCÍCH/TÝDNECH/LETECH (§ 57/2) —
+    // 2.7 Step: Lhůty v MĚSÍCÍCH/TÝDNECH/LETECH (§ 57/2) z deterministické detekce
+    // i AI-extraktoru (collectUnitDeadlines je sjednotí a dedupuje) —
     // ukládají se s needsReview=true (advokát potvrzuje; nic se tiše nefinalizuje).
     let unitDeadlines = [];
     try {
-        unitDeadlines = detectDeadlines(docText)
-            .filter(d => d.unit !== 'day')
-            .map(d => ({ amount: d.amount, unit: d.unit, deadlineDate: calculateDeadlineByUnit(d.amount, d.unit), context: d.context, needsReview: true }));
+        unitDeadlines = collectUnitDeadlines(docText, refined);
     } catch (e) { /* best-effort */ }
     if (unitDeadlines.length) {
         const lbl = { week: 'týd.', month: 'měs.', year: 'r.' };
@@ -115,6 +115,12 @@ async function handlePaperlessWebhook(payload) {
         processedAt: new Date().toISOString()
     };
     await saveInbox(inbox);
+    // Automatické roztřídění do spisu podle sp. zn. (spisová služba). Best-effort.
+    try {
+        require('./spisy').ensureSpisForCase(metadata.caseNumber, {
+            klient: metadata.plaintiff, protistrana: metadata.defendant, ico: metadata.ico, source: 'paperless'
+        });
+    } catch (e) { console.warn('⚠️ Spis auto-sort (paperless) selhal:', e.message); }
     console.log(`✅ Paperless: Dokument ${title} byl zapsán do lokálního inboxu.`);
 
     logEvent('PaperlessWebhook', 'Zpracování dokumentu', title, {

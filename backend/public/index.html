@@ -53,6 +53,12 @@
                 <button class="nav-btn" data-tab="risks">
                     <span class="icon">🔍</span> Rizika & Judikatura
                 </button>
+                <button class="nav-btn" data-tab="spisova">
+                    <span class="icon">🗂️</span> Spisová služba
+                </button>
+                <button class="nav-btn" data-tab="aml">
+                    <span class="icon">🪪</span> AML / Onboarding
+                </button>
                 <button class="nav-btn" data-tab="managerial">
                     <span class="icon">📊</span> Manažerský Přehled
                 </button>
@@ -855,6 +861,79 @@
                 </section>
 
                 <!-- TAB: MANAGERIAL INTELLIGENCE -->
+                <section class="tab-pane" id="tab-spisova">
+                    <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;">
+                        <button class="btn btn-primary" onclick="window.appInstance.syncSpisy()">🔄 Synchronizovat z inboxu</button>
+                        <button class="btn btn-secondary" onclick="window.appInstance.novySpis()">➕ Nový spis</button>
+                    </div>
+                    <div style="display:grid;grid-template-columns:0.9fr 1.1fr;gap:20px;">
+                        <div class="glass" style="padding:20px;border-radius:16px;border:1px solid var(--border-glass);">
+                            <h3 style="margin-top:0;">📁 Spisy</h3>
+                            <div id="ss-spisy-list" style="display:flex;flex-direction:column;gap:8px;max-height:360px;overflow:auto;">Načítám…</div>
+                        </div>
+                        <div class="glass" style="padding:20px;border-radius:16px;border:1px solid var(--border-glass);">
+                            <div id="ss-spis-detail" style="opacity:0.6;">Vyber spis vlevo pro detail (dokumenty, lhůty, čas, deník).</div>
+                        </div>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1.3fr 0.7fr;gap:20px;margin-top:20px;">
+                        <div class="glass" style="padding:20px;border-radius:16px;border:1px solid var(--border-glass);">
+                            <h3 style="margin-top:0;">⏳ Centrální lhůtník</h3>
+                            <div id="ss-lhutnik">Načítám…</div>
+                        </div>
+                        <div style="display:flex;flex-direction:column;gap:20px;">
+                            <div class="glass" style="padding:20px;border-radius:16px;border:1px solid var(--border-glass);">
+                                <h3 style="margin-top:0;">🗄️ Skartace / archiv</h3>
+                                <div id="ss-skartace">Načítám…</div>
+                            </div>
+                            <div class="glass" style="padding:20px;border-radius:16px;border:1px solid var(--border-glass);">
+                                <h3 style="margin-top:0;">💶 Neuhrazené faktury</h3>
+                                <div id="ss-fakturace">Načítám…</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="glass" style="padding:20px;border-radius:16px;border:1px solid var(--border-glass);margin-top:20px;">
+                        <h3 style="margin-top:0;">📎 Nezařazené dokumenty (k ručnímu zařazení do spisu)</h3>
+                        <div id="ss-unfiled">Načítám…</div>
+                    </div>
+                </section>
+
+                <section class="tab-pane" id="tab-aml">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+                        <div class="glass" style="padding:20px;border-radius:16px;border:1px solid var(--border-glass);">
+                            <h3 style="margin-top:0;">🪪 Identifikace a kontrola klienta (AML)</h3>
+                            <form onsubmit="window.appInstance.amlIdentify(event)" style="display:flex;flex-direction:column;gap:10px;">
+                                <select id="aml-typ" style="padding:8px 12px;background:#0f172a;border:1px solid var(--border-glass);border-radius:8px;color:white;outline:none;">
+                                    <option value="FO">Fyzická osoba</option>
+                                    <option value="PO">Právnická osoba</option>
+                                </select>
+                                <input id="aml-jmeno" placeholder="Jméno / název klienta" required style="padding:8px 12px;background:rgba(255,255,255,0.03);border:1px solid var(--border-glass);border-radius:8px;color:white;outline:none;" />
+                                <input id="aml-ico" placeholder="IČO (u právnické osoby)" style="padding:8px 12px;background:rgba(255,255,255,0.03);border:1px solid var(--border-glass);border-radius:8px;color:white;outline:none;" />
+                                <input id="aml-rc" placeholder="RČ / datum narození (u FO)" style="padding:8px 12px;background:rgba(255,255,255,0.03);border:1px solid var(--border-glass);border-radius:8px;color:white;outline:none;" />
+                                <input id="aml-adresa" placeholder="Adresa" style="padding:8px 12px;background:rgba(255,255,255,0.03);border:1px solid var(--border-glass);border-radius:8px;color:white;outline:none;" />
+                                <input id="aml-provedl" placeholder="Prověrku provedl (advokát)" style="padding:8px 12px;background:rgba(255,255,255,0.03);border:1px solid var(--border-glass);border-radius:8px;color:white;outline:none;" />
+                                <button type="submit" class="btn btn-primary">Provést AML prověrku</button>
+                            </form>
+                            <p style="font-size:0.75rem;color:#eab308;margin-top:10px;">Ověří ARES/ISIR a lokální PEP/sankční seznam. Oficiální PEP a mezinárodní sankční seznamy (EU/OFAC) je nutné ověřit zvlášť.</p>
+                        </div>
+                        <div class="glass" style="padding:20px;border-radius:16px;border:1px solid var(--border-glass);">
+                            <h3 style="margin-top:0;">📋 Historie AML prověrek</h3>
+                            <div id="aml-checks" style="max-height:340px;overflow:auto;">Načítám…</div>
+                        </div>
+                    </div>
+                    <div class="glass" style="padding:20px;border-radius:16px;border:1px solid var(--border-glass);margin-top:20px;">
+                        <h3 style="margin-top:0;">🚩 Lokální PEP / sankční seznam kanceláře</h3>
+                        <form onsubmit="window.appInstance.amlAddWatch(event)" style="display:flex;gap:8px;flex-wrap:wrap;">
+                            <input id="aml-watch-name" placeholder="Jméno osoby / subjektu" style="flex:1;min-width:200px;padding:8px 12px;background:rgba(255,255,255,0.03);border:1px solid var(--border-glass);border-radius:8px;color:white;outline:none;" />
+                            <select id="aml-watch-type" style="padding:8px 12px;background:#0f172a;border:1px solid var(--border-glass);border-radius:8px;color:white;outline:none;">
+                                <option value="PEP">PEP</option>
+                                <option value="SANKCE">SANKCE</option>
+                            </select>
+                            <button type="submit" class="btn btn-secondary">Přidat</button>
+                        </form>
+                        <ul id="aml-watchlist" style="margin-top:12px;padding-left:18px;font-size:0.85rem;"></ul>
+                    </div>
+                </section>
+
                 <section class="tab-pane" id="tab-managerial">
                     <div style="display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 25px;">
                         
@@ -1051,5 +1130,6 @@
     <script src="app-calendar.js"></script>
     <script src="app-managerial.js"></script>
     <script src="app-email.js"></script>
+    <script src="app-spisova.js"></script>
 </body>
 </html>

@@ -4,7 +4,7 @@
  * calculateDeadlineDate (dny) má vlastní test v deadlineExtraction.test.js;
  * tady ověřujeme, že přes něj delegovaná denní jednotka sedí.
  */
-const { calculateDeadlineByUnit, calculateDeadlineDate, detectDeadlines } = require('../lib/extraction');
+const { calculateDeadlineByUnit, calculateDeadlineDate, detectDeadlines, normalizeDeadlineUnit, collectUnitDeadlines } = require('../lib/extraction');
 
 describe('calculateDeadlineByUnit (§ 57 odst. 2)', () => {
     test('měsíce: shoda čísla dne (2 měsíce od 30. 4. 2025 → 30. 6. 2025)', () => {
@@ -40,5 +40,55 @@ describe('detectDeadlines (backend, zrcadlí editor)', () => {
     });
     test('NEfalešně: dvouletá smlouva není lhůta', () => {
         expect(u('Smlouva se uzavírá na dobu 2 let.')).toEqual([]);
+    });
+});
+
+describe('normalizeDeadlineUnit (normalizace jednotky od AI)', () => {
+    test('anglické klíče', () => {
+        expect(normalizeDeadlineUnit('week')).toBe('week');
+        expect(normalizeDeadlineUnit('MONTH')).toBe('month');
+        expect(normalizeDeadlineUnit('years')).toBe('year');
+        expect(normalizeDeadlineUnit('day')).toBe('day');
+    });
+    test('česká slova i s diakritikou', () => {
+        expect(normalizeDeadlineUnit('měsíc')).toBe('month');
+        expect(normalizeDeadlineUnit('týdny')).toBe('week');
+        expect(normalizeDeadlineUnit('let')).toBe('year');
+        expect(normalizeDeadlineUnit('dnů')).toBe('day');
+    });
+    test('neznámé/prázdné → null', () => {
+        expect(normalizeDeadlineUnit('bagr')).toBeNull();
+        expect(normalizeDeadlineUnit('')).toBeNull();
+        expect(normalizeDeadlineUnit(null)).toBeNull();
+    });
+});
+
+describe('collectUnitDeadlines (deterministika + AI, dedup, needsReview)', () => {
+    test('sjednotí detekci z textu a z AI, bez duplicit', () => {
+        const text = 'Odvolání do 15 dnů; dovolání do 2 měsíců.';
+        const ai = { deadlineAmount: 2, deadlineUnit: 'month', summary: 'x' }; // duplicitní vůči textu
+        const r = collectUnitDeadlines(text, ai);
+        // 15 dnů se NEzahrnuje (dny řeší primární cesta); 2 měsíce jen jednou
+        const keys = r.map(d => `${d.amount} ${d.unit}`);
+        expect(keys).toContain('2 month');
+        expect(keys.filter(k => k === '2 month')).toHaveLength(1);
+        expect(keys).not.toContain('15 day');
+    });
+    test('AI přidá jednotku, kterou text neobsahuje', () => {
+        const r = collectUnitDeadlines('Bez explicitní lhůty v textu.', { deadlineAmount: 3, deadlineUnit: 'week' });
+        const hit = r.find(d => d.amount === 3 && d.unit === 'week');
+        expect(hit).toBeTruthy();
+        expect(hit.needsReview).toBe(true);
+        expect(hit.deadlineDate).toBe(calculateDeadlineByUnit(3, 'week'));
+        expect(hit.source).toBe('ai');
+    });
+    test('den z AI se do jednotkových lhůt nepřidává', () => {
+        const r = collectUnitDeadlines('Nic.', { deadlineAmount: 15, deadlineUnit: 'day' });
+        expect(r).toEqual([]);
+    });
+    test('bez AI výsledku funguje jen z textu', () => {
+        const r = collectUnitDeadlines('Žalobu podejte nejpozději do 2 měsíců.', null);
+        expect(r.map(d => `${d.amount} ${d.unit}`)).toContain('2 month');
+        expect(r.every(d => d.needsReview === true)).toBe(true);
     });
 });
