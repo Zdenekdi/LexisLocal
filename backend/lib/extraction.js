@@ -8,10 +8,10 @@
  */
 'use strict';
 
-// Robustní import Ollama (CommonJS i ESM default export).
-const ollamaLib = require('ollama');
+// AI poskytovatel nezávislý na backendu (Ollama | OpenAI | Anthropic) — stejné
+// rozhraní jako ollama lib, takže extrakce funguje pro jakýkoli model.
 const { CHAT_MODEL } = require('./model_config');
-const ollama = ollamaLib.default || ollamaLib;
+const ollama = require('./ai_provider');
 
 // --- Pracovní dny / svátky (§ 57 odst. 2 o.s.ř.) ---
 function _dateKey(d) {

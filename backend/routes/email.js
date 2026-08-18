@@ -11,7 +11,7 @@ const router = express.Router();
 const db = require('../lib/database');
 const { logEvent } = require('../lib/audit');
 const { loadAgents } = require('../lib/agents');
-const ollama = require('../lib/ollama_client');
+const ollama = require('../lib/ai_provider'); // Ollama | OpenAI | Anthropic (stejné rozhraní)
 const { generateAgentFallback } = require('../lib/agent_fallback');
 
 // GET /api/email/settings - Načíst nastavení IMAP/SMTP a autorizovaného odesílatele

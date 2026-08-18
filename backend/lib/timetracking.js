@@ -6,8 +6,8 @@
 
 const db = require('./database');
 const { CHAT_MODEL } = require('./model_config');
-const ollamaLib = require('ollama');
-const ollama = ollamaLib.default || ollamaLib;
+// AI poskytovatel nezávislý na backendu (Ollama | OpenAI | Anthropic).
+const ollama = require('./ai_provider');
 
 class TimeTracker {
     /**

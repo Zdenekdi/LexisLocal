@@ -15,7 +15,7 @@ const { anonymizeText } = require('../lib/anonymizer');
 const { logEvent } = require('../lib/audit');
 const { calculateInferenceMetrics } = require('../lib/green_monitor');
 const db = require('../lib/database');
-const ollama = require('../lib/ollama_client');
+const ollama = require('../lib/ai_provider'); // Ollama | OpenAI | Anthropic (stejné rozhraní)
 const { generateAgentFallback } = require('../lib/agent_fallback');
 const { resolveRagFilters } = require('../lib/rag_request');
 

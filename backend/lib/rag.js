@@ -17,9 +17,9 @@ const path = require('path');
 const crypto = require('crypto');
 const db = require('./database');
 
-// Robust Ollama module import supporting both CommonJS and ESM default exports
-const ollamaLib = require('ollama');
-const ollama = ollamaLib.default || ollamaLib;
+// AI poskytovatel nezávislý na backendu (Ollama | OpenAI | Anthropic) — stejné
+// rozhraní jako ollama lib. Embeddingy tak fungují pro jakýkoli model.
+const ollama = require('./ai_provider');
 
 const { WATCH_DIR } = require('./config'); // jeden zdroj pravdy, viz lib/config.js
 const secureCrypto = require('./secure_crypto'); // AES-GCM + zpětné čtení CBC (jeden zdroj)

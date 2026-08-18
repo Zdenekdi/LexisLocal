@@ -132,6 +132,17 @@ Seřazeno podle priority. Frontendové položky (LexisEditor) jsou v CLAUDE.md t
   zadané `"llama3"` na výchozích/fallback místech (orchestrator, agents, extraction,
   timetracking, routy activity/agentSwarm/agent/email). Bez env se chování nemění.
   `kontrolor` si ponechává `mistral` (záměrná diverzita). Kryto `modelConfig.test.js`.
+- [x] **AI nezávislé na jednom backendu — `backend/lib/ai_provider.js`.** Jednotné
+  rozhraní kompatibilní s knihovnou `ollama` (`chat`/`embeddings` stejné tvary), za nímž
+  lze přes env přepnout na OpenAI (i OpenAI-kompatibilní servery: LM Studio, LocalAI) nebo
+  Anthropic. Přepínače: `AI_PROVIDER` (společný), `AI_CHAT_PROVIDER`, `AI_EMBED_PROVIDER`
+  (`ollama`|`openai`|`anthropic`). OpenAI: `OPENAI_API_KEY`, `OPENAI_BASE_URL`,
+  `OPENAI_CHAT_MODEL`, `OPENAI_EMBED_MODEL`. Anthropic (jen chat): `ANTHROPIC_API_KEY`,
+  `ANTHROPIC_MODEL`, `ANTHROPIC_MAX_TOKENS`. **Výchozí = Ollama, takže bez env se nic
+  nemění** (local-first zůstává). Napojeno v `rag`, `extraction`, `orchestrator`,
+  `timetracking` a routách `agent`/`agentSwarm`/`email`; správa modelů (`list`/`pull`
+  v `models`/`system`) zůstává na Ollamě. Kryto `ai_provider.test.js` (11 testů, mock
+  `fetch` + `ollama_client`, žádná síť).
 - [x] **Build integrita: ikona opravena.** `assets/icon.png` byl JPEG přejmenovaný na
   `.png` (build ikon by selhal) → přeuložen jako skutečné PNG 1024×1024.
 - [x] **`RELEASE_CHECKLIST.md`** — postup buildu/vydání, smoke test, bezpečnost, mezery.
