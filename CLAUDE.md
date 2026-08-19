@@ -21,9 +21,21 @@ Build/test: `npm run dev` (nodemon), `npm test` (jest), `npm run electron:dev`, 
   a odstrani zaplavu [Doplnit...]. Vetsina prace je v agentnim promptu/orchestraci (backend) + chat UI
   v editoru. Funguje i na slabem HW.
 
-- [ ] **Doladit RAG.** Ladeni retrievalu: velikost chunku, top-k, prah podobnosti (nyni 0.70), volba
-  embedding modelu, a zajistit, ze jsou spisy vubec zaindexovane (na prazdnem indexu RAG nic nenajde).
-  Merit na realnych spisech. Izolovane a meritelne.
+- [~] **Doladit RAG — CHUNKING hotovo, prahy/top-k záměrně ponechány.**
+  ✅ **Chunking (`rag.js chunkText`) přepsán:** dlouhé odstavce (typické u smluv/podání)
+  se dělí na věty místo jednoho obřího chunku → přesnější embeddingy a cílenější
+  dohledání; mezi chunky je PŘEKRYV (fakt na hranici se neztratí); patologicky dlouhá
+  „slova" bez mezer se sekají po znacích. Laditelné bez zásahu do kódu přes env
+  `RAG_CHUNK_MAX_CHARS` (def. 700) a `RAG_CHUNK_OVERLAP_CHARS` (def. 120). Kryto
+  `ragChunking.test.js` (7 testů). **Projeví se AŽ PO re-indexaci** existujících spisů:
+  `POST /api/rag/reindex-all` (nové/změněné soubory se chunkují nově automaticky).
+  ⚠️ **Top-k a prah podobnosti 0.70 jsem NEMĚNIL záměrně:** stejný práh a stejné
+  kosinové skóre používá i `conflicts.js` (detekce střetu zájmů / AML) ve fail-closed
+  režimu — změna škály skóre by tiše posunula, co se počítá jako „konflikt". Ladit prahy
+  má smysl jen s měřením na reálných spisech (ground-truth), ne naslepo.
+  ➡️ Zbývá (potřebuje reálná data/měření): re-index po změně chunkingu, případné
+  doladění top-k a prahu, volba embedding modelu, prefixy nomic (`search_query:` /
+  `search_document:` — vyžadují re-index a jsou model-specifické).
 
 
 > 🏗️ **Připraveno pro firemní (multiuživatelský) režim — 4 švy (viz `ARCHITECTURE.md`):**
@@ -140,9 +152,12 @@ Seřazeno podle priority. Frontendové položky (LexisEditor) jsou v CLAUDE.md t
   `OPENAI_CHAT_MODEL`, `OPENAI_EMBED_MODEL`. Anthropic (jen chat): `ANTHROPIC_API_KEY`,
   `ANTHROPIC_MODEL`, `ANTHROPIC_MAX_TOKENS`. **Výchozí = Ollama, takže bez env se nic
   nemění** (local-first zůstává). Napojeno v `rag`, `extraction`, `orchestrator`,
-  `timetracking` a routách `agent`/`agentSwarm`/`email`; správa modelů (`list`/`pull`
-  v `models`/`system`) zůstává na Ollamě. Kryto `ai_provider.test.js` (11 testů, mock
-  `fetch` + `ollama_client`, žádná síť).
+  `timetracking` a routách `agent`/`agentSwarm`/`email`. Kryto `ai_provider.test.js`
+  (11 testů, mock `fetch` + `ollama_client`, žádná síť). POZOR: přepnutí
+  `AI_EMBED_PROVIDER` (jiný embedding model = jiná dimenze vektoru, nomic 768 vs.
+  OpenAI 1536) vyžaduje REINDEX RAG archivu — staré a nové vektory nejsou srovnatelné.
+  Model management (list/pull v UI) míří stále na Ollamu; `chat` s cloud providerem
+  posílá obsah spisů mimo lokální stroj — pro citlivá data zvaž ponechání Ollamy.
 - [x] **Build integrita: ikona opravena.** `assets/icon.png` byl JPEG přejmenovaný na
   `.png` (build ikon by selhal) → přeuložen jako skutečné PNG 1024×1024.
 - [x] **`RELEASE_CHECKLIST.md`** — postup buildu/vydání, smoke test, bezpečnost, mezery.

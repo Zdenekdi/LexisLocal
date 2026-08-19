@@ -250,36 +250,94 @@ function lexicalScore(query, text) {
     return dot / (Math.sqrt(nq) * Math.sqrt(nd));
 }
 
+// Cílová velikost chunku a překryv (znaky). Laditelné přes env BEZ zásahu do kódu:
+//   RAG_CHUNK_MAX_CHARS  (def. 700) — horní mez délky chunku,
+//   RAG_CHUNK_OVERLAP_CHARS (def. 120) — kolik znaků konce chunku se zopakuje na
+//   začátku dalšího (kontinuita kontextu přes hranici — lepší dohledatelnost faktů,
+//   která by jinak padla přesně na předěl). Změna se projeví AŽ PO re-indexaci
+//   (POST /api/rag/reindex-all); skóre ani prahy (0.70 v conflicts/agent) to nemění.
+const CHUNK_MAX = Math.max(200, parseInt(process.env.RAG_CHUNK_MAX_CHARS, 10) || 700);
+const CHUNK_OVERLAP = Math.max(0, Math.min(
+    (parseInt(process.env.RAG_CHUNK_OVERLAP_CHARS, 10) || 120),
+    Math.floor(CHUNK_MAX / 2)
+));
+
+// Rozdělí příliš dlouhý odstavec na věty (tečka/!/? + mezera + další „slovo"). Věta
+// delší než `max` se tvrdě rozseká po slovech. České zkratky (odst., §, č.) můžou
+// větu občas rozdělit navíc — pro embeddingy to nevadí (kratší smysluplné jednotky).
+function _splitSentences(paragraph, max) {
+    const parts = String(paragraph).split(/(?<=[.!?])\s+(?=[A-ZÁ-Ža-zá-ž0-9(„"])/);
+    const out = [];
+    for (const s of parts) {
+        const seg = s.trim();
+        if (!seg) continue;
+        if (seg.length <= max) { out.push(seg); continue; }
+        let buf = '';
+        for (const w of seg.split(/\s+/)) {
+            if (w.length > max) {
+                // Patologicky dlouhé „slovo" (bez mezer) — nasekej po znacích, ať žádný
+                // chunk nepřeteče MAX a nezahltí embedding.
+                if (buf) { out.push(buf); buf = ''; }
+                for (let i = 0; i < w.length; i += max) out.push(w.slice(i, i + max));
+                continue;
+            }
+            if (buf && (buf.length + 1 + w.length) > max) { out.push(buf); buf = w; }
+            else buf = buf ? buf + ' ' + w : w;
+        }
+        if (buf) out.push(buf);
+    }
+    return out;
+}
+
+// Vrátí konec chunku (~overlap znaků) začínající na hranici slova — pro překryv.
+function _tailForOverlap(chunk, overlap) {
+    if (overlap <= 0) return '';
+    const s = String(chunk);
+    if (s.length <= overlap) return s;
+    const slice = s.slice(s.length - overlap);
+    const sp = slice.indexOf(' ');
+    return sp >= 0 ? slice.slice(sp + 1) : slice;
+}
+
 /**
- * Intelligently splits document text into paragraphs/chunks.
+ * Rozdělí text dokumentu na chunky vhodné k indexaci. Oproti dřívějšku:
+ *  • dlouhé odstavce (typické u smluv/podání) se rozdělí na věty → menší, přesnější
+ *    chunky = kvalitnější embeddingy a cílenější dohledání,
+ *  • mezi chunky je PŘEKRYV (kontinuita kontextu přes hranici),
+ *  • velikost i překryv jsou laditelné (opts nebo env).
+ * Krátký text zůstává jedním chunkem (zpětně kompatibilní chování).
  */
-function chunkText(text) {
+function chunkText(text, opts) {
     if (!text) return [];
-    
-    const paragraphs = text
+    const MAX = (opts && opts.maxChars) || CHUNK_MAX;
+    const OVERLAP = (opts && opts.overlapChars != null) ? opts.overlapChars : CHUNK_OVERLAP;
+
+    const paragraphs = String(text)
         .split(/\r?\n/)
         .map(p => p.trim())
         .filter(p => p.length > 0);
-        
+
+    // Dlouhé odstavce → věty (aby chunky nebyly obří).
+    const units = [];
+    for (const p of paragraphs) {
+        if (p.length <= MAX) units.push(p);
+        else units.push(..._splitSentences(p, MAX));
+    }
+
     const chunks = [];
-    let currentChunk = "";
-    
-    for (const paragraph of paragraphs) {
-        if (currentChunk.length + paragraph.length < 500) {
-            currentChunk += (currentChunk ? " " : "") + paragraph;
+    let cur = '';
+    for (const u of units) {
+        if (cur && (cur.length + 1 + u.length) > MAX) {
+            chunks.push(cur);
+            const tail = _tailForOverlap(cur, OVERLAP);
+            cur = tail ? tail + ' ' + u : u;
         } else {
-            if (currentChunk) {
-                chunks.push(currentChunk);
-            }
-            currentChunk = paragraph;
+            cur = cur ? cur + ' ' + u : u;
         }
     }
-    
-    if (currentChunk) {
-        chunks.push(currentChunk);
-    }
-    
-    return chunks;
+    if (cur) chunks.push(cur);
+
+    return chunks.map(c => c.trim()).filter(Boolean);
 }
 
 /**
@@ -462,6 +520,7 @@ module.exports = {
     getEmbedding,
     cosineSimilarity,
     lexicalScore,
+    chunkText,
     reencryptAllPartitions,
     loadPartition,
     savePartition,
