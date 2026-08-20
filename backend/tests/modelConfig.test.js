@@ -7,7 +7,7 @@ const path = require('path');
 const MODULE = path.join(__dirname, '..', 'lib', 'model_config.js');
 
 function loadFresh() {
-  delete require.cache[require.resolve(MODULE)];
+  jest.resetModules();
   return require(MODULE);
 }
 

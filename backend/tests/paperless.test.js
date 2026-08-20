@@ -79,8 +79,8 @@ describe('runRegexExtractor', () => {
              const result = runRegexExtractor('Title', [], text);
 
              expect(result.deadlineDays).toBe(30);
-             // 2024-05-10 + 30 days = 2024-06-09
-             expect(result.deadlineDate).toBe('2024-06-09');
+             // 2024-05-10 + 30 dnů = 2024-06-09 (neděle) → posun na nejbližší pracovní den
+             expect(result.deadlineDate).toBe('2024-06-10');
         });
     });
 
