@@ -17,6 +17,10 @@
             const tx = document.getElementById('agent-kb-text');
             if (fn) fn.value = '';
             if (tx) tx.value = '';
+            const st = document.getElementById('agent-kb-upload-status');
+            if (st) { st.textContent = ''; st.style.color = ''; }
+            const fileEl = document.getElementById('agent-kb-file');
+            if (fileEl) fileEl.value = '';
             this._kbAgentId = null;
         },
 
@@ -98,6 +102,45 @@
                 }
             } catch (err) {
                 alert('❌ Síťová chyba: ' + err.message);
+            }
+        },
+
+        async uploadAgentKnowledgeFile(input) {
+            const agentId = this._kbAgentId;
+            const status = document.getElementById('agent-kb-upload-status');
+            const setStatus = (msg, color) => { if (status) { status.textContent = msg || ''; status.style.color = color || ''; } };
+            if (!agentId) { alert('Nejdřív zvolte asistenta.'); if (input) input.value = ''; return; }
+            const file = input && input.files && input.files[0];
+            if (!file) return;
+            const MAX = 25 * 1024 * 1024;
+            if (file.size > MAX) {
+                setStatus(`Soubor je příliš velký (${(file.size / 1048576).toFixed(1)} MB, max 25 MB).`, '#f87171');
+                input.value = ''; return;
+            }
+            setStatus(`Zpracovávám „${file.name}"… (u skenů může OCR chvíli trvat)`, '');
+            try {
+                const base64 = await new Promise((resolve, reject) => {
+                    const r = new FileReader();
+                    r.onload = () => resolve(String(r.result).replace(/^data:.*?;base64,/, ''));
+                    r.onerror = () => reject(new Error('Nepodařilo se přečíst soubor.'));
+                    r.readAsDataURL(file);
+                });
+                const res = await fetch(`${this.apiBase}/agent-knowledge/${encodeURIComponent(agentId)}/upload`, {
+                    method: 'POST',
+                    headers: this.getHeaders({ 'Content-Type': 'application/json' }),
+                    body: JSON.stringify({ fileName: file.name, base64 })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    setStatus(`✅ „${data.fileName}" přidán (${data.chars} znaků, ${data.indexed} částí${data.ocr ? ', přes OCR' : ''}).`, '#4ade80');
+                    await this.loadAgentKnowledge(agentId);
+                } else {
+                    setStatus('❌ ' + (data.error || 'Nahrání selhalo.'), '#f87171');
+                }
+            } catch (err) {
+                setStatus('❌ Chyba: ' + err.message, '#f87171');
+            } finally {
+                if (input) input.value = '';
             }
         },
 

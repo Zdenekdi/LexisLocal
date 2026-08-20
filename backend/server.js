@@ -130,6 +130,7 @@ app.use('/api/fakturace', require('./routes/fakturace'));
 app.use('/api/aml', require('./routes/aml'));
 app.use('/api/agent', require('./routes/agent'));
 app.use('/api/agent-swarm', require('./routes/agentSwarm'));
+app.use('/api/agent-knowledge', require('./routes/agentKnowledge'));
 
 // Root Status
 app.get('/api/status', (req, res) => {
