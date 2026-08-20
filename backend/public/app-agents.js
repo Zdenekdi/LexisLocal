@@ -118,7 +118,7 @@ Object.assign(LexisLocalApp.prototype, {
         
         // Load new model and permissions fields
         document.getElementById('agent-form-model').value = agent.preferredModel || 'llama3';
-        document.getElementById('agent-form-perm-files').checked = !!(agent.permissions && agent.permissions.read_files);
+        document.getElementById('agent-form-spis-access').value = agent.spisAccess || ((agent.permissions && agent.permissions.read_files) ? 'full' : 'none');
         document.getElementById('agent-form-perm-registries').checked = !!(agent.permissions && agent.permissions.query_registries);
         document.getElementById('agent-form-perm-desktop').checked = !!(agent.permissions && agent.permissions.write_desktop);
 
@@ -167,7 +167,7 @@ Object.assign(LexisLocalApp.prototype, {
         
         // Reset models and checkboxes
         document.getElementById('agent-form-model').value = 'llama3';
-        document.getElementById('agent-form-perm-files').checked = false;
+        document.getElementById('agent-form-spis-access').value = 'none';
         document.getElementById('agent-form-perm-registries').checked = false;
         document.getElementById('agent-form-perm-desktop').checked = false;
 
@@ -195,7 +195,7 @@ Object.assign(LexisLocalApp.prototype, {
         
         // Read model and permissions inputs
         const preferredModel = document.getElementById('agent-form-model').value;
-        const readFiles = document.getElementById('agent-form-perm-files').checked;
+        const spisAccess = document.getElementById('agent-form-spis-access').value; const readFiles = spisAccess !== 'none';
         const queryRegistries = document.getElementById('agent-form-perm-registries').checked;
         const writeDesktop = document.getElementById('agent-form-perm-desktop').checked;
 
@@ -212,6 +212,7 @@ Object.assign(LexisLocalApp.prototype, {
                 role,
                 systemPrompt,
                 preferredModel,
+                spisAccess,
                 permissions: {
                     read_files: readFiles,
                     query_registries: queryRegistries,

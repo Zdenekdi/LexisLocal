@@ -8,7 +8,7 @@ const express = require('express');
 const router = express.Router();
 const fs = require('fs');
 const path = require('path');
-const { indexDocument, searchSimilar, loadIndex } = require('../lib/rag');
+const { indexDocument, searchSimilar, loadIndex, reindexAllKnowledge } = require('../lib/rag');
 const { loadInbox } = require('../lib/watcher');
 const { logEvent } = require('../lib/audit');
 const { resolveRagFilters } = require('../lib/rag_request');
@@ -89,13 +89,25 @@ router.post('/reindex-all', async (req, res) => {
                 }
             }
         }
+        // Znalostní báze agentů se plní textem (nemají soubor v inboxu), takže výše je
+        // reindex minul — re-embedujeme je zvlášť (jinak by po změně modelu zůstaly
+        // na starých/null vektorech).
+        let kbChunks = 0;
+        try {
+            const kbResults = await reindexAllKnowledge();
+            kbChunks = kbResults.reduce((s, r) => s + (r.embedded || 0), 0);
+        } catch (kbErr) {
+            console.warn('⚠️ RAG: Re-embedding znalostních bází selhal:', kbErr.message);
+        }
+
         logEvent('LexisLocal Dashboard', 'Re-indexace spisy', 'Všechny spisy', {
-            successCount
+            successCount, kbChunks
         });
 
         res.json({
             success: true,
-            message: `Re-indexace dokončena. Úspěšně přegenerováno ${successCount} z ${files.length} souborů.`
+            message: `Re-indexace dokončena. Úspěšně přegenerováno ${successCount} z ${files.length} souborů`
+                + (kbChunks ? ` a ${kbChunks} chunků znalostních bází asistentů.` : '.')
         });
     } catch (err) {
         res.status(500).json({ error: `Chyba při re-indexaci: ${err.message}` });

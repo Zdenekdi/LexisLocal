@@ -118,7 +118,10 @@ function loadPartition(directoryName) {
  * Re-encrypts all partitions when the master key is rotated.
  */
 function reencryptAllPartitions(oldMasterKey, newMasterKey) {
-    const dirs = getActiveDirectories();
+    // Klientské složky (getActiveDirectories) I znalostní báze agentů (_kb_* z registru) —
+    // KB partitiony nejsou reálné složky, takže by je jinak rotace klíče minula a zůstaly
+    // by šifrované starým klíčem (nedešifrovatelné).
+    const dirs = [...new Set([...getActiveDirectories(), ..._listKbScopes()])];
     for (const dir of dirs) {
         const partitionId = crypto.createHash('sha256').update(dir).digest('hex').substring(0, 16);
         const partitionPath = path.join(WATCH_DIR, `.rag_${partitionId}.json`);
@@ -413,6 +416,156 @@ async function indexDocument(fileName, text) {
     }
 }
 
+// --- Znalostní báze agentů (per-agent RAG) --------------------------------------
+// Každý agent má vlastní IZOLOVANOU partition `_kb_<id>` (role knowledge base:
+// rešeršník = judikatura/legislativa, spisovatel = vzory, kontrolor = checklisty…).
+// Tyto partitiony ZÁMĚRNĚ NEJSOU v getActiveDirectories() (nejsou to reálné složky),
+// takže se NEpletou do obecného vyhledávání ani do conflicts.js/AML. Do vyhledávání
+// vstupují jen když je explicitně požádá volající přes filters.scopes.
+//
+// Registr scope (prostý seznam jmen, ne citlivé) drží, které KB partitiony existují —
+// aby je rotace šifrovacího klíče (reencryptAllPartitions) taky přešifrovala.
+const KB_PREFIX = '_kb_';
+function _kbRegistryPath() { return path.join(WATCH_DIR, '.rag_kb_registry.json'); }
+function _listKbScopes() {
+    try {
+        const raw = fs.readFileSync(_kbRegistryPath(), 'utf8');
+        const arr = JSON.parse(raw);
+        return Array.isArray(arr) ? arr.filter(s => typeof s === 'string') : [];
+    } catch (e) { return []; }
+}
+function _registerKbScope(scope) {
+    try {
+        const cur = _listKbScopes();
+        if (!cur.includes(scope)) {
+            cur.push(scope);
+            fs.writeFileSync(_kbRegistryPath(), JSON.stringify(cur), 'utf8');
+        }
+    } catch (e) { console.warn('⚠️ RAG KB: registr scope se nepodařilo zapsat:', e.message); }
+}
+
+/**
+ * Zaindexuje dokument do znalostní báze agenta (scope = `_kb_<id>`). Izolovaný
+ * round-trip: pracuje jen s danou partition (na rozdíl od indexDocument, který
+ * slévá všechny klientské partitiony). Bez modelu uloží chunky textově (vector=null),
+ * dohledatelné lexikálně.
+ */
+async function indexKnowledge(scope, fileName, text) {
+    if (!scope || String(scope).indexOf(KB_PREFIX) !== 0) {
+        throw new Error(`indexKnowledge: neplatný scope „${scope}" (musí začínat ${KB_PREFIX}).`);
+    }
+    const chunks = chunkText(text);
+    if (chunks.length === 0) {
+        console.warn(`⚠️ RAG KB: „${fileName}" (${scope}) neobsahuje text k indexaci.`);
+        return { indexed: 0 };
+    }
+    const vectors = [];
+    let embedded = 0;
+    for (let i = 0; i < chunks.length; i++) {
+        try { vectors.push(await getEmbedding(chunks[i])); embedded++; }
+        catch (e) { vectors.push(null); }
+    }
+
+    await ragMutex.acquire();
+    try {
+        const part = loadPartition(scope);
+        const kept = (part.chunks || []).filter(c => c.fileName !== fileName);
+        for (let i = 0; i < chunks.length; i++) {
+            kept.push({
+                id: `kb_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+                fileName: fileName,
+                text: chunks[i],
+                vector: vectors[i],
+                embedded: vectors[i] != null,
+                chunkIndex: i,
+                totalChunks: chunks.length,
+                scope: scope
+            });
+        }
+        savePartition(scope, { chunks: kept });
+        _registerKbScope(scope);
+        console.log(`✅ RAG KB: „${fileName}" → ${scope} (${chunks.length} chunků, ${embedded} s vektorem).`);
+        return { indexed: chunks.length, embedded };
+    } finally {
+        ragMutex.release();
+    }
+}
+
+/** Smaže dokument ze znalostní báze agenta. */
+async function deleteKnowledge(scope, fileName) {
+    await ragMutex.acquire();
+    try {
+        const part = loadPartition(scope);
+        const before = (part.chunks || []).length;
+        const kept = (part.chunks || []).filter(c => c.fileName !== fileName);
+        if (kept.length !== before) savePartition(scope, { chunks: kept });
+        return { removed: before - kept.length };
+    } finally {
+        ragMutex.release();
+    }
+}
+
+/**
+ * Znovu spočítá VEKTORY existujících chunků znalostní báze (scope). KB dokumenty
+ * nemají zdrojový soubor na disku (plní se textem), proto je reindex-all z inboxu
+ * MINE — tahle funkce re-embeduje jejich uložený text NA MÍSTĚ. Nutné po změně
+ * embedding modelu/poskytovatele (jiná dimenze vektoru). Embedding počítá MIMO zámek;
+ * pod zámkem jen zapíše dle id (chunky přidané mezitím zůstanou nedotčené).
+ */
+async function reindexKnowledge(scope) {
+    const snapshot = loadPartition(scope).chunks || [];
+    if (!snapshot.length) return { scope, chunks: 0, embedded: 0 };
+
+    const vectors = Object.create(null);
+    let embedded = 0;
+    for (const c of snapshot) {
+        try {
+            const v = await getEmbedding(c.text || '');
+            vectors[c.id] = v;
+            if (v != null) embedded++;
+        } catch (e) {
+            vectors[c.id] = null;
+        }
+    }
+
+    await ragMutex.acquire();
+    try {
+        const part = loadPartition(scope);
+        const chunks = part.chunks || [];
+        for (const c of chunks) {
+            if (Object.prototype.hasOwnProperty.call(vectors, c.id)) {
+                c.vector = vectors[c.id];
+                c.embedded = c.vector != null;
+            }
+        }
+        savePartition(scope, { chunks });
+        return { scope, chunks: chunks.length, embedded };
+    } finally {
+        ragMutex.release();
+    }
+}
+
+/** Re-embeduje VŠECHNY registrované znalostní báze (po změně embedding modelu). */
+async function reindexAllKnowledge() {
+    const results = [];
+    for (const scope of _listKbScopes()) {
+        results.push(await reindexKnowledge(scope));
+    }
+    return results;
+}
+
+/** Vypíše dokumenty ve znalostní bázi agenta (název + počet chunků). */
+function listKnowledge(scope) {
+    const part = loadPartition(scope);
+    const byFile = {};
+    for (const c of part.chunks || []) {
+        if (!byFile[c.fileName]) byFile[c.fileName] = { fileName: c.fileName, chunks: 0, embedded: 0 };
+        byFile[c.fileName].chunks++;
+        if (c.embedded) byFile[c.fileName].embedded++;
+    }
+    return Object.values(byFile);
+}
+
 /**
  * API: Removes indexed chunks belonging to the specified file.
  */
@@ -457,35 +610,51 @@ async function searchSimilar(query, limit = 5, filters = null, opts = {}) {
         console.warn(`⚠️ RAG: Embedding model nedostupný — lexikální (klíčový) fallback:`, e.message);
     }
 
+    // Přístup ke KLIENTSKÝM spisům lze vypnout (filters.clientAccess === false) — pak
+    // agent čerpá JEN z vlastní znalostní báze (filters.scopes). Výchozí = plný přístup,
+    // takže conflicts.js/AML (filters=null) i dosavadní volání se nemění.
+    const clientAccess = !(filters && filters.clientAccess === false);
+
     let chunks = [];
-    if (filters && filters.directory) {
-        chunks = loadPartition(filters.directory).chunks || [];
-    } else if (filters && Array.isArray(filters.fileNames) && filters.fileNames.length > 0) {
-        const dirs = new Set(filters.fileNames.map(f => f.includes('/') ? f.split('/')[0] : 'root'));
-        for (const dir of dirs) {
-            chunks.push(...(loadPartition(dir).chunks || []));
+    if (clientAccess) {
+        if (filters && filters.directory) {
+            chunks = loadPartition(filters.directory).chunks || [];
+        } else if (filters && Array.isArray(filters.fileNames) && filters.fileNames.length > 0) {
+            const dirs = new Set(filters.fileNames.map(f => f.includes('/') ? f.split('/')[0] : 'root'));
+            for (const dir of dirs) {
+                chunks.push(...(loadPartition(dir).chunks || []));
+            }
+        } else {
+            const index = await loadIndex();
+            chunks = index.chunks || [];
         }
-    } else {
-        const index = await loadIndex();
-        chunks = index.chunks || [];
+
+        if (filters) {
+            if (Array.isArray(filters.fileNames) && filters.fileNames.length > 0) {
+                const allowedFiles = new Set(filters.fileNames.map(f => f.toLowerCase().replace(/\\/g, '/')));
+                chunks = chunks.filter(chunk => {
+                    const normName = chunk.fileName.toLowerCase().replace(/\\/g, '/');
+                    return allowedFiles.has(normName);
+                });
+            }
+
+            if (filters.directory) {
+                const normDir = filters.directory.toLowerCase().replace(/\\/g, '/');
+                chunks = chunks.filter(chunk => {
+                    const normName = chunk.fileName.toLowerCase().replace(/\\/g, '/');
+                    return normName.startsWith(normDir + '/') || normName === normDir;
+                });
+            }
+        }
     }
-    
-    
-    if (filters) {
-        if (Array.isArray(filters.fileNames) && filters.fileNames.length > 0) {
-            const allowedFiles = new Set(filters.fileNames.map(f => f.toLowerCase().replace(/\\/g, '/')));
-            chunks = chunks.filter(chunk => {
-                const normName = chunk.fileName.toLowerCase().replace(/\\/g, '/');
-                return allowedFiles.has(normName);
-            });
-        }
-        
-        if (filters.directory) {
-            const normDir = filters.directory.toLowerCase().replace(/\\/g, '/');
-            chunks = chunks.filter(chunk => {
-                const normName = chunk.fileName.toLowerCase().replace(/\\/g, '/');
-                return normName.startsWith(normDir + '/') || normName === normDir;
-            });
+
+    // Znalostní báze agenta (per-agent RAG): PŘIDÁ chunky z KB partitionů `_kb_<id>`
+    // do kandidátů. Skórují se stejně (kosinově), takže se nemění význam prahu 0.70.
+    if (filters && Array.isArray(filters.scopes) && filters.scopes.length > 0) {
+        for (const scope of filters.scopes) {
+            if (typeof scope === 'string' && scope.indexOf(KB_PREFIX) === 0) {
+                chunks.push(...(loadPartition(scope).chunks || []));
+            }
         }
     }
 
@@ -502,6 +671,7 @@ async function searchSimilar(query, limit = 5, filters = null, opts = {}) {
             score: score,
             method: embeddingFailed ? 'lexical' : 'semantic',
             degraded: embeddingFailed,
+            scope: chunk.scope || null, // KB chunk (_kb_<id>) vs. klientský spis (null)
             chunkIndex: chunk.chunkIndex,
             totalChunks: chunk.totalChunks
         };
@@ -521,6 +691,11 @@ module.exports = {
     cosineSimilarity,
     lexicalScore,
     chunkText,
+    indexKnowledge,
+    deleteKnowledge,
+    listKnowledge,
+    reindexKnowledge,
+    reindexAllKnowledge,
     reencryptAllPartitions,
     loadPartition,
     savePartition,

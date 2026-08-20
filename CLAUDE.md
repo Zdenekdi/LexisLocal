@@ -21,6 +21,41 @@ Build/test: `npm run dev` (nodemon), `npm test` (jest), `npm run electron:dev`, 
   a odstrani zaplavu [Doplnit...]. Vetsina prace je v agentnim promptu/orchestraci (backend) + chat UI
   v editoru. Funguje i na slabem HW.
 
+- [x] **HOTOVO — Per-agent RAG + úrovně přístupu ke spisům.** Každý agent má vlastní
+  IZOLOVANOU znalostní bázi `_kb_<id>` (rešeršník = judikatura/legislativa, spisovatel =
+  vzory, kontrolor = checklisty…) — šifrovaná partition mimo klientské složky, takže se
+  NEplete do obecného vyhledávání ani do `conflicts.js`/AML. `rag.js`:
+  `indexKnowledge`/`deleteKnowledge`/`listKnowledge` (izolovaný round-trip), searchSimilar
+  nově bere `filters.scopes` (přidá KB agenta) a `filters.clientAccess` (lze vypnout čtení
+  klientských spisů). Registr KB scope zajišťuje přešifrování při rotaci klíče. Agent má
+  pole **`knowledgeScope`** a **`spisAccess`** (`full`/`none`, default dle `permissions.read_files`
+  — tím se konečně VYNUCUJE dřív jen deklarovaný `read_files`: Stylista bez přístupu už
+  reálně nečte klientská data). `rag_request.applyAgentScope` sestaví efektivní filtr;
+  napojeno v `routes/agent.js` a `routes/agentSwarm.js` (debata = sjednocené báze, přístup
+  omezen když ho nemá kterýkoli účastník). Správa bází: `routes/agentKnowledge.js`
+  (`GET/POST/DELETE /api/agent-knowledge/:agentId`). Skóre ani práh 0.70 se NEMĚNÍ (KB
+  chunky se skórují stejně kosinově). Kryto `ragKnowledge.test.js` (13 testů). Vedlejší
+  úklid: `rag_request` načítá `watcher` líně. **UI HOTOVO:** v editaci asistenta je panel
+  „📚 Vlastní znalostní báze" (přidat/smazat dokument, `public/app-agent-kb.js` — samostatný
+  soubor obalující `showAgentEditor`, bez zásahu do `app-agents.js`), a úroveň přístupu ke
+  spisu řídí stávající checkbox „📂 Přístup ke spisům RAG" (= `read_files`, teď reálně
+  vynucený přes `spisAccess`; doplněn vysvětlující popisek). Volá `/api/agent-knowledge/:id`.
+  **Re-embedding bází:** `rag.reindexKnowledge(scope)`/`reindexAllKnowledge()` přepočítá
+  vektory uložených KB chunků NA MÍSTĚ (KB nemají soubor, tak je `reindex-all` z inboxu
+  míjel — teď je `POST /api/rag/reindex-all` zahrnuje). Per-agent `POST
+  /api/agent-knowledge/:id/reindex` + tlačítko „🔄 Přegenerovat vektory" v panelu báze
+  (nutné po změně embedding modelu / po přidání textu bez běžícího modelu). Kryto
+  `ragReindexKnowledge.test.js` (mock embeddings, ověří přepis vektorů).
+- [x] **HOTOVO — 3. úroveň přístupu `redacted` (anonymizovaný spis).** `spisAccess` nově
+  `full` | `redacted` | `none`. Při `redacted` agent klientský spis ČTE, ale pasáže se
+  před předáním do LLM anonymizují (`anonymizeText`) — vlastní znalostní báze (`scope=_kb_*`)
+  zůstává beze změny. searchSimilar vrací u výsledků `scope` (KB vs klient = null),
+  `applyAgentScope` řeší precedenci **none > redacted > full** (nejpřísnější napříč debatou
+  vyhrává) a nastaví `redactClient`; anonymizaci aplikuje `agent.js` i `agentSwarm.js` jen
+  na klientské pasáže. UI: v editaci asistenta místo checkboxu **select „Přístup ke spisům"**
+  (Plný / Anonymizovaný / Žádný) — `app-agents.js` upraven, aby `spisAccess` ukládal.
+  Skóre/práh 0.70 beze změny. Kryto testy v `ragKnowledge.test.js` (redacted precedence,
+  scope pole). (Záloha `app-agents.js` před úpravou v `_to_delete/`.)
 - [~] **Doladit RAG — CHUNKING hotovo, prahy/top-k záměrně ponechány.**
   ✅ **Chunking (`rag.js chunkText`) přepsán:** dlouhé odstavce (typické u smluv/podání)
   se dělí na věty místo jednoho obřího chunku → přesnější embeddingy a cílenější

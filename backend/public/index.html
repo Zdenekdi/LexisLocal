@@ -484,8 +484,13 @@
                                 <div class="form-group">
                                     <label style="display: block; font-size: 0.85rem; margin-bottom: 8px; opacity: 0.9;">Systémová oprávnění asistenta</label>
                                     <div style="display: flex; gap: 20px; flex-wrap: wrap; background: rgba(0,0,0,0.2); padding: 12px 15px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
-                                        <label style="display: flex; align-items: center; gap: 8px; margin: 0; font-size: 0.82rem; cursor: pointer; color: #e2e8f0; font-weight: 500;">
-                                            <input type="checkbox" id="agent-form-perm-files" style="width: 16px; height: 16px; accent-color: var(--accent-blue); cursor: pointer;"> 📂 Přístup ke spisům RAG
+                                        <label style="display: flex; align-items: center; gap: 8px; margin: 0; font-size: 0.82rem; color: #e2e8f0; font-weight: 500;">
+                                            📂 Přístup ke spisům:
+                                            <select id="agent-form-spis-access" style="padding: 4px 8px; background: #0f172a; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: #fff; font-size: 0.8rem; cursor: pointer;">
+                                                <option value="full">Plný (čte spis)</option>
+                                                <option value="redacted">Anonymizovaný</option>
+                                                <option value="none">Žádný (jen vlastní báze)</option>
+                                            </select>
                                         </label>
                                         <label style="display: flex; align-items: center; gap: 8px; margin: 0; font-size: 0.82rem; cursor: pointer; color: #e2e8f0; font-weight: 500;">
                                             <input type="checkbox" id="agent-form-perm-registries" style="width: 16px; height: 16px; accent-color: var(--accent-blue); cursor: pointer;"> 🔍 Dotazy do rejstříků
@@ -494,8 +499,27 @@
                                             <input type="checkbox" id="agent-form-perm-desktop" style="width: 16px; height: 16px; accent-color: var(--accent-blue); cursor: pointer;"> 💻 Ukládání na plochu
                                         </label>
                                     </div>
+                                    <div style="font-size: 0.72rem; opacity: 0.6; margin-top: 6px; line-height: 1.4;">
+                                        <strong>Úroveň přístupu ke spisu:</strong> <em>Plný</em> = asistent čte vybraný klientský spis v plném znění. <em>Anonymizovaný</em> = čte spis, ale se začerněnými osobními údaji (jména, RČ, adresy). <em>Žádný</em> = klientská data nečte vůbec, čerpá jen z vlastní znalostní báze níže.
+                                    </div>
                                 </div>
-                                
+
+                                <!-- Per-agent RAG: vlastní znalostní báze asistenta (_kb_<id>) -->
+                                <div class="form-group" id="agent-kb-panel" style="display: none;">
+                                    <label style="display: block; font-size: 0.85rem; margin-bottom: 8px; opacity: 0.9;">📚 Vlastní znalostní báze asistenta (per-agent RAG)</label>
+                                    <div style="background: rgba(0,0,0,0.2); padding: 12px 15px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
+                                        <div id="agent-kb-list" style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; max-height: 160px; overflow-y: auto;"></div>
+                                        <div style="display: flex; flex-direction: column; gap: 8px;">
+                                            <input type="text" id="agent-kb-filename" placeholder="Název dokumentu (např. judikatura_promlceni.txt)" style="width: 100%; padding: 8px 10px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: #fff; font-size: 0.82rem;">
+                                            <textarea id="agent-kb-text" placeholder="Vložte text (judikatura, vzor, checklist…), který má mít tento asistent ve své bázi. Uloží se odděleně od klientských spisů." rows="4" style="width: 100%; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: #e2e8f0; font-size: 0.82rem; resize: vertical;"></textarea>
+                                            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                                                <button type="button" class="btn btn-primary btn-sm" onclick="window.appInstance.submitAgentKnowledge()" style="padding: 6px 14px; font-size: 0.8rem;">➕ Přidat do báze</button>
+                                                <button type="button" class="btn btn-secondary btn-sm" onclick="window.appInstance.reindexAgentKnowledge()" title="Přepočítá vektory báze — spusť po změně embedding modelu (nebo když byl přidán text bez běžícího modelu)." style="padding: 6px 12px; font-size: 0.78rem;">🔄 Přegenerovat vektory</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
                                 <div class="form-group" style="flex: 1; display: flex; flex-direction: column; min-height: 200px;">
                                     <label style="display: block; font-size: 0.85rem; margin-bottom: 5px; opacity: 0.9;">Systémové instrukce chování (System Prompt)</label>
                                     <textarea id="agent-form-prompt" class="form-control code-editor-style" placeholder="Popište přesně chování, styl, odborný tón a pravidla, jakými se má asistent řídit..." required style="flex: 1; width: 100%; min-height: 180px; padding: 12px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: #a7f3d0; font-family: 'JetBrains Mono', monospace; font-size: 0.88rem; line-height: 1.5; resize: vertical; box-shadow: inset 0 2px 4px rgba(0,0,0,0.5);"></textarea>
@@ -1127,6 +1151,7 @@
     <script src="app-chat.js"></script>
     <script src="app-alerts-audit.js"></script>
     <script src="app-agents.js"></script>
+    <script src="app-agent-kb.js"></script>
     <script src="app-calendar.js"></script>
     <script src="app-managerial.js"></script>
     <script src="app-email.js"></script>

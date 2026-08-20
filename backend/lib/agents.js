@@ -84,6 +84,35 @@ const DEFAULT_AGENTS = {
     }
 };
 
+// Prefix partition znalostní báze agenta (musí odpovídat rag.js KB_PREFIX).
+const KB_PREFIX = '_kb_';
+// Povolené úrovně přístupu agenta ke KLIENTSKÝM spisům:
+//   'full'     — agent čte vybraný spis v plném znění,
+//   'redacted' — agent čte spis, ale ANONYMIZOVANĚ (jména/RČ/adresy začerněny),
+//   'none'     — agent NEČTE klientské spisy, čerpá jen z vlastní znalostní báze.
+const SPIS_ACCESS_LEVELS = ['full', 'redacted', 'none'];
+
+/**
+ * Doplní agentovi RAG pole s rozumnými výchozími hodnotami:
+ *   knowledgeScope — vlastní znalostní báze `_kb_<id>` (per-agent RAG),
+ *   spisAccess     — úroveň přístupu ke klientským spisům (default dle read_files).
+ * Idempotentní; už nastavené (validní) hodnoty zachová.
+ */
+function normalizeAgent(agent) {
+    if (!agent || typeof agent !== 'object') return agent;
+    const id = agent.id || 'agent';
+    if (!agent.knowledgeScope) agent.knowledgeScope = KB_PREFIX + id;
+    if (!SPIS_ACCESS_LEVELS.includes(agent.spisAccess)) {
+        const readFiles = !!(agent.permissions && agent.permissions.read_files);
+        agent.spisAccess = readFiles ? 'full' : 'none';
+    }
+    return agent;
+}
+function normalizeAgents(agents) {
+    for (const k of Object.keys(agents || {})) normalizeAgent(agents[k]);
+    return agents;
+}
+
 /**
  * Loads agents config, initializing default file if missing
  */
@@ -91,15 +120,16 @@ function loadAgents() {
     try {
         if (fs.existsSync(AGENTS_PATH)) {
             const data = fs.readFileSync(AGENTS_PATH, 'utf-8');
-            return JSON.parse(data);
+            return normalizeAgents(JSON.parse(data));
         }
     } catch (err) {
         console.error("⚠️ Chyba při čtení .agents.json:", err.message);
     }
 
-    // Default initializer
-    saveAllAgents(DEFAULT_AGENTS);
-    return DEFAULT_AGENTS;
+    // Default initializer (normalizovaná kopie, ať nemutujeme DEFAULT_AGENTS)
+    const seeded = normalizeAgents(JSON.parse(JSON.stringify(DEFAULT_AGENTS)));
+    saveAllAgents(seeded);
+    return seeded;
 }
 
 /**
@@ -136,9 +166,13 @@ function saveAgent(agentId, agentData) {
             read_files: false,
             query_registries: false,
             write_desktop: false
-        }
+        },
+        // Per-agent RAG: vlastní znalostní báze + úroveň přístupu ke spisům.
+        knowledgeScope: agentData.knowledgeScope || KB_PREFIX + cleanId,
+        spisAccess: SPIS_ACCESS_LEVELS.includes(agentData.spisAccess) ? agentData.spisAccess : undefined
     };
 
+    normalizeAgent(agents[cleanId]); // doplní/opraví spisAccess (když přišlo undefined)
     saveAllAgents(agents);
     return agents[cleanId];
 }
@@ -165,7 +199,7 @@ function deleteAgent(agentId) {
 function resetAgentToDefault(agentId) {
     if (DEFAULT_AGENTS[agentId]) {
         const agents = loadAgents();
-        agents[agentId] = { ...DEFAULT_AGENTS[agentId] };
+        agents[agentId] = normalizeAgent({ ...DEFAULT_AGENTS[agentId] });
         saveAllAgents(agents);
         return agents[agentId];
     }
@@ -177,5 +211,8 @@ module.exports = {
     saveAgent,
     deleteAgent,
     resetAgentToDefault,
+    normalizeAgent,
+    SPIS_ACCESS_LEVELS,
+    KB_PREFIX,
     DEFAULT_AGENTS
 };

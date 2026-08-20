@@ -12,9 +12,10 @@ const router = express.Router();
 const { loadAgents } = require('../lib/agents');
 const { searchSimilar } = require('../lib/rag');
 const { logEvent } = require('../lib/audit');
+const { anonymizeText } = require('../lib/anonymizer');
 const ollama = require('../lib/ai_provider'); // Ollama | OpenAI | Anthropic (stejné rozhraní)
 const { generateAgentFallback } = require('../lib/agent_fallback');
-const { resolveRagFilters } = require('../lib/rag_request');
+const { resolveRagFilters, applyAgentScope } = require('../lib/rag_request');
 const ChiefOrchestrator = require('../lib/orchestrator');
 
 // POST /api/agent-swarm/debate - Coordinate two agents interacting over the same task
@@ -36,16 +37,24 @@ router.post('/debate', async (req, res) => {
     // Retrieve RAG context
     let ragContext = "";
     try {
-        const resolvedFilters = await resolveRagFilters(req.body);
+        let resolvedFilters = await resolveRagFilters(req.body);
+        // Debata dvou agentů: sjednotit jejich znalostní báze; přístup ke klientským
+        // spisům omezit, jakmile ho nemá kterýkoli z nich (konzervativně).
+        resolvedFilters = applyAgentScope(resolvedFilters, [agent1, agent2]);
         if (resolvedFilters) {
-            console.log(`🧠 Swarm RAG: Aktivní filtry pro debatu: ${JSON.stringify(resolvedFilters.fileNames)}`);
+            console.log(`🧠 Swarm RAG: Aktivní filtry pro debatu: ${JSON.stringify(resolvedFilters)}`);
         }
         const matches = await searchSimilar(prompt, 3, resolvedFilters);
         const highConfidenceMatches = matches.filter(m => m.score >= 0.70);
 
         if (highConfidenceMatches.length > 0) {
+            // 'redacted' (kterýkoli agent debaty) → klientské pasáže anonymizovaně; KB beze změny.
+            const redact = !!(resolvedFilters && resolvedFilters.redactClient);
             ragContext = highConfidenceMatches
-                .map(m => `[Zdrojový spis: ${m.fileName}, Shoda: ${Math.round(m.score * 100)}%]:\n${m.text}`)
+                .map(m => {
+                    const passage = (redact && !m.scope) ? anonymizeText(m.text) : m.text;
+                    return `[Zdrojový spis: ${m.fileName}, Shoda: ${Math.round(m.score * 100)}%]:\n${passage}`;
+                })
                 .join('\n\n---\n\n');
             console.log(`🧠 Swarm RAG: Získáno ${highConfidenceMatches.length} sémantických precedensů pro debatu.`);
         }

@@ -17,7 +17,7 @@ const { calculateInferenceMetrics } = require('../lib/green_monitor');
 const db = require('../lib/database');
 const ollama = require('../lib/ai_provider'); // Ollama | OpenAI | Anthropic (stejné rozhraní)
 const { generateAgentFallback } = require('../lib/agent_fallback');
-const { resolveRagFilters } = require('../lib/rag_request');
+const { resolveRagFilters, applyAgentScope } = require('../lib/rag_request');
 
 // POST /api/agent/:agentId - Volání agenta s modelem dle výběru
 router.post('/:agentId', async (req, res) => {
@@ -45,6 +45,9 @@ router.post('/:agentId', async (req, res) => {
         } catch (fErr) {
             console.warn("⚠️ RAG: Selhalo rozlišení filtrů:", fErr.message);
         }
+        // Per-agent RAG: přidat vlastní znalostní bázi agenta a respektovat jeho úroveň
+        // přístupu ke klientským spisům (spisAccess 'none' → jen vlastní báze).
+        resolvedFilters = applyAgentScope(resolvedFilters, agent);
 
         const strictMode = resolvedFilters && (resolvedFilters.strict === true || resolvedFilters.strict === 'true');
         if (strictMode) {
@@ -73,8 +76,14 @@ router.post('/:agentId', async (req, res) => {
             }));
 
             if (highConfidenceMatches.length > 0) {
+                // Úroveň přístupu 'redacted': klientské pasáže (scope=null) předáme
+                // ANONYMIZOVANĚ; vlastní znalostní báze agenta (scope=_kb_*) zůstává beze změny.
+                const redact = !!(resolvedFilters && resolvedFilters.redactClient);
                 const ragContextText = highConfidenceMatches
-                    .map(m => `[Zdrojový spis: ${m.fileName}, Shoda: ${Math.round(m.score * 100)}%]:\n${m.text}`)
+                    .map(m => {
+                        const passage = (redact && !m.scope) ? anonymizeText(m.text) : m.text;
+                        return `[Zdrojový spis: ${m.fileName}, Shoda: ${Math.round(m.score * 100)}%]:\n${passage}`;
+                    })
                     .join('\n\n---\n\n');
 
                 messages.push({
