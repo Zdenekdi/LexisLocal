@@ -45,3 +45,6 @@ release-builds/
 *.exe
 *.zip
 *.blockmap
+
+# RAG eval: skutečná sada může obsahovat citlivé klientské dotazy — commituje se jen vzor
+backend/eval/rag_eval.json

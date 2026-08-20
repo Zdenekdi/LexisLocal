@@ -1,0 +1,23 @@
+{
+  "_comment": "Vzor sady pro RAG eval. Zkopírujte na backend/eval/rag_eval.json a doplňte SVÉ dotazy. 'relevant' = názvy dokumentů (nebo jejich část / basename), které BY MĚLY na dotaz vyjít. Volitelně 'k' (globálně) a per-case 'filters' (např. {\"directory\":\"klient_novak\"} nebo {\"scopes\":[\"_kb_resersnik\"],\"clientAccess\":false}). Párování názvů je case-insensitive a bere i shodu podřetězce/basename.",
+  "k": 5,
+  "cases": [
+    {
+      "label": "promlčení nároku na náhradu škody",
+      "query": "Jaká je promlčecí lhůta u nároku na náhradu škody?",
+      "relevant": ["judikatura_promlceni.txt", "obcansky_zakonik_promlceni"]
+    },
+    {
+      "label": "výpověď z nájmu bytu",
+      "query": "Za jakých podmínek lze dát výpověď z nájmu bytu?",
+      "relevant": ["vzor_vypoved_najem.docx"],
+      "filters": { "scopes": ["_kb_spisovatel"], "clientAccess": false }
+    },
+    {
+      "label": "spis klienta Novák — smluvní pokuta",
+      "query": "Jak je ve smlouvě řešena smluvní pokuta?",
+      "relevant": ["smlouva_novak.pdf"],
+      "filters": { "directory": "klient_novak" }
+    }
+  ]
+}
