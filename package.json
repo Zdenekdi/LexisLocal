@@ -14,6 +14,7 @@
     "dist:all": "electron-builder --mac --win",
     "test": "jest",
     "eval:rag": "node backend/scripts/rag_eval.js",
+    "readiness": "node backend/scripts/readiness.js",
     "test:e2e": "playwright test"
   },
   "keywords": [
