@@ -17,8 +17,8 @@ const Mutex = require('./mutex');
 const { anonymizeText } = require('./anonymizer');
 const { calculateDeadlineDate, collectUnitDeadlines, runAIExtractor } = require('./extraction'); // sdílený AI-extraktor
 
-const { WATCH_DIR } = require('./config'); // jeden zdroj pravdy, viz lib/config.js
-const INBOX_PATH = path.join(WATCH_DIR, '.inbox.json');
+const { WATCH_DIR, dataPath } = require('./config'); // jeden zdroj pravdy, viz lib/config.js
+const INBOX_PATH = dataPath('.inbox.json'); // index příchozích — technická data v DATA_DIR
 
 if (!fs.existsSync(WATCH_DIR)) {
     fs.mkdirSync(WATCH_DIR, { recursive: true });

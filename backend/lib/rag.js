@@ -21,7 +21,7 @@ const db = require('./database');
 // rozhraní jako ollama lib. Embeddingy tak fungují pro jakýkoli model.
 const ollama = require('./ai_provider');
 
-const { WATCH_DIR } = require('./config'); // jeden zdroj pravdy, viz lib/config.js
+const { WATCH_DIR, dataPath } = require('./config'); // jeden zdroj pravdy, viz lib/config.js
 const secureCrypto = require('./secure_crypto'); // AES-GCM + zpětné čtení CBC (jeden zdroj)
 const EMBEDDING_MODEL = process.env.EMBEDDING_MODEL || 'nomic-embed-text';
 
@@ -65,7 +65,7 @@ function getPartitionKey(directoryName) {
  */
 function savePartition(directoryName, index) {
     const partitionId = crypto.createHash('sha256').update(directoryName).digest('hex').substring(0, 16);
-    const partitionPath = path.join(WATCH_DIR, `.rag_${partitionId}.json`);
+    const partitionPath = dataPath(`.rag_${partitionId}.json`);
     
     try {
         const key = getPartitionKey(directoryName);
@@ -82,10 +82,10 @@ function savePartition(directoryName, index) {
  */
 function loadPartition(directoryName) {
     const partitionId = crypto.createHash('sha256').update(directoryName).digest('hex').substring(0, 16);
-    const partitionPath = path.join(WATCH_DIR, `.rag_${partitionId}.json`);
+    const partitionPath = dataPath(`.rag_${partitionId}.json`);
     
     if (!fs.existsSync(partitionPath)) {
-        const RAG_INDEX_PATH = path.join(WATCH_DIR, '.rag_index.json');
+        const RAG_INDEX_PATH = dataPath('.rag_index.json');
         if (fs.existsSync(RAG_INDEX_PATH)) {
             try {
                 const data = fs.readFileSync(RAG_INDEX_PATH, 'utf-8');
@@ -124,7 +124,7 @@ function reencryptAllPartitions(oldMasterKey, newMasterKey) {
     const dirs = [...new Set([...getActiveDirectories(), ..._listKbScopes()])];
     for (const dir of dirs) {
         const partitionId = crypto.createHash('sha256').update(dir).digest('hex').substring(0, 16);
-        const partitionPath = path.join(WATCH_DIR, `.rag_${partitionId}.json`);
+        const partitionPath = dataPath(`.rag_${partitionId}.json`);
         if (!fs.existsSync(partitionPath)) continue;
         
         try {
@@ -156,7 +156,7 @@ async function loadIndex() {
     }
     
     // BACKWARD COMPATIBILITY: Merge chunks from monolithic index if it exists
-    const RAG_INDEX_PATH = path.join(WATCH_DIR, '.rag_index.json');
+    const RAG_INDEX_PATH = dataPath('.rag_index.json');
     if (fs.existsSync(RAG_INDEX_PATH)) {
         try {
             const data = fs.readFileSync(RAG_INDEX_PATH, 'utf-8');
@@ -200,7 +200,7 @@ function saveIndex(index) {
 
     // Migrace/úklid: starý nešifrovaný monolit už není potřeba (data jsou nyní
     // v šifrovaných partitionech) — smažeme ho, aby PII nezůstávalo v plaintextu.
-    const RAG_INDEX_PATH = path.join(WATCH_DIR, '.rag_index.json');
+    const RAG_INDEX_PATH = dataPath('.rag_index.json');
     try {
         if (fs.existsSync(RAG_INDEX_PATH)) fs.unlinkSync(RAG_INDEX_PATH);
     } catch (e) { /* best-effort */ }
@@ -426,7 +426,7 @@ async function indexDocument(fileName, text) {
 // Registr scope (prostý seznam jmen, ne citlivé) drží, které KB partitiony existují —
 // aby je rotace šifrovacího klíče (reencryptAllPartitions) taky přešifrovala.
 const KB_PREFIX = '_kb_';
-function _kbRegistryPath() { return path.join(WATCH_DIR, '.rag_kb_registry.json'); }
+function _kbRegistryPath() { return dataPath('.rag_kb_registry.json'); }
 function _listKbScopes() {
     try {
         const raw = fs.readFileSync(_kbRegistryPath(), 'utf8');

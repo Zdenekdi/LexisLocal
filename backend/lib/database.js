@@ -10,7 +10,8 @@ const crypto = require('crypto');
 const secureCrypto = require('./secure_crypto'); // jediný zdroj: klíč mimo data + AES-256-GCM
 
 const WATCH_DIR = process.env.WATCH_DIR || path.join(require('os').homedir(), 'Desktop', 'LexisSpisy');
-const DB_FILE = path.join(WATCH_DIR, '.lexis.db');
+const { dataPath } = require('./config'); // technická data jdou do DATA_DIR (mimo spisovnu)
+const DB_FILE = dataPath('.lexis.db');
 // Klíč už NEleží u dat ve WATCH_DIR — spravuje ho secure_crypto (viz secureCrypto.KEY_FILE).
 
 class LexisDatabase {

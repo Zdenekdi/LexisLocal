@@ -7,8 +7,8 @@ const fs = require('fs');
 const { CHAT_MODEL } = require('./model_config');
 const path = require('path');
 
-const { WATCH_DIR } = require('./config'); // jeden zdroj pravdy, viz lib/config.js
-const AGENTS_PATH = path.join(WATCH_DIR, '.agents.json');
+const { WATCH_DIR, dataPath } = require('./config'); // jeden zdroj pravdy, viz lib/config.js
+const AGENTS_PATH = dataPath('.agents.json'); // konfigurace agentů — DATA_DIR
 
 // Default built-in system agents
 const DEFAULT_AGENTS = {

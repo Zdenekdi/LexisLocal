@@ -26,6 +26,7 @@
 
 const path = require('path');
 const os = require('os');
+const fs = require('fs');
 
 // Spisovna advokáta. Priorita WATCH_DIR (historické env) → INGEST_DIR → default.
 const INGEST_DIR =
@@ -46,6 +47,27 @@ function _defaultDataDir() {
     }
     return path.join(process.env.XDG_DATA_HOME || path.join(os.homedir(), '.local', 'share'), 'LexisLocal');
 }
-const DATA_DIR = process.env.LEXIS_DATA_DIR || _defaultDataDir();
+// Pravidlo: explicitní WATCH_DIR (testy, legacy env) → data zůstávají u ingestu,
+// takže se nic nerozbije. Bez WATCH_DIR (běžný provoz) → data jdou do appdata,
+// oddělená od spisovny (ta pak může být klidně synchronizovaná přes OneDrive).
+const DATA_DIR = process.env.LEXIS_DATA_DIR || (process.env.WATCH_DIR ? INGEST_DIR : _defaultDataDir());
 
-module.exports = { WATCH_DIR, INGEST_DIR, DATA_DIR };
+// Cesta k technickému souboru appky v DATA_DIR. Při prvním přístupu jednorázově
+// přesune legacy soubor ze spisovny (INGEST_DIR) do DATA_DIR. Když DATA_DIR ===
+// INGEST_DIR (testy), je to no-op a cesta se nemění.
+function dataPath(name) {
+    try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch (e) { /* best-effort */ }
+    const target = path.join(DATA_DIR, name);
+    if (DATA_DIR !== INGEST_DIR) {
+        try {
+            const legacy = path.join(INGEST_DIR, name);
+            if (fs.existsSync(legacy) && !fs.existsSync(target)) {
+                try { fs.renameSync(legacy, target); }
+                catch (e) { fs.copyFileSync(legacy, target); try { fs.unlinkSync(legacy); } catch (_) {} }
+            }
+        } catch (e) { /* migrace je best-effort — když selže, appka běží dál */ }
+    }
+    return target;
+}
+
+module.exports = { WATCH_DIR, INGEST_DIR, DATA_DIR, dataPath };

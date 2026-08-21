@@ -18,9 +18,9 @@ function _hashEntry(e, prevHash) {
 }
 
 // Save the audit log inside the watched dir as a hidden file for resilience and cloud syncing
-const { WATCH_DIR } = require('./config'); // jeden zdroj pravdy, viz lib/config.js
+const { WATCH_DIR, dataPath } = require('./config'); // jeden zdroj pravdy, viz lib/config.js
 const secureCrypto = require('./secure_crypto'); // audit log je compliance artefakt → šifrovaný (GCM)
-const AUDIT_LOG_FILE = path.join(WATCH_DIR, '.audit_log.json');
+const AUDIT_LOG_FILE = dataPath('.audit_log.json'); // technická data mimo spisovnu (DATA_DIR)
 
 // Klíč se řeší přes secure_crypto (stejný jako DB, mimo WATCH_DIR). Líně, aby se
 // nezakládal soubor klíče při pouhém importu modulu.
