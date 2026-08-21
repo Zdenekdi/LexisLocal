@@ -219,6 +219,22 @@
                             <input type="text" id="registry-search-input" placeholder="Zadejte osmimístné IČO subjektu..." style="flex: 1;" />
                             <button class="btn btn-primary" id="btn-registry-search">Prověřit subjekt</button>
                         </div>
+                        <details id="registry-config" style="margin-top: 14px;" ontoggle="if(this.open){ window.appInstance.loadRegistryConfig(); }">
+                            <summary style="cursor: pointer; font-size: 0.82rem; color: var(--text-muted); user-select: none;">⚙️ Nastavení přístupu k CEE / Katastru (volitelné)</summary>
+                            <div style="margin-top: 12px; background: rgba(0,0,0,0.18); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 10px;">
+                                <p style="font-size: 0.76rem; color: var(--text-muted); margin: 0; line-height: 1.5;">CEE (exekuce) a Katastr jsou <b>placené registrované služby</b>. Bez přístupu se nedotazují (žádná odhadovaná data). Klíč se ukládá <b>jen lokálně a šifrovaně</b> a nikdy se nezobrazuje zpět. URL musí obsahovat <code>{ico}</code>.</p>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                                    <input type="text" id="reg-cfg-cee-url" placeholder="CEE API URL (obsahuje {ico})" style="width:100%; padding:8px 10px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); border-radius:6px; color:#fff; font-size:0.8rem;">
+                                    <input type="password" id="reg-cfg-cee-key" placeholder="CEE klíč (prázdné = beze změny)" style="width:100%; padding:8px 10px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); border-radius:6px; color:#fff; font-size:0.8rem;">
+                                    <input type="text" id="reg-cfg-katastr-url" placeholder="Katastr API URL (obsahuje {ico})" style="width:100%; padding:8px 10px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); border-radius:6px; color:#fff; font-size:0.8rem;">
+                                    <input type="password" id="reg-cfg-katastr-key" placeholder="Katastr klíč (prázdné = beze změny)" style="width:100%; padding:8px 10px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); border-radius:6px; color:#fff; font-size:0.8rem;">
+                                </div>
+                                <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                                    <button type="button" class="btn btn-secondary btn-sm" id="btn-registry-config-save" onclick="window.appInstance.saveRegistryConfig()" style="padding:6px 14px; font-size:0.8rem;">Uložit přístup</button>
+                                    <span id="reg-cfg-status" style="font-size: 0.78rem; color: var(--text-muted);"></span>
+                                </div>
+                            </div>
+                        </details>
                     </div>
 
                     <!-- Loader -->

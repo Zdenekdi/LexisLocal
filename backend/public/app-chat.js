@@ -558,6 +558,53 @@ Object.assign(LexisLocalApp.prototype, {
         reader.readAsDataURL(file);
     },
 
+    async loadRegistryConfig() {
+        const st = document.getElementById('reg-cfg-status');
+        try {
+            const res = await fetch(`${this.apiBase}/registries/config`, { headers: this.getHeaders() });
+            const data = await res.json();
+            if (!data.success) return;
+            const c = data.config || {};
+            const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
+            set('reg-cfg-cee-url', c.cee && c.cee.url);
+            set('reg-cfg-katastr-url', c.katastr && c.katastr.url);
+            // klíče se nevracejí — jen naznač, že jsou uložené
+            const ceeKey = document.getElementById('reg-cfg-cee-key');
+            const katKey = document.getElementById('reg-cfg-katastr-key');
+            if (ceeKey) ceeKey.placeholder = (c.cee && c.cee.hasKey) ? 'CEE klíč uložen — prázdné = beze změny' : 'CEE klíč (prázdné = beze změny)';
+            if (katKey) katKey.placeholder = (c.katastr && c.katastr.hasKey) ? 'Katastr klíč uložen — prázdné = beze změny' : 'Katastr klíč (prázdné = beze změny)';
+            if (st) { st.textContent = ''; }
+        } catch (err) {
+            if (st) { st.textContent = 'Nelze načíst: ' + err.message; st.style.color = '#f87171'; }
+        }
+    },
+
+    async saveRegistryConfig() {
+        const st = document.getElementById('reg-cfg-status');
+        const val = (id) => (document.getElementById(id) || {}).value || '';
+        const payload = {
+            cee: { url: val('reg-cfg-cee-url'), key: val('reg-cfg-cee-key') },
+            katastr: { url: val('reg-cfg-katastr-url'), key: val('reg-cfg-katastr-key') }
+        };
+        try {
+            const res = await fetch(`${this.apiBase}/registries/config`, {
+                method: 'POST',
+                headers: this.getHeaders({ 'Content-Type': 'application/json' }),
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json();
+            if (data.success) {
+                // klíče po uložení vyprázdni z polí (ať se nedrží v DOM)
+                const ck = document.getElementById('reg-cfg-cee-key'); if (ck) ck.value = '';
+                const kk = document.getElementById('reg-cfg-katastr-key'); if (kk) kk.value = '';
+                if (st) { st.textContent = '✅ Uloženo. Dotazy na CEE/Katastr se nyní provedou proti zadanému API.'; st.style.color = '#4ade80'; }
+                this.loadRegistryConfig();
+            } else if (st) { st.textContent = '❌ ' + (data.error || 'Uložení selhalo.'); st.style.color = '#f87171'; }
+        } catch (err) {
+            if (st) { st.textContent = '❌ Chyba: ' + err.message; st.style.color = '#f87171'; }
+        }
+    },
+
     async performRegistrySearch() {
         const input = document.getElementById('registry-search-input');
         const loader = document.getElementById('registry-search-loader');

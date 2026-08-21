@@ -8,7 +8,7 @@
 const express = require('express');
 const router = express.Router();
 const fs = require('fs');
-const { checkSubject, checkCee, checkKatastr } = require('../lib/registries');
+const { checkSubject, checkCee, checkKatastr, getRegistryConfig, setRegistryConfig } = require('../lib/registries');
 const { safePathInWatchDir } = require('../lib/pathsafe');
 
 // GET /api/registries/check - Query all registries for an ICO
@@ -57,6 +57,19 @@ router.post('/save-report', async (req, res) => {
     } catch (err) {
         res.status(500).json({ error: `Nepodařilo se uložit prověrku: ${err.message}` });
     }
+});
+
+// GET /api/registries/config — vrátí URL a příznak hasKey (klíč se nikdy nevrací celý).
+router.get('/config', (req, res) => {
+    try { res.json({ success: true, config: getRegistryConfig() }); }
+    catch (err) { res.status(500).json({ error: `Nelze načíst konfiguraci registrů: ${err.message}` }); }
+});
+
+// POST /api/registries/config — uloží URL a (volitelně) klíče CEE/Katastr.
+// Body: { cee:{url,key}, katastr:{url,key} }  (prázdný key = ponech stávající)
+router.post('/config', (req, res) => {
+    try { res.json({ success: true, config: setRegistryConfig(req.body || {}) }); }
+    catch (err) { res.status(500).json({ error: `Nelze uložit konfiguraci registrů: ${err.message}` }); }
 });
 
 module.exports = router;

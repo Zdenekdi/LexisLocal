@@ -11,6 +11,7 @@ const db = require('./database');
 const { checkSubject } = require('./registries');
 const { indexDocument, deleteDocumentIndex } = require('./rag');
 const { extractTextFromFile, IMAGE_EXTENSIONS } = require('./ocr');
+const { extractLexisSpecFromDocx } = require('./lexis-spec');
 const { logEvent } = require('./audit');
 const Mutex = require('./mutex');
 const { anonymizeText } = require('./anonymizer');
@@ -143,6 +144,13 @@ async function saveInbox(inbox) {
 async function processDocument(filePath) {
     const fileName = path.basename(filePath);
     console.log(`⚙️ Analyzuji dokument ${fileName}...`);
+
+    // .docx ulozeny LexisEditorem nese vnoreny spec (JSON) - precteme ho, aby sel
+    // v editoru otevrit BEZ ZTRATY struktury (nadpisy, tabulky, hlavicka, vodoznak).
+    // Cizi Word soubory spec nemaji -> lexisSpec zustane null a jede bezna analyza.
+    let lexisSpec = null;
+    try { lexisSpec = await extractLexisSpecFromDocx(filePath); }
+    catch (e) { lexisSpec = null; }
     
     let text = "";
     let wasOcr = false;
@@ -238,6 +246,8 @@ async function processDocument(filePath) {
         insolvencyCase: registryData ? registryData.insolvencyCase : null,
         verifiedSeat: registryData ? registryData.seat : null,
         wasOcr: wasOcr,
+        hasLexisSpec: !!lexisSpec,
+        lexisSpec: lexisSpec || null,
         processedAt: new Date().toISOString()
     };
     await saveInbox(inbox);

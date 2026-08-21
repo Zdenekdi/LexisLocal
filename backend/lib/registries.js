@@ -6,6 +6,7 @@
  */
 
 const https = require('https');
+const db = require('./database');
 
 // Demo/testovací fixtures (smyšlené subjekty) jsou aktivní jen v demo/test režimu.
 // V produkci se i tato IČO dotazují reálných registrů — nikdy nevracíme
@@ -15,6 +16,22 @@ const DEMO_FIXTURES = process.env.LEXIS_DEMO === '1' || process.env.NODE_ENV ===
 /**
  * Robust native HTTPS helper to avoid extra external package dependencies
  */
+// Konfigurace registrů: přednost má hodnota uložená v aplikaci (DB settings),
+// jinak fallback na proměnnou prostředí. Umožňuje zadat klíče přímo v UI.
+function _regSetting(dbKey, envKey) {
+    try {
+        const s = (db.get('settings') || []).find(x => x.key === dbKey);
+        if (s && s.value != null && String(s.value).trim() !== '') return String(s.value);
+    } catch (e) { /* ignore */ }
+    return process.env[envKey] || '';
+}
+function _saveSetting(dbKey, value) {
+    const list = db.get('settings') || [];
+    const ex = list.find(x => x.key === dbKey);
+    if (ex) db.update('settings', ex.id, { value: String(value) });
+    else db.insert('settings', { key: dbKey, value: String(value) });
+}
+
 function fetchUrl(url, options = {}) {
     return new Promise((resolve, reject) => {
         const urlObj = new URL(url);
@@ -193,13 +210,13 @@ async function checkSubject(ico) {
  */
 async function checkCee(ico) {
     const cleanIco = String(ico || '').replace(/\D/g, '');
-    const url = process.env.CEE_API_URL;
+    const url = _regSetting('registry_cee_url', 'CEE_API_URL');
     if (!url) {
         return { available: false, configured: false,
             reason: 'CEE (Centrální evidence exekucí) vyžaduje placený přístup Exekutorské komory ČR. Nastavte CEE_API_URL (a CEE_API_KEY).' };
     }
     try {
-        const key = process.env.CEE_API_KEY;
+        const key = _regSetting('registry_cee_key', 'CEE_API_KEY');
         const raw = await fetchUrl(url.replace('{ico}', encodeURIComponent(cleanIco)),
             { headers: key ? { 'Authorization': 'Bearer ' + key, 'Accept': 'application/json' } : { 'Accept': 'application/json' } });
         const data = JSON.parse(raw);
@@ -222,13 +239,13 @@ async function checkCee(ico) {
  */
 async function checkKatastr(ico) {
     const cleanIco = String(ico || '').replace(/\D/g, '');
-    const url = process.env.KATASTR_API_URL;
+    const url = _regSetting('registry_katastr_url', 'KATASTR_API_URL');
     if (!url) {
         return { available: false, configured: false,
             reason: 'Katastr nemovitostí (ČÚZK, dálkový přístup) vyžaduje registrovaný/placený přístup. Nastavte KATASTR_API_URL (a KATASTR_API_KEY).' };
     }
     try {
-        const key = process.env.KATASTR_API_KEY;
+        const key = _regSetting('registry_katastr_key', 'KATASTR_API_KEY');
         const raw = await fetchUrl(url.replace('{ico}', encodeURIComponent(cleanIco)),
             { headers: key ? { 'Authorization': 'Bearer ' + key, 'Accept': 'application/json' } : { 'Accept': 'application/json' } });
         const data = JSON.parse(raw);
@@ -243,4 +260,28 @@ async function checkKatastr(ico) {
     }
 }
 
-module.exports = { checkSubject, checkCee, checkKatastr };
+// Vrátí konfiguraci pro UI — URL ano, KLÍČ nikdy celý (jen hasKey).
+function getRegistryConfig() {
+    const mk = (uKey, uEnv, kKey, kEnv) => ({
+        url: _regSetting(uKey, uEnv),
+        hasKey: !!_regSetting(kKey, kEnv)
+    });
+    return {
+        cee: mk('registry_cee_url', 'CEE_API_URL', 'registry_cee_key', 'CEE_API_KEY'),
+        katastr: mk('registry_katastr_url', 'KATASTR_API_URL', 'registry_katastr_key', 'KATASTR_API_KEY')
+    };
+}
+// Uloží konfiguraci. Prázdný klíč = ponech stávající (nemaže); prázdné URL = smaž (fallback).
+function setRegistryConfig(input) {
+    input = input || {};
+    const set = (obj, uKey, kKey) => {
+        if (!obj) return;
+        if (typeof obj.url === 'string') _saveSetting(uKey, obj.url.trim());
+        if (typeof obj.key === 'string' && obj.key.trim() !== '') _saveSetting(kKey, obj.key.trim());
+    };
+    set(input.cee, 'registry_cee_url', 'registry_cee_key');
+    set(input.katastr, 'registry_katastr_url', 'registry_katastr_key');
+    return getRegistryConfig();
+}
+
+module.exports = { checkSubject, checkCee, checkKatastr, getRegistryConfig, setRegistryConfig };

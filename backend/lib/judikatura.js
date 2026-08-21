@@ -1,16 +1,17 @@
 /**
- * LexisLocal Judikatura & e-Sbírka Template Compliance Module (Fáze 3)
- * Monitors changes in Supreme Court / NSS case laws and checks local document templates
- * for non-compliant clauses or outdated statutory references.
+ * LexisLocal — kontrola šablon proti INTERNÍ sadě heuristických pravidel kanceláře.
+ * POCTIVĚ: NEJDE o živý zdroj judikatury ani o citace konkrétních soudních rozhodnutí.
+ * Pravidla jsou interní heuristiky (např. nepřiměřená smluvní pokuta); konkrétní právní
+ * oporu je vždy nutné ověřit proti aktuálnímu znění zákona a judikatuře.
  */
 
 const db = require('./database');
 
-// Seeds of latest Czech Supreme Court (NS) / NSS case laws and regulations
+// Interní heuristická kontrolní pravidla kanceláře (NE živý zdroj judikatury).
 const LEGAL_BENCHMARKS = [
     {
         id: "ns_2025_pokuta",
-        title: "Rozhodnutí NS sp. zn. 23 Cdo 1234/2025",
+        title: "Pravidlo kanceláře: nepřiměřená smluvní pokuta",
         topic: "Neplatnost smluvní pokuty v obchodních vztazích",
         description: "Ujednání o smluvní pokutě převyšující 0.05 % z dlužné částky za každý den prodlení bez prokazatelných mimořádných okolností je považováno za odporující dobrým mravům a absolutně neplatné.",
         triggerKeyword: "smluvní pokuta",
@@ -24,7 +25,7 @@ const LEGAL_BENCHMARKS = [
     },
     {
         id: "nss_2026_gdpr",
-        title: "Nález NSS sp. zn. 8 As 99/2026",
+        title: "Pravidlo kanceláře: paušální souhlas se zpracováním osobních údajů",
         topic: "Ochrana osobních údajů v klientských smlouvách",
         description: "Doložky obsahující paušální souhlas se zpracováním osobních údajů bez možnosti volby konkrétních marketingových účelů jsou neplatné pro nedostatek svobody vůle.",
         triggerKeyword: "osobní údaje",
@@ -37,7 +38,7 @@ const LEGAL_BENCHMARKS = [
     },
     {
         id: "esbirka_2026_uroky",
-        title: "Novela občanského zákoníku (e-Sbírka 2026)",
+        title: "Pravidlo kanceláře: nepřiměřený úrok z prodlení",
         topic: "Zákonný úrok z prodlení a jeho limitace",
         description: "Změna maximální výše smluvního úroku z prodlení u spotřebitelských úvěrů navázaná na repo sazbu ČNB.",
         triggerKeyword: "úrok z prodlení",
@@ -89,6 +90,7 @@ class JudikaturaWatcher {
                         severity: benchmark.severity,
                         badSectionDetected: `Nalezena doložka obsahující nevyhovující termín v sekci "${benchmark.triggerKeyword}"`,
                         suggestedRemedy: benchmark.goodAlternative,
+                        disclaimer: 'Interní heuristické pravidlo kanceláře — ověřte proti aktuálnímu znění zákona a judikatuře. Nejde o citaci konkrétního soudního rozhodnutí.',
                         timestamp: new Date().toISOString()
                     };
 
