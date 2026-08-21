@@ -1,6 +1,6 @@
 /**
- * routes/registries.js — rozšířená lustrace (ARES + ISIR + SIMULOVANÉ CEE/Katastr)
- * a ukládání prověrky do složky spisu.
+ * routes/registries.js — rozšířená lustrace (ARES + ISIR reálné; CEE + Katastr přes
+ * konfigurované placené API, jinak „není k dispozici" — žádná fingovaná data).
  * Montuje se v server.js na /api/registries.
  */
 'use strict';
@@ -8,7 +8,7 @@
 const express = require('express');
 const router = express.Router();
 const fs = require('fs');
-const { checkSubject } = require('../lib/registries');
+const { checkSubject, checkCee, checkKatastr } = require('../lib/registries');
 const { safePathInWatchDir } = require('../lib/pathsafe');
 
 // GET /api/registries/check - Query all registries for an ICO
@@ -20,36 +20,11 @@ router.get('/check', async (req, res) => {
     try {
         const result = await checkSubject(ico);
 
-        // Add Simulated Executions (CEE) and Simulated Cadastre (Katastr) for full professional coverage
-        const cleanIco = ico.replace(/\s+/g, '').trim();
-        const lastDigit = parseInt(cleanIco.slice(-1)) || 0;
-
-        // CEE Simulation based on deterministic seed (ICO last digit)
-        // simulated:true je strojově čitelný příznak — frontend NESMÍ tato data
-        // prezentovat jako ověřená (jde o odhad, ne o reálné dotazy do CEE).
-        if (lastDigit % 3 === 0) {
-            result.cee = {
-                simulated: true,
-                activeExecutions: 2,
-                totalAmount: 184500,
-                disclaimer: "SIMULOVÁNO (neověřeno) z CEE. Pro ostrý přístup doplňte přihlašovací údaje Exekutorské komory v nastavení."
-            };
-        } else {
-            result.cee = {
-                simulated: true,
-                activeExecutions: 0,
-                totalAmount: 0,
-                disclaimer: "SIMULOVÁNO (neověřeno) z CEE. Pro ostrý přístup doplňte přihlašovací údaje Exekutorské komory v nastavení."
-            };
-        }
-
-        // Katastr Simulation based on seed
-        result.katastr = {
-            simulated: true,
-            propertiesCount: lastDigit % 2 === 0 ? 1 : 0,
-            hasPlomba: lastDigit % 4 === 0,
-            disclaimer: "SIMULOVÁNO (neověřeno) z Katastru nemovitostí (dálkový přístup)."
-        };
+        // CEE (exekuce) a Katastr: reálný dotaz přes konfigurované API. Bez konfigurace
+        // se vrací { available:false } — ŽÁDNÁ odhadovaná/fingovaná data.
+        const [cee, katastr] = await Promise.all([checkCee(ico), checkKatastr(ico)]);
+        result.cee = cee;
+        result.katastr = katastr;
 
         res.json(result);
     } catch (err) {

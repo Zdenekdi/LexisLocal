@@ -185,4 +185,62 @@ async function checkSubject(ico) {
     };
 }
 
-module.exports = { checkSubject };
+/**
+ * CEE (Centrální evidence exekucí) — REÁLNÝ dotaz přes konfigurované API.
+ * Vyžaduje placený přístup Exekutorské komory ČR. Bez konfigurace NEVRACÍ žádná
+ * data (žádné odhady) — jen čestné „není k dispozici".
+ * ENV: CEE_API_URL (obsahuje {ico}), CEE_API_KEY (volitelně).
+ */
+async function checkCee(ico) {
+    const cleanIco = String(ico || '').replace(/\D/g, '');
+    const url = process.env.CEE_API_URL;
+    if (!url) {
+        return { available: false, configured: false,
+            reason: 'CEE (Centrální evidence exekucí) vyžaduje placený přístup Exekutorské komory ČR. Nastavte CEE_API_URL (a CEE_API_KEY).' };
+    }
+    try {
+        const key = process.env.CEE_API_KEY;
+        const raw = await fetchUrl(url.replace('{ico}', encodeURIComponent(cleanIco)),
+            { headers: key ? { 'Authorization': 'Bearer ' + key, 'Accept': 'application/json' } : { 'Accept': 'application/json' } });
+        const data = JSON.parse(raw);
+        // Mapování na konkrétní pole poskytovatele (raw ponechán pro transparentnost).
+        return {
+            available: true, configured: true,
+            activeExecutions: (typeof data.activeExecutions === 'number') ? data.activeExecutions : (Array.isArray(data.executions) ? data.executions.length : null),
+            totalAmount: (typeof data.totalAmount === 'number') ? data.totalAmount : null,
+            raw: data
+        };
+    } catch (e) {
+        return { available: false, configured: true, error: 'Dotaz do CEE selhal: ' + e.message };
+    }
+}
+
+/**
+ * Katastr nemovitostí (ČÚZK) — REÁLNÝ dotaz přes konfigurované API (dálkový přístup).
+ * Vyžaduje registrovaný/placený přístup ČÚZK. Bez konfigurace NEVRACÍ žádná data.
+ * ENV: KATASTR_API_URL (obsahuje {ico}), KATASTR_API_KEY (volitelně).
+ */
+async function checkKatastr(ico) {
+    const cleanIco = String(ico || '').replace(/\D/g, '');
+    const url = process.env.KATASTR_API_URL;
+    if (!url) {
+        return { available: false, configured: false,
+            reason: 'Katastr nemovitostí (ČÚZK, dálkový přístup) vyžaduje registrovaný/placený přístup. Nastavte KATASTR_API_URL (a KATASTR_API_KEY).' };
+    }
+    try {
+        const key = process.env.KATASTR_API_KEY;
+        const raw = await fetchUrl(url.replace('{ico}', encodeURIComponent(cleanIco)),
+            { headers: key ? { 'Authorization': 'Bearer ' + key, 'Accept': 'application/json' } : { 'Accept': 'application/json' } });
+        const data = JSON.parse(raw);
+        return {
+            available: true, configured: true,
+            propertiesCount: (typeof data.propertiesCount === 'number') ? data.propertiesCount : (Array.isArray(data.properties) ? data.properties.length : null),
+            hasPlomba: (typeof data.hasPlomba === 'boolean') ? data.hasPlomba : null,
+            raw: data
+        };
+    } catch (e) {
+        return { available: false, configured: true, error: 'Dotaz do katastru selhal: ' + e.message };
+    }
+}
+
+module.exports = { checkSubject, checkCee, checkKatastr };
