@@ -103,6 +103,13 @@ function createSpis(data) {
         protistrana: data.protistrana ? String(data.protistrana).trim() : '',
         agenda: data.agenda ? String(data.agenda).trim() : '',
         odpovednyAdvokat: data.odpovednyAdvokat ? String(data.odpovednyAdvokat).trim() : '',
+        // ACL přístupu ke spisu (viz access.js). Vlastník = odpovědný advokát,
+        // jinak implicitní 'local'. V solo režimu se přístup nevynucuje.
+        access: {
+            owner: (data.odpovednyAdvokat ? String(data.odpovednyAdvokat).trim() : '') || (data.owner ? String(data.owner) : 'local'),
+            readers: [],
+            writers: []
+        },
         stav: stav,
         poznamka: data.poznamka ? String(data.poznamka) : '',
         retentionYears: Number.isFinite(data.retentionYears) ? data.retentionYears : DEFAULT_RETENTION_YEARS,
@@ -416,6 +423,51 @@ function getSpisTimeline(id) {
     return { spis: spis, timeline: items, count: items.length };
 }
 
+/**
+ * Sdílení spisu s kolegou (firemní režim). Přidá userId do readers/writers ACL,
+ * zapíše do spisového deníku i auditu (se spisId) a promítne owner/přístup do
+ * vizitky složky. level: 'read' | 'write'.
+ */
+function shareSpis(id, userId, level) {
+    const spis = getSpis(id);
+    if (!spis) throw new Error('Spis nenalezen.');
+    if (!userId) throw new Error('Chybí userId příjemce.');
+    const lvl = level === 'write' ? 'write' : 'read';
+    const access = require('./access').grant(spis, userId, lvl);
+    const updated = db.update('spisy', id, { access });
+    addEvent(id, 'sdileni', 'Spis sdílen s „' + userId + '" (' + (lvl === 'write' ? 'čtení+zápis' : 'jen čtení') + ').', { userId, level: lvl });
+    try { require('./audit').logEvent('Spisová služba', 'Sdílení spisu', spis.spisZn || spis.nazev, { spisId: id, userId, level: lvl }); } catch (e) { /* audit best-effort */ }
+    try {
+        const sf = require('./spisFolders');
+        const f = sf.findFolderBySpisId(id);
+        if (f && f.folderPath) { const m = sf.readMarker(f.folderPath) || {}; m.access = access; sf.writeMarker(f.folderPath, m); }
+    } catch (e) { /* vizitka best-effort */ }
+    return updated;
+}
+
+/** Odebrání přístupu kolegovi (owner nelze odebrat). */
+function revokeSpisAccess(id, userId) {
+    const spis = getSpis(id);
+    if (!spis) throw new Error('Spis nenalezen.');
+    const access = require('./access').revoke(spis, userId);
+    const updated = db.update('spisy', id, { access });
+    addEvent(id, 'odebrani-pristupu', 'Odebrán přístup „' + userId + '".', { userId });
+    try { require('./audit').logEvent('Spisová služba', 'Odebrání přístupu ke spisu', spis.spisZn || spis.nazev, { spisId: id, userId }); } catch (e) { /* audit best-effort */ }
+    try {
+        const sf = require('./spisFolders');
+        const f = sf.findFolderBySpisId(id);
+        if (f && f.folderPath) { const m = sf.readMarker(f.folderPath) || {}; m.access = access; sf.writeMarker(f.folderPath, m); }
+    } catch (e) { /* vizitka best-effort */ }
+    return updated;
+}
+
+/** Aktuální ACL spisu (owner/readers/writers). */
+function getSpisAccess(id) {
+    const spis = getSpis(id);
+    if (!spis) return null;
+    return require('./access').normalizeAccess(spis);
+}
+
 module.exports = {
     STAVY,
     DEFAULT_RETENTION_YEARS,
@@ -434,6 +486,9 @@ module.exports = {
     ensureSpisForCase,
     listUnfiled,
     assignFileToSpis,
+    shareSpis,
+    revokeSpisAccess,
+    getSpisAccess,
     // exportováno pro testy
     _normCase,
     _caseKey,

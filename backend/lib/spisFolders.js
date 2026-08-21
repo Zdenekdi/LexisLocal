@@ -144,6 +144,7 @@ function ensureSpisFolder(spis) {
         klient: spis.klient || '',
         klientIco: spis.klientIco || '',
         protistrana: spis.protistrana || '',
+        access: (spis.access && typeof spis.access === 'object') ? spis.access : { owner: spis.odpovednyAdvokat || 'local', readers: [], writers: [] },
         createdAt: new Date().toISOString(),
         schema: 'lexisspis/1'
     });
