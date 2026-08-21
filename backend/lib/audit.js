@@ -64,6 +64,8 @@ function logEvent(user, operation, target, details = {}) {
             user: user || 'Systém',
             operation: operation,
             target: target || 'Všeobecné',
+            // spisId povýšen na top-level → auditní stopu lze filtrovat na jeden spis.
+            spisId: (details && details.spisId) || null,
             details: details
         };
         logs.push(newEvent);
@@ -88,8 +90,20 @@ function clearAuditLogs() {
     }
 }
 
+/**
+ * Auditní stopa JEDNOHO spisu. Bere top-level spisId (nové záznamy) a pro
+ * zpětnou kompatibilitu i details.spisId (starší záznamy). Seřazeno od nejstaršího.
+ */
+function getLogsForSpis(spisId) {
+    if (!spisId) return [];
+    return loadAuditLogs()
+        .filter(e => e && (e.spisId === spisId || (e.details && e.details.spisId === spisId)))
+        .sort((x, y) => String(x.timestamp || '').localeCompare(String(y.timestamp || '')));
+}
+
 module.exports = {
     loadAuditLogs,
     logEvent,
+    getLogsForSpis,
     clearAuditLogs
 };

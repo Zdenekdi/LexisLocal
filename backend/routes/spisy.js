@@ -7,6 +7,7 @@
 const express = require('express');
 const router = express.Router();
 const spisy = require('../lib/spisy');
+const spisFolders = require('../lib/spisFolders');
 const { logEvent } = require('../lib/audit');
 
 // GET /api/spisy — seznam všech spisů
@@ -97,6 +98,43 @@ router.post('/:id/assign-file', (req, res) => {
         const file = spisy.assignFileToSpis((req.body && req.body.fileId), req.params.id);
         logEvent('Spisová služba', 'Zařazení dokumentu do spisu', file.fileName || file.id, { spisId: req.params.id });
         res.json({ success: true, file });
+    } catch (err) {
+        res.status(400).json({ error: err.message });
+    }
+});
+
+// GET /api/spisy/:id/timeline — sjednocená časová osa spisu (deník + audit + dokumenty + lhůty + jednání)
+router.get('/:id/timeline', (req, res) => {
+    const tl = spisy.getSpisTimeline(req.params.id);
+    if (!tl) return res.status(404).json({ error: 'Spis nenalezen.' });
+    res.json(tl);
+});
+
+// POST /api/spisy/:id/folder — idempotentně založí fyzickou složku spisu + vizitku
+router.post('/:id/folder', (req, res) => {
+    try {
+        const spis = spisy.getSpis(req.params.id);
+        if (!spis) return res.status(404).json({ error: 'Spis nenalezen.' });
+        const r = spisFolders.ensureSpisFolder(spis);
+        logEvent('Spisová služba', r.created ? 'Založení složky spisu' : 'Ověření složky spisu', spis.spisZn || spis.nazev, { spisId: spis.id, folderId: r.folderId });
+        res.status(r.created ? 201 : 200).json({ success: true, ...r });
+    } catch (err) {
+        res.status(400).json({ error: err.message });
+    }
+});
+
+// POST /api/spisy/:id/draft — uloží koncept do složky spisu (fail-closed do _Nezařazeno)
+// Tělo: { fileName, content }. saveDraftToSpis sám zapíše do deníku i auditu se spisId.
+router.post('/:id/draft', (req, res) => {
+    try {
+        const spis = spisy.getSpis(req.params.id);
+        if (!spis) return res.status(404).json({ error: 'Spis nenalezen.' });
+        const r = spisFolders.saveDraftToSpis({
+            spisId: spis.id,
+            fileName: (req.body && req.body.fileName) || 'koncept.docx',
+            content: (req.body && req.body.content) != null ? req.body.content : ''
+        });
+        res.status(201).json({ success: true, ...r });
     } catch (err) {
         res.status(400).json({ error: err.message });
     }

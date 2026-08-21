@@ -339,6 +339,83 @@ function assignFileToSpis(fileId, spisId) {
     return files[idx];
 }
 
+/**
+ * getSpisTimeline — SJEDNOCENÁ časová osa spisu. Sloučí spisový deník, auditní
+ * stopu spisu, příchozí dokumenty, lhůty a jednání do jednoho chronologického
+ * proudu. Každá položka: { time, kind, type, label, source, ...meta }.
+ * Položky bez data se řadí na konec.
+ */
+function getSpisTimeline(id) {
+    const spis = getSpis(id);
+    if (!spis) return null;
+    const items = [];
+
+    // 1) spisový deník (úkony)
+    getEvents(id).forEach(e => items.push({
+        time: e.createdAt || null,
+        kind: 'denik',
+        type: e.type || 'poznamka',
+        label: e.note || '',
+        source: 'spis_events',
+        meta: e.meta || null
+    }));
+
+    // 2) auditní stopa spisu (filtrovaná přes spisId)
+    try {
+        const audit = require('./audit');
+        (audit.getLogsForSpis(id) || []).forEach(e => items.push({
+            time: e.timestamp || null,
+            kind: 'audit',
+            type: e.operation || 'úkon',
+            label: ((e.operation || '') + (e.target ? ' — ' + e.target : '')).trim(),
+            source: 'audit',
+            user: e.user || null,
+            meta: e.details || null
+        }));
+    } catch (e) { /* audit best-effort */ }
+
+    // 3) příchozí dokumenty spisu
+    const files = _filesForCase(spis.spisZn);
+    files.forEach(f => items.push({
+        time: f.filedAt || f.processedAt || null,
+        kind: 'dokument',
+        type: 'prijem',
+        label: f.fileName || f.relativePath || 'dokument',
+        source: 'inbox_files',
+        meta: { caseNumber: f.caseNumber || null }
+    }));
+
+    // 4) lhůty
+    _deadlinesFromFiles(files).forEach(d => items.push({
+        time: d.date || null,
+        kind: 'lhuta',
+        type: d.needsReview ? 'lhuta-k-overeni' : 'lhuta',
+        label: ('Lhůta' + (d.amount ? ' ' + d.amount + ' ' + (d.unit || '') : '') + (d.date ? ' → ' + d.date : '')).trim(),
+        source: 'deadlines',
+        meta: { fileName: d.fileName || null, needsReview: !!d.needsReview }
+    }));
+
+    // 5) jednání
+    _hearingsForCase(spis.spisZn).forEach(h => items.push({
+        time: h.date || h.hearingDate || null,
+        kind: 'jednani',
+        type: 'jednani',
+        label: ('Jednání' + (h.date ? ' ' + h.date : '') + (h.court ? ', ' + h.court : '')).trim(),
+        source: 'hearings',
+        meta: h
+    }));
+
+    items.sort((a, b) => {
+        const ta = a.time || '', tb = b.time || '';
+        if (!ta && !tb) return 0;
+        if (!ta) return 1;
+        if (!tb) return -1;
+        return String(ta).localeCompare(String(tb));
+    });
+
+    return { spis: spis, timeline: items, count: items.length };
+}
+
 module.exports = {
     STAVY,
     DEFAULT_RETENTION_YEARS,
@@ -352,6 +429,7 @@ module.exports = {
     addEvent,
     getEvents,
     getSpisDetail,
+    getSpisTimeline,
     syncFromInbox,
     ensureSpisForCase,
     listUnfiled,
