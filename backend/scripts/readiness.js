@@ -55,6 +55,26 @@ async function main() {
         } catch (e) { say(R.no, 'Klientský RAG index', e.message); }
     }
 
+    // 4b) Scan fikcí/atrap — hlídá, že se odstraněné výmysly nevrátí do zdroje.
+    try {
+        const fs2 = require('fs'); const path2 = require('path');
+        const root = path2.join(__dirname, '..');
+        const markers = [
+            ['activeExecutions: 2', 'lib/registries.js'],
+            ['184500', 'lib/registries.js'],
+            ['hasPlomba: lastDigit', 'routes/registries.js'],
+            ['SIMULOVÁNO', 'routes/registries.js'],
+            ['23 Cdo 1234/2025', 'lib/judikatura.js'],
+            ['8 As 99/2026', 'lib/judikatura.js'],
+        ];
+        const hits = [];
+        for (const [m, rel] of markers) {
+            try { if (fs2.readFileSync(path2.join(root, rel), 'utf-8').includes(m)) hits.push(`${m} (${rel})`); } catch (e) {}
+        }
+        say(hits.length ? R.no : R.ok, 'Scan fikcí/atrap',
+            hits.length ? `NALEZENY fabrikace: ${hits.join('; ')}` : 'žádné známé fabrikace ve zdroji');
+    } catch (e) { say(R.part, 'Scan fikcí/atrap', 'scan selhal: ' + e.message); }
+
     // 5) Runtime ověření (nelze z CLI) — poctivě označit jako neověřené
     say(R.part, 'Runtime ověření (E2E)', 'export do Wordu / odeslání datovkou / OCR — nutno ověřit v běžící aplikaci, ne unit testy');
 
