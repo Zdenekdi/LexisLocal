@@ -17,6 +17,8 @@ const ollama = require('../lib/ai_provider'); // Ollama | OpenAI | Anthropic (st
 const { generateAgentFallback } = require('../lib/agent_fallback');
 const { resolveRagFilters, applyAgentScope } = require('../lib/rag_request');
 const ChiefOrchestrator = require('../lib/orchestrator');
+const spisFolders = require('../lib/spisFolders');
+const spisy = require('../lib/spisy');
 
 // POST /api/agent-swarm/debate - Coordinate two agents interacting over the same task
 router.post('/debate', async (req, res) => {
@@ -168,7 +170,7 @@ router.post('/debate', async (req, res) => {
 
 // POST /api/agent-swarm/orchestrate - Hierarchy Swarm Orchestration with Chief Orchestrator
 router.post('/orchestrate', async (req, res) => {
-    const { prompt, context, model } = req.body;
+    const { prompt, context, model, spisId, saveDraft, fileName } = req.body;
     if (!prompt) {
         return res.status(400).json({ error: "Zadání (prompt) je povinné." });
     }
@@ -187,8 +189,32 @@ router.post('/orchestrate', async (req, res) => {
             model: selectedModel,
             durationMs: result.durationMs,
             stepsCount: result.steps.length,
-            success: true
+            success: true,
+            spisId: spisId || null
         });
+
+        // Volitelné bezpečné uložení konceptu do složky spisu (fail-closed).
+        // Aktivuje se jen když klient pošle spisId + saveDraft. Odmítnutí kvůli
+        // nedostatku podkladů se NEUKLÁDÁ jako koncept.
+        if (spisId && saveDraft && result && result.finalOutput) {
+            const txt = String(result.finalOutput);
+            const refused = /^\s*Nedostatek podkladů/i.test(txt);
+            if (refused) {
+                result.draftSkipped = 'refused-insufficient-material';
+            } else {
+                try {
+                    const spis = spisy.getSpis(spisId);
+                    if (spis) spisFolders.ensureSpisFolder(spis); // známý spis → zajisti jeho složku
+                    result.draft = spisFolders.saveDraftToSpis({
+                        spisId,
+                        fileName: fileName || ('koncept_' + prompt.substring(0, 40) + '.docx'),
+                        content: txt
+                    });
+                } catch (e) {
+                    result.draftError = e.message;
+                }
+            }
+        }
 
         res.json(result);
     } catch (err) {

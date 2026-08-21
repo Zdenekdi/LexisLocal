@@ -1,5 +1,21 @@
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
+
+// Tamper-evident řetěz: každý záznam nese hash předchozího (jako transparency_logs
+// v database.js). Dodatečná změna/smazání záznamu poruší řetěz a jde poznat.
+const AUDIT_GENESIS = 'genesis_lexis_audit_ledger';
+function _hashEntry(e, prevHash) {
+    const canonical = JSON.stringify({
+        timestamp: e.timestamp,
+        user: e.user,
+        operation: e.operation,
+        target: e.target,
+        spisId: e.spisId || null,
+        details: e.details || {}
+    });
+    return crypto.createHash('sha256').update(String(prevHash) + canonical).digest('hex');
+}
 
 // Save the audit log inside the watched dir as a hidden file for resilience and cloud syncing
 const { WATCH_DIR } = require('./config'); // jeden zdroj pravdy, viz lib/config.js
@@ -58,6 +74,8 @@ function saveAuditLogs(logs) {
 function logEvent(user, operation, target, details = {}) {
     try {
         const logs = loadAuditLogs();
+        const last = logs.length ? logs[logs.length - 1] : null;
+        const prevHash = (last && last.hash) ? last.hash : AUDIT_GENESIS;
         const newEvent = {
             id: 'log_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
             timestamp: new Date().toISOString(),
@@ -68,6 +86,8 @@ function logEvent(user, operation, target, details = {}) {
             spisId: (details && details.spisId) || null,
             details: details
         };
+        newEvent.prevHash = prevHash;
+        newEvent.hash = _hashEntry(newEvent, prevHash);
         logs.push(newEvent);
         saveAuditLogs(logs);
         console.log(`📜 Audit: Zaznamenán úkon [${operation}] pro [${target}]`);
@@ -101,9 +121,37 @@ function getLogsForSpis(spisId) {
         .sort((x, y) => String(x.timestamp || '').localeCompare(String(y.timestamp || '')));
 }
 
+/**
+ * Ověří integritu auditního řetězu. Detekuje změnu obsahu záznamu (nesedí hash)
+ * i porušení návaznosti (nesedí prevHash). Odolné vůči ořezu logu na 1000 položek:
+ * první zachovaný záznam se bere jako kotva (jeho prevHash může mířit na ořezanou
+ * historii). Starší záznamy bez hashe (legacy) se počítají zvlášť, nezpůsobí chybu.
+ * @returns { ok, checked, legacy, total, brokenAt?, reason? }
+ */
+function verifyAuditChain() {
+    const logs = loadAuditLogs();
+    let expectedPrev = null;
+    let checked = 0, legacy = 0;
+    for (let i = 0; i < logs.length; i++) {
+        const e = logs[i];
+        if (!e || !e.hash) { legacy++; continue; }
+        const recomputed = _hashEntry(e, e.prevHash);
+        if (recomputed !== e.hash) {
+            return { ok: false, brokenAt: i, id: e.id || null, reason: 'content-tampered', checked, legacy };
+        }
+        if (expectedPrev !== null && e.prevHash !== expectedPrev) {
+            return { ok: false, brokenAt: i, id: e.id || null, reason: 'chain-broken', checked, legacy };
+        }
+        expectedPrev = e.hash;
+        checked++;
+    }
+    return { ok: true, checked, legacy, total: logs.length };
+}
+
 module.exports = {
     loadAuditLogs,
     logEvent,
     getLogsForSpis,
+    verifyAuditChain,
     clearAuditLogs
 };
