@@ -265,7 +265,7 @@ function verifyCitations(text, opts = {}) {
 function annotateText(text, citations) {
     let out = String(text || '');
     const bad = citations
-        .filter(c => c.status !== 'verified' && c.status !== 'no_reference_context_ok')
+        .filter(c => c.status !== 'verified' && c.status !== 'verified_by_source' && c.status !== 'no_reference_context_ok')
         .map(c => c.raw)
         // nejdelší napřed, ať se kratší nezanoří do delšího
         .sort((a, b) => b.length - a.length);
@@ -280,8 +280,63 @@ function annotateText(text, citations) {
     return out;
 }
 
+/**
+ * Async nadstavba: po deterministickém jádru (verifyCitations) zkonzultuje u
+ * NEověřených citací externí právní zdroje (legalSources). Zdroj může citaci jen
+ * POTVRDIT → status 'verified_by_source'. Nedostupnost/nenalezení nechá citaci
+ * BEZE ZMĚNY (fail-closed) a ověřenou citaci nikdy nedegraduje. Sync jádro je
+ * netknuté — tahle funkce je čistě aditivní a volitelná.
+ */
+async function verifyCitationsWithSources(text, opts = {}) {
+    const base = verifyCitations(text, opts);
+    let legalSources = null;
+    try { legalSources = require('./legalSources'); } catch (e) { return Object.assign({}, base, { sourcesConsulted: false }); }
+
+    const NEEDS = new Set(['not_in_reference', 'unsupported_by_context', 'unverified_case']);
+    let consulted = false;
+    const citations = [];
+    for (const c of base.citations) {
+        if (!NEEDS.has(c.status)) { citations.push(c); continue; }
+        try {
+            let r = null;
+            if (c.type === 'zakon' || c.type === 'paragraf') {
+                r = await legalSources.verifyStatute({ law: c.law, paragraph: c.paragraph });
+            } else if (c.type === 'judikat') {
+                r = await legalSources.verifyCaseLaw({ spisZn: c.raw });
+            }
+            if (r && r.ok) consulted = true;
+            if (r && r.ok && r.found) {
+                citations.push(Object.assign({}, c, {
+                    status: 'verified_by_source',
+                    reason: 'ověřeno externím zdrojem (' + (r.source || 'zdroj') + ')',
+                    verified: true,
+                    source: r.source || null
+                }));
+                continue;
+            }
+        } catch (e) { /* fail-closed: citace zůstává beze změny */ }
+        citations.push(c);
+    }
+
+    const VERIFIED = new Set(['verified', 'verified_by_source']);
+    const unverified = citations.filter(c => !VERIFIED.has(c.status));
+    const counts = citations.reduce((acc, c) => { acc[c.status] = (acc[c.status] || 0) + 1; return acc; }, {});
+    return {
+        ok: opts.strict ? unverified.length === 0 : true,
+        citations,
+        counts,
+        total: citations.length,
+        unverifiedCount: unverified.length,
+        hallucinationRate: citations.length ? +(unverified.length / citations.length).toFixed(3) : 0,
+        unverified,
+        annotatedText: annotateText(text, citations),
+        sourcesConsulted: consulted
+    };
+}
+
 module.exports = {
     verifyCitations,
+    verifyCitationsWithSources,
     extractCitations,
     buildEmptyReferenceIndex,
     annotateText,
