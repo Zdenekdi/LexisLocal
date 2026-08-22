@@ -19,7 +19,9 @@
 
 const fs = require('fs');
 const path = require('path');
-const { INGEST_DIR } = require('./config');
+const config = require('./config');
+// Spisovnu bereme ŽIVĚ (getIngestDir) — reaguje na volbu uživatele za běhu.
+function getIngest() { return config.getIngestDir(); }
 
 const MARKER = '.lexisspis.json';
 
@@ -61,14 +63,14 @@ function _listSpisFolders() {
     const out = [];
     let entries;
     try {
-        entries = fs.readdirSync(INGEST_DIR, { withFileTypes: true });
+        entries = fs.readdirSync(getIngest(), { withFileTypes: true });
     } catch (e) {
         return out;
     }
     for (const ent of entries) {
         if (!ent.isDirectory()) continue;
         if (ent.name.startsWith('.') || ent.name === NEZARAZENO) continue;
-        const folderPath = path.join(INGEST_DIR, ent.name);
+        const folderPath = path.join(getIngest(), ent.name);
         const marker = readMarker(folderPath);
         if (marker && marker.spisId) out.push({ folderPath, marker });
     }
@@ -129,10 +131,10 @@ function ensureSpisFolder(spis) {
     if (proti) parts.push('vs_' + proti);
     let folderName = parts.join('_') || folderId;
 
-    let folderPath = path.join(INGEST_DIR, folderName);
+    let folderPath = path.join(getIngest(), folderName);
     if (fs.existsSync(folderPath)) {
         folderName = folderName + '_' + String(spis.id).slice(-6);
-        folderPath = path.join(INGEST_DIR, folderName);
+        folderPath = path.join(getIngest(), folderName);
     }
 
     _ensureDir(folderPath);
@@ -152,7 +154,7 @@ function ensureSpisFolder(spis) {
 }
 
 function nezarazenoDir() {
-    return _ensureDir(path.join(INGEST_DIR, NEZARAZENO));
+    return _ensureDir(path.join(getIngest(), NEZARAZENO));
 }
 
 function resolveDraftTarget(spisId) {

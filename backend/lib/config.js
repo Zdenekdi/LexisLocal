@@ -32,6 +32,7 @@ const fs = require('fs');
 const INGEST_DIR =
     process.env.WATCH_DIR ||
     process.env.INGEST_DIR ||
+    (readSettings().ingestDir) ||
     path.join(os.homedir(), 'Desktop', 'LexisSpisy');
 
 // Zpětně kompatibilní alias: dřív se WATCH_DIR používal pro spisy i pro data.
@@ -70,4 +71,42 @@ function dataPath(name) {
     return target;
 }
 
-module.exports = { WATCH_DIR, INGEST_DIR, DATA_DIR, dataPath };
+// --- Perzistentní nastavení (nezávislé na volbě spisovny) --------------------
+// Nastavení žije v pevném app-data umístění (LEXIS_DATA_DIR || platform appdata),
+// aby bylo čitelné DŘÍV, než víme, kterou spisovnu si uživatel zvolil.
+function _appSettingsDir() { return process.env.LEXIS_DATA_DIR || _defaultDataDir(); }
+function _settingsFile() { return path.join(_appSettingsDir(), 'lexislocal.settings.json'); }
+function readSettings() {
+    try { const o = JSON.parse(fs.readFileSync(_settingsFile(), 'utf8')); return (o && typeof o === 'object') ? o : {}; }
+    catch (e) { return {}; }
+}
+function writeSettings(obj) {
+    const d = _appSettingsDir();
+    try { fs.mkdirSync(d, { recursive: true }); } catch (e) { /* best-effort */ }
+    fs.writeFileSync(_settingsFile(), JSON.stringify(obj || {}, null, 2), 'utf8');
+    return obj || {};
+}
+
+// Živá cesta ke spisovně: env (testy/legacy) → perzistentní volba → default.
+// Používají ji moduly, které mají respektovat volbu za běhu (watcher, spisFolders).
+function getIngestDir() {
+    return process.env.WATCH_DIR ||
+        process.env.INGEST_DIR ||
+        (readSettings().ingestDir) ||
+        path.join(os.homedir(), 'Desktop', 'LexisSpisy');
+}
+
+// Nastaví spisovnu (perzistentně). Validuje, že složka existuje. Vrací cestu.
+function setIngestDir(dir) {
+    if (!dir || typeof dir !== 'string') throw new Error('Cesta ke spisovně je povinná.');
+    const resolved = path.resolve(dir);
+    let st;
+    try { st = fs.statSync(resolved); } catch (e) { throw new Error('Složka neexistuje: ' + resolved); }
+    if (!st.isDirectory()) throw new Error('Zadaná cesta není složka: ' + resolved);
+    const settings = readSettings();
+    settings.ingestDir = resolved;
+    writeSettings(settings);
+    return resolved;
+}
+
+module.exports = { WATCH_DIR, INGEST_DIR, DATA_DIR, dataPath, getIngestDir, setIngestDir, readSettings, writeSettings };

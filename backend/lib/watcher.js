@@ -18,6 +18,8 @@ const { anonymizeText } = require('./anonymizer');
 const { calculateDeadlineDate, collectUnitDeadlines, runAIExtractor } = require('./extraction'); // sdílený AI-extraktor
 
 const { WATCH_DIR, dataPath } = require('./config'); // jeden zdroj pravdy, viz lib/config.js
+const { getIngestDir } = require('./config');
+let _watchedDir = getIngestDir(); // aktuálně sledovaná spisovna (může se za běhu přepnout)
 const INBOX_PATH = dataPath('.inbox.json'); // index příchozích — technická data v DATA_DIR
 
 if (!fs.existsSync(WATCH_DIR)) {
@@ -55,7 +57,7 @@ watcher.on('add', async (filePath) => {
         console.log(`📥 Detekován nový dokument: ${path.basename(filePath)}`);
         
         // Compute relative path to WATCH_DIR
-        const relativePath = path.relative(WATCH_DIR, filePath);
+        const relativePath = path.relative(_watchedDir, filePath);
         
         // Skip if already parsed and present in .inbox.json (checks both relativePath and basename for backward compatibility)
         const inbox = await loadInbox();
@@ -228,7 +230,7 @@ async function processDocument(filePath) {
 
     // 3. Save to inbox
     const inbox = await loadInbox();
-    const relativePath = path.relative(WATCH_DIR, filePath);
+    const relativePath = path.relative(_watchedDir, filePath);
     inbox.files[relativePath] = {
         fileName: fileName,
         filePath: filePath,
@@ -404,4 +406,16 @@ async function checkAllInsolvencies() {
     return { checkedCount, newAlertsCount };
 }
 
-module.exports = { WATCH_DIR, loadInbox, saveInbox, processDocument, setWatcherState, checkAllInsolvencies };
+// Přepnutí sledované spisovny ZA BĚHU (bez restartu). chokidar odhlásí starou
+// složku a přidá novou; relativní cesty se pak počítají vůči nové spisovně.
+function repointWatcher(newDir) {
+    if (!newDir || newDir === _watchedDir) return _watchedDir;
+    try { watcher.unwatch(_watchedDir); } catch (e) { /* best-effort */ }
+    try { if (!fs.existsSync(newDir)) fs.mkdirSync(newDir, { recursive: true }); } catch (e) { /* best-effort */ }
+    try { watcher.add(newDir); } catch (e) { /* best-effort */ }
+    _watchedDir = newDir;
+    console.log('👀 Spisovna přepnuta na: ' + newDir);
+    return _watchedDir;
+}
+
+module.exports = { WATCH_DIR, loadInbox, saveInbox, processDocument, setWatcherState, checkAllInsolvencies, repointWatcher };
