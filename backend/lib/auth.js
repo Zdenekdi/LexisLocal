@@ -13,13 +13,14 @@ function isPublicPath(method, pathname) {
     return pathname.endsWith('.css') || pathname.endsWith('.js') || pathname.endsWith('.ico');
 }
 
-// Vytáhne token z požadavku: Bearer hlavička má přednost, pak x-api-token, pak ?token=.
+// Vytáhne token z požadavku: JEN z hlaviček (Authorization: Bearer nebo X-API-Token).
+// Token v URL (?token=) se ZÁMĚRNĚ nepřijímá — unikal by do logů, historie a Referer.
 function extractToken(req) {
     const h = (req && req.headers) || {};
     const authHeader = h['authorization'];
     if (authHeader && authHeader.startsWith('Bearer ')) return authHeader.substring(7);
     if (h['x-api-token']) return h['x-api-token'];
-    return (req && req.query && req.query.token) || undefined;
+    return undefined; // token v URL se nepřijímá (bezpečnost)
 }
 
 // Rozhodne o přístupu. Vrací { allowed, reason }.

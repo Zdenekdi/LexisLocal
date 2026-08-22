@@ -36,7 +36,7 @@ function resolveApiToken() {
         // atomicky (temp + rename), práva 0600 — token je tajemství
         const tmp = file + '.tmp';
         fs.writeFileSync(tmp, token, { encoding: 'utf8', mode: 0o600 });
-        try { fs.chmodSync(tmp, 0o600); } catch (e) {}
+        try { fs.chmodSync(tmp, 0o600); } catch (e) { console.warn('⚠️  Nepodařilo se nastavit práva 0600 na API token:', e.message); }
         fs.renameSync(tmp, file);
     } catch (e) {
         console.error('⚠️ Nelze uložit API token na disk (použiji jen v paměti):', e.message);

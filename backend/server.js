@@ -33,7 +33,57 @@ if (ENFORCE_TOKEN && !process.env.API_TOKEN) {
     console.warn('⚠️  Vynucení API tokenu VYPNUTO (LEXIS_ENFORCE_TOKEN=0) — API je bez tokenu, jen pro lokální ladění.');
 }
 
-app.use(cors());
+// --- CORS allowlist + ochrana proti DNS-rebindingu -----------------------------
+// Wildcard CORS je nebezpečný: cizí web v prohlížeči jede přes loopback, takže by
+// mohl číst odpovědi (a při vloženém tokenu ho ukrást). Povolujeme jen same-origin,
+// loopback originy a Electron (Origin 'null'); ostatní bez CORS hlaviček → prohlížeč
+// zablokuje čtení. Další originy přes LEXIS_CORS_ORIGINS (čárkou oddělené).
+const _extraCorsOrigins = String(process.env.LEXIS_CORS_ORIGINS || '').split(',').map(x => x.trim()).filter(Boolean);
+function _isLoopbackHostname(h) { return h === 'localhost' || h === '127.0.0.1' || h === '::1' || h === '[::1]' || (typeof h === 'string' && h.startsWith('127.')); }
+function _corsOrigin(origin, cb) {
+    if (!origin) return cb(null, true);            // same-origin / nativní fetch bez Origin
+    if (origin === 'null') return cb(null, true);  // Electron file:// (editor)
+    try { if (_isLoopbackHostname(new URL(origin).hostname)) return cb(null, true); } catch (e) {}
+    if (_extraCorsOrigins.includes(origin)) return cb(null, true);
+    return cb(null, false);                         // cizí origin → bez ACAO
+}
+app.use(cors({ origin: _corsOrigin }));
+
+// Ochrana proti DNS-rebindingu: v loopback režimu (výchozí) přijmeme jen požadavky
+// s Host = localhost/127.* ; rebinding cizí domény na 127.0.0.1 pošle cizí Host → 403.
+// V síťovém režimu (BIND_HOST != loopback) Host neřešíme (řídí síť/proxy/allowlist).
+const _bindIsLoopback = _isLoopbackHostname(BIND_HOST);
+const _allowedHosts = String(process.env.LEXIS_ALLOWED_HOSTS || '').split(',').map(x => x.trim().toLowerCase()).filter(Boolean);
+app.use((req, res, next) => {
+    if (!_bindIsLoopback) return next();
+    const host = String(req.headers.host || '').toLowerCase();
+    const hostname = host.split(':')[0];
+    if (_isLoopbackHostname(hostname) || _allowedHosts.includes(host) || _allowedHosts.includes(hostname)) return next();
+    return res.status(403).json({ error: 'Neplatná hlavička Host (ochrana proti DNS-rebindingu).' });
+});
+// --- Bezpečnostní hlavičky (CSP + anti-clickjacking) ---------------------------
+// Inline onclick/styly jsou v dashboardu všudypřítomné → script/style-src musí
+// povolit 'unsafe-inline'. Zbytek ale zamykáme: connect-src omezuje, KAM může
+// případné reziduální XSS odeslat data (jen self + lokální Ollama) → nelze token
+// vyexfiltrovat na cizí server; object-src/base-uri/frame-ancestors = další obrana.
+app.use((req, res, next) => {
+    res.setHeader('Content-Security-Policy', [
+        "default-src 'self'",
+        "script-src 'self' 'unsafe-inline'",
+        "style-src 'self' 'unsafe-inline'",
+        "img-src 'self' data: blob:",
+        "font-src 'self' data:",
+        "connect-src 'self' http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:*",
+        "object-src 'none'",
+        "base-uri 'none'",
+        "frame-ancestors 'none'",
+        "form-action 'self'"
+    ].join('; '));
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    next();
+});
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 // Je požadavek z loopbacku (stejný stroj)? Jen tehdy je bezpečné vstříknout
@@ -51,7 +101,12 @@ const isLoopbackReq = (req) => {
 const serveWithToken = (fileRelPath) => (req, res, next) => {
     try {
         const html = fs.readFileSync(path.join(__dirname, 'public', fileRelPath), 'utf8');
-        if (!isLoopbackReq(req)) return next(); // LAN → statický soubor bez tokenu
+        // Token vložíme jen z loopbacku A jen když požadavek NENÍ cross-origin
+        // (cizí web přes fetch posílá Origin → nedostane token, i když jede z loopbacku).
+        const _o = req.headers.origin;
+        let _sameOrigin = !_o;
+        if (_o) { try { _sameOrigin = _isLoopbackHostname(new URL(_o).hostname); } catch (e) { _sameOrigin = false; } }
+        if (!isLoopbackReq(req) || !_sameOrigin) return next(); // LAN/cross-origin → statika bez tokenu
         const inject = `<script>window.LEXIS_API_TOKEN=${JSON.stringify(API_TOKEN)};</script>`;
         res.type('html').send(html.includes('</head>') ? html.replace('</head>', inject + '</head>') : inject + html);
     } catch (e) {

@@ -1,5 +1,8 @@
 // app-inbox.js — část dashboardu vytažená z app.js (prototype-mixin, beze změny chování).
 // Načítá se v index.html PO app.js. Metody se přidávají na LexisLocalApp.prototype.
+// Escaper pro JS-řetězec uvnitř HTML atributu (onclick) — obrana proti injection.
+function _lexEscJsAttr(v){return String(v==null?'':v).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
 Object.assign(LexisLocalApp.prototype, {
 
     renderOverviewAgents(agentIds) {
@@ -193,7 +196,7 @@ Object.assign(LexisLocalApp.prototype, {
                         <span>${warningEmoji} Lhůta: ${closestFile.deadlineDays} dnů</span>
                     </div>
                     <span class="subtext">Termín: ${new Date(closestFile.deadlineDate).toLocaleDateString('cs-CZ')}</span>
-                    <button class="btn btn-secondary" onclick="window.appInstance.downloadIcsFile('${caseNum.replace(/'/g, "\\'")}', '${groupPlaintiff.replace(/'/g, "\\'")}', '${groupDefendant.replace(/'/g, "\\'")}', '${closestFile.deadlineDate}')" style="margin-top: 10px; width: 100%; font-size: 0.72rem; padding: 5px 8px; display: flex; align-items: center; justify-content: center; gap: 4px;">
+                    <button class="btn btn-secondary" onclick="window.appInstance.downloadIcsFile('${_lexEscJsAttr(caseNum)}', '${_lexEscJsAttr(groupPlaintiff)}', '${_lexEscJsAttr(groupDefendant)}', '${_lexEscJsAttr(closestFile.deadlineDate)}')" style="margin-top: 10px; width: 100%; font-size: 0.72rem; padding: 5px 8px; display: flex; align-items: center; justify-content: center; gap: 4px;">
                         📅 Do kalendáře (.ics)
                     </button>
                 `;
@@ -202,7 +205,7 @@ Object.assign(LexisLocalApp.prototype, {
             }
 
             const verifiedAddr = groupVerifiedSeat ? `
-                <br><span style="font-size: 0.75rem; color: var(--accent-green);">✓ Ověřené sídlo ARES: ${groupVerifiedSeat}</span>
+                <br><span style="font-size: 0.75rem; color: var(--accent-green);">✓ Ověřené sídlo ARES: ${escapeHtml(groupVerifiedSeat)}</span>
             ` : '';
 
             // Generate HTML list for each file in this case group
@@ -213,20 +216,20 @@ Object.assign(LexisLocalApp.prototype, {
                     <div class="case-file-row" style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.015); padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border-glass);">
                         <div style="display: flex; align-items: center; gap: 10px; font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 70%;">
                             <span>${doc.wasOcr ? '🔍' : '📄'}</span>
-                            <span style="font-weight: 500; overflow: hidden; text-overflow: ellipsis;">${doc.fileName}</span>
+                            <span style="font-weight: 500; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(doc.fileName)}</span>
                             ${isUnread ? '<span style="width: 6px; height: 6px; background-color: var(--accent-red); border-radius: 50%; display: inline-block; flex-shrink: 0;"></span>' : ''}
                             ${doc.wasOcr ? '<span style="font-size: 0.65rem; background: rgba(139,92,246,0.15); color: #a78bfa; border: 1px solid rgba(139,92,246,0.25); border-radius: 4px; padding: 1px 5px; flex-shrink: 0;">OCR</span>' : ''}
                         </div>
                         <div style="display: flex; gap: 6px;">
-                            <button class="btn btn-secondary" onclick="window.appInstance.viewSpisContent('${doc.fileName}')" style="padding: 4px 8px; font-size: 0.7rem;">
+                            <button class="btn btn-secondary" onclick="window.appInstance.viewSpisContent('${_lexEscJsAttr(doc.fileName)}')" style="padding: 4px 8px; font-size: 0.7rem;">
                                 📖 Zobrazit
                             </button>
                             ${isUnread ? `
-                                <button class="btn btn-secondary" onclick="window.appInstance.markRead('${doc.fileName}')" style="padding: 4px 8px; font-size: 0.7rem;">
+                                <button class="btn btn-secondary" onclick="window.appInstance.markRead('${_lexEscJsAttr(doc.fileName)}')" style="padding: 4px 8px; font-size: 0.7rem;">
                                     ✓ Vyřídit
                                 </button>
                             ` : ''}
-                            <button class="btn btn-danger" onclick="window.appInstance.deleteSpis('${doc.fileName}')" style="padding: 4px 6px; font-size: 0.7rem;">
+                            <button class="btn btn-danger" onclick="window.appInstance.deleteSpis('${_lexEscJsAttr(doc.fileName)}')" style="padding: 4px 6px; font-size: 0.7rem;">
                                 🗑️
                             </button>
                         </div>
@@ -248,11 +251,11 @@ Object.assign(LexisLocalApp.prototype, {
                     </div>
                     <div class="inbox-info" style="flex-grow: 1;">
                         <div class="inbox-info-header" style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
-                            <h4 style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary);">Spis sp. zn.: ${caseNum}</h4>
+                            <h4 style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary);">Spis sp. zn.: ${escapeHtml(caseNum)}</h4>
                             ${insolWarning}
                         </div>
                         <div class="parties-text" style="font-size: 0.88rem; color: var(--text-secondary); margin-bottom: 12px;">
-                            <strong>Žalobce:</strong> ${groupPlaintiff} | <strong>Žalovaný:</strong> ${groupDefendant}
+                            <strong>Žalobce:</strong> ${escapeHtml(groupPlaintiff)} | <strong>Žalovaný:</strong> ${escapeHtml(groupDefendant)}
                             ${verifiedAddr}
                         </div>
                         
@@ -263,10 +266,10 @@ Object.assign(LexisLocalApp.prototype, {
                             </div>
                             
                             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px;">
-                                <button class="btn btn-secondary" onclick="window.appInstance.analyzeEntireCase('${caseNum.replace(/'/g, "\\'")}')" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 0.78rem; padding: 8px 12px;">
+                                <button class="btn btn-secondary" onclick="window.appInstance.analyzeEntireCase('${_lexEscJsAttr(caseNum)}')" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 0.78rem; padding: 8px 12px;">
                                     🤖 Analyzovat AI (${files.length} dok.)
                                 </button>
-                                <button id="btn-timeline-toggle-${caseNumSanitized}" class="btn btn-secondary" onclick="window.appInstance.showCaseTimeline('${caseNum.replace(/'/g, "\\'")}')" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 0.78rem; padding: 8px 12px; ${btnStyle}">
+                                <button id="btn-timeline-toggle-${caseNumSanitized}" class="btn btn-secondary" onclick="window.appInstance.showCaseTimeline('${_lexEscJsAttr(caseNum)}')" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 0.78rem; padding: 8px 12px; ${btnStyle}">
                                     ${btnText}
                                 </button>
                             </div>
@@ -277,7 +280,7 @@ Object.assign(LexisLocalApp.prototype, {
                                     <div class="inline-timeline-title" style="font-size: 0.85rem; font-weight: 700; color: var(--accent-blue); display: flex; align-items: center; gap: 6px;">
                                         ⏱️ Historie a časová osa spisu
                                     </div>
-                                    <button class="btn btn-secondary" onclick="window.appInstance.showCaseTimeline('${caseNum.replace(/'/g, "\\'")}')" style="padding: 2px 8px; font-size: 0.7rem;">✕ Zavřít</button>
+                                    <button class="btn btn-secondary" onclick="window.appInstance.showCaseTimeline('${_lexEscJsAttr(caseNum)}')" style="padding: 2px 8px; font-size: 0.7rem;">✕ Zavřít</button>
                                 </div>
                                 <div class="timeline-events-inline-list" id="timeline-events-${caseNumSanitized}" style="display: flex; flex-direction: column; gap: 12px;">
                                     <!-- Populate via JS -->

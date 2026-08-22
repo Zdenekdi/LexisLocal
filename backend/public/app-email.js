@@ -436,7 +436,7 @@ Object.assign(LexisLocalApp.prototype, {
                 resultDiv.style.background = 'rgba(239, 68, 68, 0.15)';
                 resultDiv.style.border = '1px solid #ef4444';
                 resultDiv.style.color = '#fca5a5';
-                resultDiv.innerHTML = `⚠️ <strong>Detekováno narušení!</strong><br>Důvod: ${data.reason}<br>Index poškození: ${data.index} (ID: ${data.id})`;
+                resultDiv.innerHTML = `⚠️ <strong>Detekováno narušení!</strong><br>Důvod: ${escapeHtml(String(data.reason||""))}<br>Index poškození: ${escapeHtml(String(data.index))} (ID: ${escapeHtml(String(data.id))})`;
                 
                 if (shieldSpan) {
                     shieldSpan.textContent = '⚠️ Narušen!';
@@ -448,7 +448,7 @@ Object.assign(LexisLocalApp.prototype, {
         } catch (e) {
             resultDiv.style.background = 'rgba(239, 68, 68, 0.1)';
             resultDiv.style.color = '#fca5a5';
-            resultDiv.innerHTML = `❌ Chyba při ověřování ledgeru: ${e.message}`;
+            resultDiv.innerHTML = `❌ Chyba při ověřování ledgeru: ${escapeHtml(String(e.message||""))}`;
         }
     }
 

@@ -30,8 +30,8 @@ describe('extractToken', () => {
     test('x-api-token hlavička', () => {
         expect(auth.extractToken(REQ({ headers: { 'x-api-token': 'xyz' } }))).toBe('xyz');
     });
-    test('token z query', () => {
-        expect(auth.extractToken(REQ({ query: { token: 'qqq' } }))).toBe('qqq');
+    test('token z query se ZÁMĚRNĚ NEpřijímá (bezpečnost)', () => {
+        expect(auth.extractToken(REQ({ query: { token: 'qqq' } }))).toBeUndefined();
     });
     test('žádný token → undefined', () => {
         expect(auth.extractToken(REQ())).toBeUndefined();

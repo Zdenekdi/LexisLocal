@@ -35,7 +35,7 @@
                 const data = await res.json();
                 this.renderAgentKnowledge(data.success ? (data.documents || []) : []);
             } catch (err) {
-                if (list) list.innerHTML = `<div style="opacity:0.6;font-size:0.78rem;color:#f87171;">Chyba: ${err.message}</div>`;
+                if (list) list.innerHTML = `<div style="opacity:0.6;font-size:0.78rem;color:#f87171;">Chyba: ${escapeHtml(String(err.message||""))}</div>`;
             }
         },
 

@@ -65,7 +65,7 @@ function writeKey(keyBuf) {
     // atomický zápis: temp + rename, aby při pádu nezůstal půlklíč
     const tmp = KEY_FILE + '.tmp';
     fs.writeFileSync(tmp, keyBuf.toString('hex'), { encoding: 'utf8', mode: 0o600 });
-    try { fs.chmodSync(tmp, 0o600); } catch (e) {}
+    try { fs.chmodSync(tmp, 0o600); } catch (e) { console.warn('⚠️  Nepodařilo se nastavit práva 0600 na šifrovací klíč:', e.message); }
     fs.renameSync(tmp, KEY_FILE);
 }
 
@@ -89,7 +89,7 @@ function resolveKey() {
             writeKey(legacy);
             // ověř zápis a teprve pak odstraň klíč od dat (aby se přestal synchronizovat)
             if (readHexKey(KEY_FILE)) {
-                try { fs.unlinkSync(LEGACY_KEY_FILE); } catch (e) {}
+                try { fs.unlinkSync(LEGACY_KEY_FILE); } catch (e) { console.warn('⚠️  Legacy šifrovací klíč se nepodařilo odstranit z datové složky (zůstává tam!):', e.message); }
                 console.log(`🔐 Šifrovací klíč zmigrován mimo datovou složku: ${KEY_FILE}`);
             }
             return legacy;

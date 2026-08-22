@@ -11,7 +11,10 @@ const db = require('./database');
 // Demo/testovací fixtures (smyšlené subjekty) jsou aktivní jen v demo/test režimu.
 // V produkci se i tato IČO dotazují reálných registrů — nikdy nevracíme
 // fabrikovaná data jako ověřená.
-const DEMO_FIXTURES = process.env.LEXIS_DEMO === '1' || process.env.NODE_ENV === 'test';
+// Fingované fixtury JEN při explicitním LEXIS_DEMO=1 nebo pod jestem (JEST_WORKER_ID
+// nastavuje jen jest, nikdy produkce). NODE_ENV už NENÍ spouštěč — chránilo by to,
+// kdyby v produkci omylem zůstalo NODE_ENV=test.
+const DEMO_FIXTURES = process.env.LEXIS_DEMO === '1' || typeof process.env.JEST_WORKER_ID !== 'undefined';
 
 /**
  * Robust native HTTPS helper to avoid extra external package dependencies
