@@ -8,7 +8,7 @@
 const express = require('express');
 const router = express.Router();
 const fs = require('fs');
-const { checkSubject, checkCee, checkKatastr, getRegistryConfig, setRegistryConfig } = require('../lib/registries');
+const { checkSubject, checkCee, checkKatastr, findDataBox, checkAresStatutory, checkVatReliability, getRegistryConfig, setRegistryConfig } = require('../lib/registries');
 const { safePathInWatchDir } = require('../lib/pathsafe');
 
 // GET /api/registries/check - Query all registries for an ICO
@@ -70,6 +70,30 @@ router.get('/config', (req, res) => {
 router.post('/config', (req, res) => {
     try { res.json({ success: true, config: setRegistryConfig(req.body || {}) }); }
     catch (err) { res.status(500).json({ error: `Nelze uložit konfiguraci registrů: ${err.message}` }); }
+});
+
+// GET /api/registries/statutory?ico=... — členové statutárního orgánu z ARES VR
+router.get('/statutory', async (req, res) => {
+    const { ico } = req.query;
+    if (!ico) return res.status(400).json({ error: 'IČO je povinný údaj.' });
+    try { res.json(await checkAresStatutory(ico)); }
+    catch (err) { res.status(500).json({ error: 'Dotaz na statutární orgán selhal: ' + err.message }); }
+});
+
+// GET /api/registries/databox?ico=... — vyhledání datové schránky (ISDS), fail-closed
+router.get('/databox', async (req, res) => {
+    const { ico } = req.query;
+    if (!ico) return res.status(400).json({ error: 'IČO je povinný údaj.' });
+    try { res.json(await findDataBox(ico)); }
+    catch (err) { res.status(500).json({ error: 'Vyhledání datové schránky selhalo: ' + err.message }); }
+});
+
+// GET /api/registries/vat?dic=... — registr plátců DPH / nespolehlivý plátce (MFČR)
+router.get('/vat', async (req, res) => {
+    const dic = req.query.dic || req.query.ico;
+    if (!dic) return res.status(400).json({ error: 'DIČ (nebo IČO) je povinné.' });
+    try { res.json(await checkVatReliability(dic)); }
+    catch (err) { res.status(500).json({ error: 'Kontrola DPH selhala: ' + err.message }); }
 });
 
 module.exports = router;

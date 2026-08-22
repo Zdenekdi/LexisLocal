@@ -261,6 +261,71 @@ async function checkKatastr(ico) {
 }
 
 /**
+ * ARES VR — členové statutárního orgánu + způsob jednání. REÁLNÝ dotaz na VR
+ * endpoint. Extrakce je REKURZIVNÍ a tolerantní k zanoření (schéma ARES VR se
+ * vyvíjí), fail-closed — při chybě NEVRACÍ nic (žádná fabrikace).
+ * Vhodné pro Spisovatele (pole „Zastoupená") a ověření podepisujícího.
+ */
+function _extractStatutory(data) {
+    const out = []; const seen = new Set();
+    function walkPersons(node) {
+        if (!node || typeof node !== 'object') return;
+        if (Array.isArray(node)) { node.forEach(walkPersons); return; }
+        const fo = node.fyzickaOsoba || ((node.jmeno || node.prijmeni) ? node : null);
+        if (fo && (fo.prijmeni || fo.jmeno)) {
+            const jmeno = String(fo.jmeno || '').trim();
+            const prijmeni = String(fo.prijmeni || '').trim();
+            let funkce = null;
+            try { funkce = node.clenstvi && node.clenstvi.funkce && (node.clenstvi.funkce.nazev || node.clenstvi.funkce.kod); } catch (e) {}
+            if (!funkce && node.funkce) funkce = node.funkce.nazev || node.funkce;
+            const key = (jmeno + '|' + prijmeni).toLowerCase();
+            if ((jmeno || prijmeni) && !seen.has(key)) { seen.add(key); out.push({ jmeno, prijmeni, funkce: funkce || null }); }
+        }
+        Object.values(node).forEach(walkPersons);
+    }
+    function findStatutory(node) {
+        if (!node || typeof node !== 'object') return;
+        if (Array.isArray(node)) { node.forEach(findStatutory); return; }
+        for (const [k, v] of Object.entries(node)) {
+            if (/statutarniorgan/i.test(k)) walkPersons(v);
+            else findStatutory(v);
+        }
+    }
+    findStatutory(data);
+    return out;
+}
+function _extractZpusobJednani(data) {
+    const out = [];
+    function walk(node) {
+        if (!node || typeof node !== 'object') return;
+        if (Array.isArray(node)) { node.forEach(walk); return; }
+        for (const [k, v] of Object.entries(node)) {
+            if (/zpusobjednani/i.test(k)) {
+                if (typeof v === 'string' && v.trim()) out.push(v.trim()); else walk(v);
+            } else walk(v);
+        }
+    }
+    walk(data);
+    return [...new Set(out)];
+}
+async function checkAresStatutory(ico, opts = {}) {
+    const doFetch = (opts && opts.fetchUrl) || fetchUrl;
+    const cleanIco = String(ico || '').replace(/\D/g, '');
+    if (cleanIco.length !== 8) return { available: false, reason: 'IČO musí obsahovat přesně 8 číslic.' };
+    if (DEMO_FIXTURES && (cleanIco === '12345678' || cleanIco === '88888888')) {
+        return { available: true, simulated: true, members: [{ jmeno: 'Jan', prijmeni: 'Novák', funkce: 'jednatel' }], zpusobJednani: ['Jednatel jedná za společnost samostatně.'] };
+    }
+    try {
+        const url = 'https://ares.gov.cz/ekonomicke-subjekty-v-be/rest/ekonomicke-subjekty-vr/' + cleanIco;
+        const raw = await doFetch(url, { headers: { 'Accept': 'application/json' } });
+        const data = JSON.parse(raw);
+        return { available: true, members: _extractStatutory(data), zpusobJednani: _extractZpusobJednani(data) };
+    } catch (e) {
+        return { available: false, error: 'Dotaz do ARES VR selhal: ' + e.message };
+    }
+}
+
+/**
  * ISDS — vyhledání datové schránky podle IČO (operace FindDataBox).
  * REÁLNÝ dotaz, když jsou nastaveny přihlašovací údaje do ISDS. Bez nich NEVRACÍ
  * žádné ID (a NIKDY nefabrikuje) — jen čestné „není k dispozici". Při více shodách
@@ -315,6 +380,45 @@ async function findDataBox(ico, opts = {}) {
     }
 }
 
+/**
+ * DPH — registr plátců DPH a NESPOLEHLIVÝ PLÁTCE (MFČR / ADIS). Veřejná a zdarma
+ * SOAP služba, bez autentizace. REÁLNÝ dotaz; fail-closed (síť/chyba → available:false).
+ * Vstup: DIČ (CZ… nebo číslo). ENV: DPH_WS_URL (volitelné, jinak výchozí MFČR).
+ * ⚠ Parsování atributu nespolehlivyPlatce je izolované — finalizovat proti reálné odpovědi.
+ */
+const DPH_DEFAULT_URL = 'https://adisrws.mfcr.cz/adistc/axis2/services/rozhraniCRPDPH.rozhraniCRPDPHPort';
+async function checkVatReliability(dic, opts = {}) {
+    const doFetch = (opts && opts.fetchUrl) || fetchUrl;
+    const num = String(dic || '').replace(/^cz/i, '').replace(/\D/g, '');
+    if (!num || num.length < 8) return { available: false, reason: 'Neplatné DIČ (očekává se CZ + 8–10 číslic).' };
+    const url = _regSetting('registry_dph_url', 'DPH_WS_URL') || DPH_DEFAULT_URL;
+    try {
+        const soapBody = '<?xml version="1.0" encoding="UTF-8"?>' +
+            '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:new="http://adis.mfcr.cz/rozhraniCRPDPH/">' +
+            '<soapenv:Header/><soapenv:Body><new:StatusNespolehlivyPlatceRequest><new:dic>' + num + '</new:dic></new:StatusNespolehlivyPlatceRequest></soapenv:Body></soapenv:Envelope>';
+        const xml = await doFetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/xml;charset=UTF-8', 'SOAPAction': '' },
+            body: soapBody
+        });
+        const sx = String(xml);
+        const errM = sx.match(/<[^>]*statusText[^>]*>([^<]+)</i);
+        const nespM = sx.match(/nespolehlivyPlatce="([^"]+)"/i);
+        if (!nespM) {
+            return { available: true, isVatPayer: false, unreliable: null, note: errM ? errM[1].trim() : 'Plátce v registru DPH nenalezen.' };
+        }
+        const val = nespM[1].toUpperCase();
+        return {
+            available: true,
+            isVatPayer: val !== 'NENALEZEN',
+            unreliable: val === 'ANO' ? true : (val === 'NE' ? false : null),
+            raw: val
+        };
+    } catch (e) {
+        return { available: false, error: 'Dotaz do registru DPH selhal: ' + e.message };
+    }
+}
+
 // Vrátí konfiguraci pro UI — URL ano, KLÍČ nikdy celý (jen hasKey).
 function getRegistryConfig() {
     const mk = (uKey, uEnv, kKey, kEnv) => ({
@@ -349,4 +453,4 @@ function setRegistryConfig(input) {
     return getRegistryConfig();
 }
 
-module.exports = { checkSubject, checkCee, checkKatastr, findDataBox, isIsdsConfigured, getRegistryConfig, setRegistryConfig };
+module.exports = { checkSubject, checkCee, checkKatastr, findDataBox, isIsdsConfigured, checkAresStatutory, checkVatReliability, getRegistryConfig, setRegistryConfig };
