@@ -61,10 +61,17 @@ router.post('/validate-recipients', async (req, res) => {
 
 // POST /api/campaigns/send - Mock sending data messages and schedule calendar reminders
 router.post('/send', async (req, res) => {
-    const { clientName, caseNumber, recipients } = req.body;
+    const { clientName, caseNumber, recipients, confirmedByLawyer } = req.body;
     if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
         return res.status(400).json({ error: "Příjemci jsou povinní." });
     }
+    // BEZPEČNOSTNÍ INVARIANT: nic se neodešle bez výslovného souhlasu advokáta.
+    // Agent ani automatizace tento příznak nenastaví — musí přijít z potvrzené akce.
+    if (confirmedByLawyer !== true) {
+        logEvent('Kampaně', 'Odeslání ZAMÍTNUTO — chybí souhlas advokáta', clientName || 'kampaň', { caseNumber: caseNumber || null, recipients: recipients.length });
+        return res.status(403).json({ error: 'Odeslání odepřeno: chybí výslovný souhlas advokáta (confirmedByLawyer).' });
+    }
+    logEvent('Kampaně', 'Souhlas advokáta s odesláním', clientName || 'kampaň', { caseNumber: caseNumber || null, recipients: recipients.length });
 
     try {
         const CALENDAR_DIR = path.join(WATCH_DIR, 'Kalendar');
