@@ -38,9 +38,11 @@ function setWatcherState(active) {
     console.log(`👀 Stav sledování spisy složky změněn na: ${isWatcherActive ? 'AKTIVNÍ' : 'POZASTAVENO'}`);
 }
 
+// persistent:false pod testy (JEST_WORKER_ID) — watcher pak nedrží event loop
+// a jest může korektně skončit; v produkci zůstává persistent:true.
 const watcher = chokidar.watch(WATCH_DIR, {
     ignored: /(^|[\/\\])\../, // ignore dotfiles
-    persistent: true
+    persistent: typeof process.env.JEST_WORKER_ID === 'undefined'
 });
 
 watcher.on('add', async (filePath) => {

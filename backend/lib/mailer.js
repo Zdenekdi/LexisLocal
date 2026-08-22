@@ -76,6 +76,15 @@ function createTransport(settings) {
 // Odešle e-mail. settings = SMTP konfigurace, message = { to, subject, body, attachmentPaths[] }.
 // _transport (volitelný) umožní testům podstrčit mock místo reálného SMTP.
 async function sendMail(settings, message, _transport) {
+    // BEZPEČNOSTNÍ INVARIANT (fail-closed): žádný e-mail se neodešle bez výslovného
+    // souhlasu advokáta. Guard je přímo v jádru odeslání — jakékoli budoucí napojení
+    // je tím fail-closed z principu, ne jen z paměti vývojáře. Agent/automatizace
+    // tento příznak nikdy nenastaví; musí přijít z potvrzené akce advokáta.
+    if (!message || message.confirmedByLawyer !== true) {
+        const e = new Error('Odeslání e-mailu odepřeno: chybí výslovný souhlas advokáta (confirmedByLawyer).');
+        e.code = 'NO_CONSENT';
+        throw e;
+    }
     const missing = validateSmtp(settings);
     if (missing.length) {
         const e = new Error('Chybí SMTP nastavení: ' + missing.join(', '));

@@ -13,6 +13,13 @@ const { logEvent } = require('../lib/audit');
 const { loadAgents } = require('../lib/agents');
 const ollama = require('../lib/ai_provider'); // Ollama | OpenAI | Anthropic (stejné rozhraní)
 const { generateAgentFallback } = require('../lib/agent_fallback');
+const mailer = require('../lib/mailer');
+const spisy = require('../lib/spisy');
+const ChiefOrchestrator = require('../lib/orchestrator');
+const scheduling = require('../lib/schedulingParse');
+const booking = require('../lib/calendarBooking');
+const { processEmailTask } = require('../lib/emailTask');
+const imapIntake = require('../lib/imapIntake');
 
 // GET /api/email/settings - Načíst nastavení IMAP/SMTP a autorizovaného odesílatele
 router.get('/settings', (req, res) => {
@@ -226,6 +233,94 @@ ${replyText}`;
     } catch (err) {
         console.error("Chyba zpracování e-mailového úkolu:", err);
         res.status(500).json({ error: `Chyba při zpracování úkolu: ${err.message}` });
+    }
+});
+
+// POST /api/email/send — reálné odeslání e-mailu klientovi přes SMTP (i s přílohou)
+// a pravdivý zápis do spisu (server má potvrzení od SMTP serveru).
+// BEZPEČNOSTNÍ INVARIANT: bez confirmedByLawyer === true se NEODESÍLÁ (fail-closed).
+router.post('/send', async (req, res) => {
+    try {
+        const b = req.body || {};
+        const to = b.to || b.recipientEmail;
+        if (!to) return res.status(400).json({ success: false, error: 'Chybí příjemce.' });
+        if (b.confirmedByLawyer !== true) {
+            logEvent('E-mail', 'Odeslání ZAMÍTNUTO — chybí souhlas advokáta', b.clientName || to, { caseNumber: b.caseNumber || null });
+            return res.status(403).json({ success: false, error: 'Odeslání odepřeno: chybí výslovný souhlas advokáta (confirmedByLawyer).', code: 'NO_CONSENT' });
+        }
+        // SMTP nastavení z lokální DB
+        const settingsList = db.get('email_settings') || [];
+        const settings = settingsList.length > 0 ? settingsList[0] : {};
+        const missing = mailer.validateSmtp(settings);
+        if (missing.length) {
+            return res.status(400).json({ success: false, error: 'Chybí SMTP nastavení: ' + missing.join(', '), code: 'SMTP_CONFIG' });
+        }
+        // Odeslání (mailer sám znovu vynucuje confirmedByLawyer — fail-closed jádro)
+        try {
+            await mailer.sendMail(settings, {
+                to,
+                subject: b.subject || '',
+                body: b.body || '',
+                attachmentPaths: Array.isArray(b.attachmentPaths) ? b.attachmentPaths : [],
+                confirmedByLawyer: true
+            });
+        } catch (e) {
+            const code = e.code || 'SEND_FAILED';
+            const status = (code === 'SMTP_CONFIG' || code === 'NO_ATTACHMENT' || code === 'NO_RECIPIENT') ? 400 : 502;
+            logEvent('E-mail', 'Odeslání selhalo', b.clientName || to, { caseNumber: b.caseNumber || null, error: e.message });
+            return res.status(status).json({ success: false, error: e.message, code });
+        }
+        // Pravdivý zápis do spisu (jen když známe sp. zn. a spis existuje)
+        let linkedToCase = false;
+        const caseNumber = (b.caseNumber || '').trim();
+        if (caseNumber) {
+            const spis = spisy.findByCase(caseNumber);
+            if (spis) {
+                spisy.addEvent(spis.id, 'email', `E-mail odeslán klientovi (${to})` + (b.subject ? ` — „${b.subject}"` : '') + '.', { recipient: to, cj: b.cj || null, dmID: b.dmID || null });
+                linkedToCase = true;
+            }
+        }
+        logEvent('E-mail', 'Odeslání klientovi (SMTP)', b.clientName || to, { caseNumber: caseNumber || null, recipient: to, linkedToCase, spisId: (b.spisId || null) });
+        res.json({ success: true, linkedToCase });
+    } catch (err) {
+        res.status(500).json({ success: false, error: 'Odeslání e-mailu selhalo: ' + err.message });
+    }
+});
+
+// POST /api/email/process — E-MAILOVÉ ÚKOLOVÁNÍ (multiagentní flow).
+// Advokát pošle zadání → sekretářka (ChiefOrchestrator) ho roztřídí a deleguje na
+// agenty (spisovatel/rešeršník/kontrolor/stylista) → výsledek se AUTOMATICKY pošle
+// ZPĚT na ověřený e-mail advokáta.
+//
+// BEZPEČNOST (fail-closed):
+//  • Spustí se JEN pro autorizovaný e-mail advokáta (jinak 403). Nikdo cizí nemůže
+//    přes e-mail ovládat agenty.
+//  • Automatická odpověď smí jít VÝHRADNĚ na authorized_sender (advokátovu vlastní
+//    ověřenou adresu). Příjemce se nikdy nebere z obsahu → dokument nikdy neodejde
+//    třetí straně. Odeslání jinam než na authorized_sender je tvrdě odmítnuto.
+//  • confirmedByLawyer je splněn původem: zadání přišlo z ověřené adresy advokáta.
+router.post('/process', async (req, res) => {
+    try {
+        const { sender, subject, body, caseNumber } = req.body || {};
+        const r = await processEmailTask({ sender, subject, body, caseNumber });
+        if (r.status === 'bad-request') return res.status(400).json({ error: r.error });
+        if (r.status === 'unauthorized') return res.status(403).json({ error: r.error });
+        res.json({ success: true, mode: r.mode, task: r.task, replied: r.replied, replyError: r.replyError, steps: r.steps, citationCheck: r.citationCheck, scheduling: r.scheduling });
+    } catch (err) {
+        res.status(500).json({ error: 'Zpracování e-mailového úkolu selhalo: ' + err.message });
+    }
+});
+
+// POST /api/email/poll — ručně vyzvedne a zpracuje nové e-maily z IMAP schránky
+// (jinak běží na pozadí dle imap_enabled). Vrací souhrn { processed, skipped, errors }.
+router.post('/poll', async (req, res) => {
+    try {
+        const settingsList = db.get('email_settings') || [];
+        const settings = settingsList.length > 0 ? settingsList[0] : {};
+        const r = await imapIntake.pollOnce(settings);
+        res.json({ success: !!r.ok, ...r });
+    } catch (err) {
+        res.status(500).json({ error: 'IMAP poll selhal: ' + err.message });
     }
 });
 

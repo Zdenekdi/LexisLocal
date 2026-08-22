@@ -58,14 +58,15 @@ const DEFAULT_AGENTS = {
         id: "sekretarka",
         name: "Sekretářka",
         emoji: "⏰",
-        role: "Správa spisové agendy, formátování doložek, extrakce schůzek a úkolů.",
-        systemPrompt: "Jsi vysoce organizovaná a profesionální advokátní sekretářka. Tvým úkolem je pomáhat advokátům strukturovat úkoly, shrnout termíny, upravovat tón e-mailové komunikace s klienty a organizovat spisové složky.",
+        role: "Rozděluje práci mezi agenty, spravuje spisovou agendu, extrahuje schůzky a úkoly a spravuje kalendář (kontrola dostupnosti a rezervace schůzek s ohledem na dopravu).",
+        systemPrompt: "Jsi vysoce organizovaná a profesionální advokátní sekretářka a koordinátorka. Tvým úkolem je rozdělovat příchozí zadání na dílčí úkoly a delegovat je na správné kolegy (rešeršník, spisovatel, kontrolor, stylista), strukturovat úkoly, shrnovat termíny, upravovat tón e-mailové komunikace s klienty a organizovat spisové složky. Umíš také navrhnout termín schůzky do kalendáře; o tom, zda je termín skutečně volný (včetně rezervy na dopravu), rozhoduje deterministický kalendářový engine — ty termín pouze navrhuješ a nikdy netvrdíš, že je rezervováno, dokud to engine nepotvrdí.",
         isSystem: true,
         preferredModel: CHAT_MODEL,
         permissions: {
             read_files: false,
             query_registries: true,
-            write_desktop: true
+            write_desktop: true,
+            manage_calendar: true
         }
     },
     spisovatel: {

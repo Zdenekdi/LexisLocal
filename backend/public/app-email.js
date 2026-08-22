@@ -98,14 +98,17 @@ Object.assign(LexisLocalApp.prototype, {
             btn.textContent = "AI asistent zpracovává úkol... 🤖";
         }
         
+        const orchestrateEl = document.getElementById('ems-orchestrate');
+        const orchestrate = orchestrateEl ? orchestrateEl.checked : false;
         const taskData = {
             sender: document.getElementById('ems-sender').value.trim(),
             subject: document.getElementById('ems-subject').value.trim(),
             body: document.getElementById('ems-body').value.trim()
         };
-        
+
         try {
-            const res = await fetch(`${this.apiBase}/email/simulate`, {
+            const endpoint = orchestrate ? `${this.apiBase}/email/process` : `${this.apiBase}/email/simulate`;
+            const res = await fetch(endpoint, {
                 method: 'POST',
                 headers: this.getHeaders({ 'Content-Type': 'application/json' }),
                 body: JSON.stringify(taskData)
@@ -113,14 +116,23 @@ Object.assign(LexisLocalApp.prototype, {
             const data = await res.json();
             if (data.success) {
                 if (dialog) dialog.close();
-                alert(`✓ Úkol zpracován asistentem (${data.task.assignedAgentName} ${data.task.assignedAgentEmoji}). Odpověď je připravena níže — v tomto režimu se e-mailem reálně neodesílá.`);
+                if (orchestrate) {
+                    const kroky = (data.steps && data.steps.length) ? '\nKroky: ' + data.steps.join(' → ') : '';
+                    if (data.replied) {
+                        alert(`✓ Úkol zpracován (${data.mode}). Výsledek byl AUTOMATICKY odeslán zpět na Váš e-mail.` + kroky);
+                    } else {
+                        alert(`✓ Úkol zpracován (${data.mode}) a uložen níže. Automatická odpověď se neodeslala: ${data.replyError || 'neznámý důvod'}.` + kroky);
+                    }
+                } else {
+                    alert(`✓ Úkol zpracován asistentem (${data.task.assignedAgentName} ${data.task.assignedAgentEmoji}). Odpověď je připravena níže — v tomto režimu se e-mailem reálně neodesílá.`);
+                }
                 await this.loadEmailTasks();
                 this.renderInbox();
             } else {
                 alert("❌ Chyba: " + data.error);
             }
         } catch (err) {
-            alert("❌ Síťová chyba při simulaci: " + err.message);
+            alert("❌ Síťová chyba při zpracování: " + err.message);
         } finally {
             if (btn) {
                 btn.disabled = false;

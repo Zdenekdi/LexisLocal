@@ -55,7 +55,7 @@ describe('mailer.sendMail (mock transport)', () => {
     test('odešle přes injektovaný transport se správnými poli', async () => {
         const sent = [];
         const mock = { sendMail: async (msg) => { sent.push(msg); return { messageId: 'ok' }; } };
-        const res = await mailer.sendMail(SMTP, { to: 'klient@x.cz', subject: 'Předvolání', body: 'Dobrý den' }, mock);
+        const res = await mailer.sendMail(SMTP, { to: 'klient@x.cz', subject: 'Předvolání', body: 'Dobrý den', confirmedByLawyer: true }, mock);
         expect(res.messageId).toBe('ok');
         expect(sent).toHaveLength(1);
         expect(sent[0]).toMatchObject({ from: 'advokat@example.cz', to: 'klient@x.cz', subject: 'Předvolání', text: 'Dobrý den' });
@@ -63,12 +63,20 @@ describe('mailer.sendMail (mock transport)', () => {
 
     test('bez SMTP nastavení → chyba SMTP_CONFIG (neodešle)', async () => {
         const mock = { sendMail: async () => { throw new Error('nemělo se volat'); } };
-        await expect(mailer.sendMail({}, { to: 'x@y.cz' }, mock)).rejects.toThrow(/Chybí SMTP nastavení/);
+        await expect(mailer.sendMail({}, { to: 'x@y.cz', confirmedByLawyer: true }, mock)).rejects.toThrow(/Chybí SMTP nastavení/);
     });
 
     test('bez příjemce → chyba NO_RECIPIENT', async () => {
         const mock = { sendMail: async () => ({}) };
-        await expect(mailer.sendMail(SMTP, { to: '' }, mock)).rejects.toThrow(/příjemce/);
+        await expect(mailer.sendMail(SMTP, { to: '', confirmedByLawyer: true }, mock)).rejects.toThrow(/příjemce/);
+    });
+
+    test('INVARIANT: bez souhlasu advokáta se NEODESÍLÁ (NO_CONSENT)', async () => {
+        const mock = { sendMail: async () => { throw new Error('nemělo se volat'); } };
+        await expect(mailer.sendMail(SMTP, { to: 'klient@x.cz', subject: 'X', body: 'Y' }, mock))
+            .rejects.toThrow(/souhlas advokáta/);
+        await expect(mailer.sendMail(SMTP, { to: 'klient@x.cz', confirmedByLawyer: false }, mock))
+            .rejects.toMatchObject({ code: 'NO_CONSENT' });
     });
 });
 

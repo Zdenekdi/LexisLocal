@@ -14,6 +14,14 @@ const { sanitizeFileName } = require('../lib/pathsafe');
 const { writeToSystemCalendar } = require('../lib/calendar');
 const HearingsWatcher = require('../lib/hearings');
 const db = require('../lib/database');
+const availability = require('../lib/calendarAvailability');
+const booking = require('../lib/calendarBooking');
+const { logEvent } = require('../lib/audit');
+
+// Sjednocený seznam událostí (lhůty + jednání + rezervované schůzky) ve tvaru,
+// který čte i /events i engine dostupnosti. Jeden zdroj pravdy.
+function collectAllEvents() { return booking.collectAllEvents(); }
+
 
 // POST /api/calendar/add - Generate standard .ics file inside LexisSpisy/Kalendar folder
 router.post('/add', async (req, res) => {
@@ -176,9 +184,64 @@ router.get('/events', async (req, res) => {
             });
         });
 
+        // Rezervované schůzky
+        (db.get('meetings') || []).forEach(m => {
+            events.push({ id: m.id, type: 'meeting', title: m.title, date: m.date, time: m.time || '', status: m.status || 'scheduled', description: m.description || 'Schůzka', location: m.location || '' });
+        });
+
         res.json({ success: true, events });
     } catch (err) {
         res.status(500).json({ error: `Nelze načíst kalendářní události: ${err.message}` });
+    }
+});
+
+// POST /api/calendar/availability — kontrola volného termínu / návrh volných slotů.
+// Tělo: { date, durationMin?, time?, travelBufferMin?, workStart?, workEnd? }
+//   • s `time`  → ověří konkrétní slot (free + konflikty + návrhy, když obsazeno),
+//   • bez `time`→ vrátí volné termíny pro daný den.
+router.post('/availability', (req, res) => {
+    try {
+        const b = req.body || {};
+        if (!b.date) return res.status(400).json({ error: 'Datum je povinné (YYYY-MM-DD).' });
+        const durationMin = Number.isFinite(b.durationMin) ? b.durationMin : 60;
+        const opts = {};
+        if (Number.isFinite(b.travelBufferMin)) opts.travelBufferMin = b.travelBufferMin;
+        if (typeof b.workStart === 'string') { const v = availability._toMin(b.workStart); if (v != null) opts.workStartMin = v; }
+        if (typeof b.workEnd === 'string') { const v = availability._toMin(b.workEnd); if (v != null) opts.workEndMin = v; }
+        const events = collectAllEvents();
+        if (b.time) {
+            const startMin = availability._toMin(b.time);
+            const check = availability.checkSlot(events, b.date, startMin, durationMin, opts);
+            const suggestions = check.free ? [] : availability.findFreeSlots(events, b.date, durationMin, opts).slice(0, 8);
+            return res.json({ success: true, date: b.date, durationMin, check, suggestions });
+        }
+        const slots = availability.findFreeSlots(events, b.date, durationMin, opts);
+        res.json({ success: true, date: b.date, durationMin, freeSlots: slots });
+    } catch (err) {
+        res.status(500).json({ error: 'Chyba při výpočtu dostupnosti: ' + err.message });
+    }
+});
+
+// POST /api/calendar/book — REZERVACE schůzky. FAIL-CLOSED: rezervuje JEN když je
+// volno (s ohledem na dopravu). Při kolizi vrátí 409 + konflikty + volné alternativy.
+// Tělo: { title, date, time, durationMin?, location?, travelBufferMin?, spisId?, description? }
+router.post('/book', async (req, res) => {
+    try {
+        const b = req.body || {};
+        const r = booking.tryBook({
+            title: b.title, date: b.date, time: b.time,
+            durationMin: Number.isFinite(b.durationMin) ? b.durationMin : 60,
+            location: b.location, description: b.description,
+            travelBufferMin: Number.isFinite(b.travelBufferMin) ? b.travelBufferMin : undefined,
+            spisId: b.spisId, source: 'manual'
+        });
+        if (r.reason === 'missing-fields') return res.status(400).json({ error: 'Název, datum a čas jsou povinné.' });
+        if (!r.booked) {
+            return res.status(409).json({ success: false, error: r.reason === 'out-of-hours' ? 'Termín je mimo pracovní hodiny.' : 'Termín koliduje s jinou událostí (včetně rezervy na dopravu).', check: r.check, suggestions: r.suggestions || [] });
+        }
+        res.status(201).json({ success: true, meeting: r.meeting });
+    } catch (err) {
+        res.status(500).json({ error: 'Rezervace schůzky selhala: ' + err.message });
     }
 });
 

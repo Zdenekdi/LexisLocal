@@ -176,6 +176,7 @@ app.use('/api/registry', require('./routes/registry'));
 app.use('/api/registries', require('./routes/registries'));
 app.use('/api/paperless', require('./routes/paperless'));
 app.use('/api/email', require('./routes/email'));
+app.use('/api/case', require('./routes/case'));
 app.use('/api/campaigns', require('./routes/campaigns'));
 app.use('/api/inbox', require('./routes/inbox'));
 app.use('/api/spisy', require('./routes/spisy'));
@@ -201,12 +202,17 @@ app.get('/api/status', (req, res) => {
     });
 });
 
-// Spouštět kontrolu změn soudních jednání na pozadí (každou hodinu)
-setInterval(() => {
-    HearingsWatcher.checkAllHearings(WATCH_DIR).catch(err => {
-        console.error("⚠️ Background monitored hearings check error:", err.message);
-    });
-}, 60 * 60 * 1000);
+// Spouštět kontrolu změn soudních jednání na pozadí (každou hodinu).
+// Pod testy (JEST_WORKER_ID) NEspouštět — jinak timer drží event loop a jest
+// nemůže korektně skončit. V produkci timer .unref(), ať nikdy neblokuje ukončení.
+if (typeof process.env.JEST_WORKER_ID === 'undefined') {
+    const _hearingsTimer = setInterval(() => {
+        HearingsWatcher.checkAllHearings(WATCH_DIR).catch(err => {
+            console.error("⚠️ Background monitored hearings check error:", err.message);
+        });
+    }, 60 * 60 * 1000);
+    if (_hearingsTimer && typeof _hearingsTimer.unref === 'function') _hearingsTimer.unref();
+}
 
 const USE_HTTPS = process.env.USE_HTTPS === 'true';
 
@@ -214,6 +220,15 @@ const SSL_KEY_PATH = process.env.SSL_KEY_PATH || 'key.pem';
 const SSL_CERT_PATH = process.env.SSL_CERT_PATH || 'cert.pem';
 
 if (require.main === module) {
+    // IMAP příjem e-mailů (jen při přímém spuštění serveru; nikdy pod testy).
+    try {
+        const db = require('./lib/database');
+        const imapIntake = require('./lib/imapIntake');
+        const _getEmailSettings = () => { const l = db.get('email_settings') || []; return l[0] || {}; };
+        const _pollMs = Math.max(60, parseInt((_getEmailSettings().imap_poll_minutes || 5), 10)) * 60 * 1000;
+        imapIntake.startPolling(_getEmailSettings, _pollMs);
+    } catch (e) { console.error('⚠️ IMAP poller se nepodařilo spustit:', e.message); }
+
     // Bezpečnostní pojistka: vazba na síť (ne-loopback) BEZ ochrany je nebezpečná —
     // API s klientskými daty by bylo na LAN dostupné komukoli. Hlasitě varujeme.
     const _isLoopback = ['127.0.0.1', 'localhost', '::1'].includes(BIND_HOST);
