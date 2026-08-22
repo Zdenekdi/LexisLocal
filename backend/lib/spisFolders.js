@@ -229,6 +229,30 @@ function saveDraftToSpis(o) {
     return { savedPath, filed, folderId: folderId || null, reason: reason || null };
 }
 
+// Seznam konceptů ve složce spisu (03_Koncepty). Prázdné, když spis nemá složku.
+function listDrafts(spisId) {
+    const found = findFolderBySpisId(spisId);
+    if (!found || !found.folderPath) return [];
+    const dir = path.join(found.folderPath, DRAFT_SUBFOLDER);
+    try {
+        return fs.readdirSync(dir).filter(function (n) { return !n.startsWith('.'); }).map(function (n) {
+            var st = null; try { st = fs.statSync(path.join(dir, n)); } catch (e) {}
+            return { fileName: n, path: path.join(dir, n), size: st ? st.size : null, mtime: st ? st.mtime.toISOString() : null };
+        });
+    } catch (e) { return []; }
+}
+
+// Seznam konceptů, které skončily fail-closed v _Nezařazeno (čekají na ruční zařazení).
+function listNezarazeno() {
+    const dir = path.join(getIngest(), NEZARAZENO);
+    try {
+        return fs.readdirSync(dir).filter(function (n) { return !n.startsWith('.'); }).map(function (n) {
+            var st = null; try { st = fs.statSync(path.join(dir, n)); } catch (e) {}
+            return { fileName: n, path: path.join(dir, n), size: st ? st.size : null, mtime: st ? st.mtime.toISOString() : null };
+        });
+    } catch (e) { return []; }
+}
+
 module.exports = {
     MARKER,
     SUBFOLDERS,
@@ -241,6 +265,8 @@ module.exports = {
     resolveDraftTarget,
     nezarazenoDir,
     saveDraftToSpis,
+    listDrafts,
+    listNezarazeno,
     _slug,
     _nextFolderId
 };

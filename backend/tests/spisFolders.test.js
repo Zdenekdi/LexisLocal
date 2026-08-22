@@ -104,3 +104,22 @@ describe('spisFolders — bezpečné směrování zápisu', () => {
         expect(f).toBeNull();
     });
 });
+
+describe('spisFolders — čtení konceptů (listDrafts / listNezarazeno)', () => {
+    test('listDrafts vrátí koncepty uložené ve složce spisu', () => {
+        const drafts = sf.listDrafts('spis_A');
+        const names = drafts.map(d => d.fileName);
+        expect(names).toContain('zaloba.docx');
+        expect(drafts.every(d => typeof d.path === 'string' && d.path.length > 0)).toBe(true);
+    });
+
+    test('listDrafts pro neznámý spis vrátí [] (fail-closed, žádná výjimka)', () => {
+        expect(sf.listDrafts('spis_NEEXISTUJE')).toEqual([]);
+    });
+
+    test('listNezarazeno vrátí koncepty, které skončily fail-closed', () => {
+        const files = sf.listNezarazeno();
+        const names = files.map(f => f.fileName);
+        expect(names).toContain('podani.docx');
+    });
+});

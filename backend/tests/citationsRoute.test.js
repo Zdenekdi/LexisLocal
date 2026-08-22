@@ -38,3 +38,17 @@ describe('POST /api/citations/verify', () => {
         expect(r.body.total).toBeGreaterThanOrEqual(1);
     });
 });
+
+describe('GET /api/citations/sources', () => {
+    test('vrátí seznam právních zdrojů s příznakem enabled', async () => {
+        const r = await H(request(app).get('/api/citations/sources'));
+        expect(r.statusCode).toBe(200);
+        expect(Array.isArray(r.body.providers)).toBe(true);
+        expect(r.body.providers.length).toBeGreaterThanOrEqual(1);
+        r.body.providers.forEach(p => {
+            expect(typeof p.name).toBe('string');
+            expect(typeof p.enabled).toBe('boolean');
+        });
+    });
+});
+

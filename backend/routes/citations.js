@@ -12,6 +12,7 @@ const express = require('express');
 const router = express.Router();
 const { verifyCitations, verifyCitationsWithSources } = require('../lib/citation_verifier');
 const { logEvent } = require('../lib/audit');
+const legalSources = require('../lib/legalSources');
 
 // POST /api/citations/verify — ověří citace v textu (volitelně proti externím zdrojům)
 // Tělo: { text, contextChunks?, referenceIndex?, useSources?:true, strict? }
@@ -36,6 +37,15 @@ router.post('/verify', async (req, res) => {
         res.json(result);
     } catch (err) {
         res.status(500).json({ error: 'Ověření citací selhalo: ' + err.message });
+    }
+});
+
+// GET /api/citations/sources — přehled právních zdrojů (providerů) a zda jsou zapnuté
+router.get('/sources', (req, res) => {
+    try {
+        res.json({ providers: legalSources.listProviders() });
+    } catch (err) {
+        res.status(500).json({ error: 'Načtení právních zdrojů selhalo: ' + err.message });
     }
 });
 

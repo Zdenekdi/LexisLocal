@@ -64,6 +64,16 @@ router.get('/unfiled', (req, res) => {
     }
 });
 
+// GET /api/spisy/nezarazeno-drafts — koncepty, které fail-closed skončily v _Nezařazeno
+// (čekají na ruční zařazení). MUSÍ být před /:id, jinak Express bere řetězec jako :id.
+router.get('/nezarazeno-drafts', (req, res) => {
+    try {
+        res.json({ files: spisFolders.listNezarazeno() });
+    } catch (err) {
+        res.status(500).json({ error: `Chyba při načtení nezařazených konceptů: ${err.message}` });
+    }
+});
+
 // GET /api/spisy/:id — kompletní detail spisu se vším navázaným obsahem
 router.get('/:id', (req, res) => {
     const detail = spisy.getSpisDetail(req.params.id);
@@ -154,6 +164,18 @@ router.post('/:id/draft', (req, res) => {
         res.status(201).json({ success: true, ...r });
     } catch (err) {
         res.status(400).json({ error: err.message });
+    }
+});
+
+// GET /api/spisy/:id/drafts — seznam uložených konceptů ve složce spisu (03_Koncepty)
+router.get('/:id/drafts', (req, res) => {
+    try {
+        const spis = spisy.getSpis(req.params.id);
+        if (!spis) return res.status(404).json({ error: 'Spis nenalezen.' });
+        if (!requireAccess(req, res, spis, 'read')) return;
+        res.json({ drafts: spisFolders.listDrafts(spis.id) });
+    } catch (err) {
+        res.status(500).json({ error: `Chyba při načtení konceptů: ${err.message}` });
     }
 });
 
