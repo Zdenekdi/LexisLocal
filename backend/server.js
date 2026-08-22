@@ -179,6 +179,7 @@ app.use('/api/email', require('./routes/email'));
 app.use('/api/campaigns', require('./routes/campaigns'));
 app.use('/api/inbox', require('./routes/inbox'));
 app.use('/api/spisy', require('./routes/spisy'));
+app.use('/api/citations', require('./routes/citations'));
 app.use('/api/settings', require('./routes/settings'));
 app.use('/api/lhutnik', require('./routes/lhutnik'));
 app.use('/api/skartace', require('./routes/skartace'));

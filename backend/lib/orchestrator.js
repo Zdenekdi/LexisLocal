@@ -275,11 +275,26 @@ class ChiefOrchestrator {
         const durationMs = Date.now() - startTime;
         console.log(`🏁 Chief Orchestrator: Kompletní orchestrace úspěšně dokončena za ${durationMs}ms.`);
 
+        // Anti-halucinační kontrola citací nad finálním výstupem (deterministicky +
+        // proti externím zdrojům). Neověřené §/značky se označí, ať je advokát vidí.
+        let citationCheck = null;
+        try {
+            const { verifyCitationsWithSources } = require('./citation_verifier');
+            citationCheck = await verifyCitationsWithSources(finalResponse, {});
+        } catch (e) { citationCheck = null; }
+
         return {
             success: true,
             prompt,
             steps: stepsLog,
             finalOutput: finalResponse,
+            citationCheck: citationCheck ? {
+                total: citationCheck.total,
+                unverifiedCount: citationCheck.unverifiedCount,
+                citations: citationCheck.citations,
+                annotatedText: citationCheck.annotatedText,
+                sourcesConsulted: citationCheck.sourcesConsulted
+            } : null,
             durationMs,
             timestamp: new Date().toISOString()
         };
