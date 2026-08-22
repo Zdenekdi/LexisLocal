@@ -1,6 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('api', {
+    selectDirectory: () => ipcRenderer.invoke('select-directory'),
     send: (channel, data) => {
         // whitelist channels
         const validChannels = ['get-settings', 'save-settings'];

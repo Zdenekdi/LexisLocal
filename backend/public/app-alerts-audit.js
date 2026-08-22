@@ -166,6 +166,7 @@ Object.assign(LexisLocalApp.prototype, {
                 this.auditLogs = data.logs || [];
                 this.renderAuditLogs(this.auditLogs);
                 this.updateAuditStats(this.auditLogs);
+                this.verifyAuditChainBadge();
                 this.loadGreenMetricsAndTelemetry();
                 this.loadTransparencyLedger();
             } else {
@@ -174,6 +175,29 @@ Object.assign(LexisLocalApp.prototype, {
         } catch (err) {
             console.error("❌ Chyba sítě při načítání auditních logů:", err.message);
         }
+    },
+
+    async verifyAuditChainBadge() {
+        try {
+            const res = await fetch(`${this.apiBase}/audit/verify-chain`, { headers: this.getHeaders() });
+            const r = await res.json();
+            const anchor = document.getElementById('audit-stat-total');
+            if (!anchor) return;
+            let badge = document.getElementById('audit-chain-status');
+            if (!badge) {
+                badge = document.createElement('div');
+                badge.id = 'audit-chain-status';
+                badge.style.cssText = 'margin:8px 0;font-size:0.85rem;font-weight:600;';
+                const host = anchor.closest('div') || anchor.parentElement;
+                if (host && host.parentElement) host.parentElement.insertBefore(badge, host);
+                else document.body.appendChild(badge);
+            }
+            if (r && r.ok) {
+                badge.innerHTML = `🔒 <span style="color:#22c55e;">Auditní řetěz neporušen</span> <span style="opacity:0.5;">(${r.checked} ověřeno${r.legacy ? ', ' + r.legacy + ' starších' : ''})</span>`;
+            } else {
+                badge.innerHTML = `⚠️ <span style="color:#ef4444;">Auditní řetěz PORUŠEN</span> <span style="opacity:0.6;">(${escapeHtml((r && r.reason) || 'neznámo')}${(r && r.brokenAt != null) ? ', záznam #' + r.brokenAt : ''})</span>`;
+            }
+        } catch (e) { /* tiché — badge se nezobrazí */ }
     },
 
     updateAuditStats(logs) {

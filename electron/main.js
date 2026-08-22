@@ -9,6 +9,15 @@
  */
 
 const { app, Tray, Menu, shell, dialog, nativeImage, BrowserWindow, ipcMain } = require('electron');
+
+// Nativní výběr složky (spisovna) pro nastavení.
+ipcMain.handle('select-directory', async () => {
+    try {
+        const r = await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] });
+        if (r.canceled || !r.filePaths || !r.filePaths.length) return { canceled: true };
+        return { canceled: false, path: r.filePaths[0] };
+    } catch (e) { return { canceled: true, error: e.message }; }
+});
 const path = require('path');
 const { fork } = require('child_process');
 const fs = require('fs');

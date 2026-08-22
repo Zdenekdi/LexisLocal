@@ -138,7 +138,10 @@
 
     <div class="section" id="watchDir-section">
         <label>Sledovaná složka Spisy</label>
-        <input type="text" id="watchDir" placeholder="Např. /Users/novak/Desktop/LexisSpisy">
+        <div style="display:flex;gap:8px;">
+            <input type="text" id="watchDir" placeholder="Např. /Users/novak/Desktop/LexisSpisy" style="flex:1;">
+            <button type="button" onclick="browseWatchDir()" style="background:#334155;border:1px solid #475569;border-radius:8px;padding:0 14px;color:#e2e8f0;cursor:pointer;font-size:13px;">📁 Procházet…</button>
+        </div>
     </div>
 
     <div class="section" id="port-section">
@@ -239,6 +242,13 @@
         function toggleSwitch(el, id) {
             el.classList.toggle('active');
             settings[id] = el.classList.contains('active');
+        }
+
+        async function browseWatchDir() {
+            try {
+                const r = window.api.selectDirectory ? await window.api.selectDirectory() : null;
+                if (r && !r.canceled && r.path) document.getElementById('watchDir').value = r.path;
+            } catch (e) { /* dialog zrušen */ }
         }
 
         function saveSettings() {

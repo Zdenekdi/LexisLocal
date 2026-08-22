@@ -86,6 +86,7 @@ Object.assign(LexisLocalApp.prototype, {
                     <button class="btn btn-secondary" style="font-size:0.8rem;padding:6px 12px;" onclick="window.appInstance.setSpisStav('${s.id}','archiv')">Archivovat</button>
                     <button class="btn btn-secondary" style="font-size:0.8rem;padding:6px 12px;" onclick="window.appInstance.setSpisStav('${s.id}','skartace')">Ke skartaci</button>
                     <button class="btn btn-primary" style="font-size:0.8rem;padding:6px 12px;" onclick="window.appInstance.fakturaZeSpisu('${s.id}')">💶 Vystavit fakturu</button>
+                    <button class="btn btn-secondary" style="font-size:0.8rem;padding:6px 12px;" onclick="window.appInstance.openSpisTimeline('${s.id}')">🕒 Časová osa</button>
                 </div>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
                     <div><h4 style="margin:0 0 6px;">Dokumenty</h4><ul style="margin:0;padding-left:18px;font-size:0.85rem;">${docs}</ul></div>
@@ -93,6 +94,24 @@ Object.assign(LexisLocalApp.prototype, {
                 </div>
                 <h4 style="margin:14px 0 6px;">Spisový deník</h4>
                 <ul style="margin:0;padding-left:18px;">${events}</ul>`;
+        } catch (e) {
+            el.innerHTML = `<div style="color:#f87171;padding:12px;">Chyba: ${escapeHtml(e.message)}</div>`;
+        }
+    },
+
+    async openSpisTimeline(id) {
+        const el = document.getElementById('ss-spis-detail');
+        if (!el) return;
+        el.innerHTML = '<div style="opacity:0.6;padding:20px;">Načítám časovou osu…</div>';
+        try {
+            const tl = await this.ssGet(`/spisy/${id}/timeline`);
+            const icon = { denik: '📝', audit: '🔒', dokument: '📄', lhuta: '⏳', jednani: '⚖️' };
+            const rows = (tl.timeline || []).map(i => `<li style="font-size:0.82rem;margin-bottom:4px;">${icon[i.kind] || '•'} <span style="opacity:0.55;">${escapeHtml((i.time || '').replace('T', ' ').slice(0, 16))}</span> — ${escapeHtml(i.label || '')} <span style="opacity:0.4;">[${escapeHtml(i.kind)}]</span></li>`).join('') || '<li style="opacity:0.6;">Zatím žádné události.</li>';
+            el.innerHTML = `
+                <button class="btn btn-secondary" style="font-size:0.8rem;padding:6px 12px;margin-bottom:12px;" onclick="window.appInstance.openSpis('${id}')">← Zpět na spis</button>
+                <h3 style="margin:0 0 8px;">🕒 Časová osa spisu</h3>
+                <div style="font-size:0.8rem;opacity:0.7;margin-bottom:10px;">Sloučeno: deník, audit, dokumenty, lhůty, jednání (${tl.count} událostí).</div>
+                <ul style="margin:0;padding-left:18px;list-style:none;">${rows}</ul>`;
         } catch (e) {
             el.innerHTML = `<div style="color:#f87171;padding:12px;">Chyba: ${escapeHtml(e.message)}</div>`;
         }
