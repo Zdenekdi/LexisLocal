@@ -8,7 +8,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../lib/database');
-const { logEvent, clearAuditLogs, loadAuditLogs } = require('../lib/audit');
+const { logEvent, clearAuditLogs, loadAuditLogs, verifyAuditChain } = require('../lib/audit');
 
 // GET /api/audit/transparency/verify - Ověří integritu ledgeru (hash chain)
 router.get('/transparency/verify', (req, res) => {
@@ -70,6 +70,12 @@ router.post('/clear', async (req, res) => {
     } catch (err) {
         res.status(500).json({ error: `Nelze vyčistit logy: ${err.message}` });
     }
+});
+
+// GET /api/audit/verify-chain — ověří tamper-evident hash-chain auditního logu
+router.get('/verify-chain', (req, res) => {
+    try { res.json(verifyAuditChain()); }
+    catch (err) { res.status(500).json({ error: 'Ověření auditního řetězu selhalo: ' + err.message }); }
 });
 
 module.exports = router;

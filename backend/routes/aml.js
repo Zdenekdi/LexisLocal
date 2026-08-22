@@ -8,6 +8,11 @@ const express = require('express');
 const router = express.Router();
 const aml = require('../lib/aml');
 const { logEvent } = require('../lib/audit');
+const sanctions = require('../lib/sanctions');
+const sanctionsImport = require('../lib/sanctionsImport');
+const { DATA_DIR } = require('../lib/config');
+const path = require('path');
+const fs = require('fs');
 
 // POST /api/aml/identify — identifikace + kontrola klienta
 router.post('/identify', async (req, res) => {
@@ -53,6 +58,39 @@ router.post('/watchlist', (req, res) => {
         res.status(201).json({ entry });
     } catch (err) {
         res.status(400).json({ error: err.message });
+    }
+});
+
+// GET /api/aml/sanctions/status — je načtený oficiální sankční seznam?
+router.get('/sanctions/status', (req, res) => {
+    res.json({ available: sanctions.isAvailable(), file: process.env.LEXIS_SANCTIONS_FILE || path.join(DATA_DIR, 'sanctions.json') });
+});
+
+// POST /api/aml/sanctions/import — sestaví sankční seznam z lokálních souborů
+// (body: { ofacFile, euFile, unFile }) NEBO z konfigurovaných URL (env SANCTIONS_*_URL),
+// uloží do LEXIS_SANCTIONS_FILE a znovu načte engine. Fail-closed: bez zdrojů chyba.
+router.post('/sanctions/import', async (req, res) => {
+    try {
+        const b = req.body || {};
+        const outFile = process.env.LEXIS_SANCTIONS_FILE || path.join(DATA_DIR, 'sanctions.json');
+        let entries = null;
+        const readIf = (p) => { try { return p && fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : null; } catch (e) { return null; } };
+        const ofacCsv = readIf(b.ofacFile); const euXml = readIf(b.euFile); const unXml = readIf(b.unFile);
+        if (ofacCsv || euXml || unXml) {
+            entries = sanctionsImport.buildNormalized({ ofacCsv, euXml, unXml });
+        } else if (process.env.SANCTIONS_OFAC_URL || process.env.SANCTIONS_EU_URL || process.env.SANCTIONS_UN_URL) {
+            entries = await sanctionsImport.fetchAndBuild({ ofacUrl: process.env.SANCTIONS_OFAC_URL, euUrl: process.env.SANCTIONS_EU_URL, unUrl: process.env.SANCTIONS_UN_URL });
+        } else {
+            return res.status(400).json({ error: 'Zdroje sankčních seznamů nejsou k dispozici (zadejte cesty k souborům nebo nastavte SANCTIONS_*_URL).' });
+        }
+        if (!entries || !entries.length) return res.status(422).json({ error: 'Import nevrátil žádné záznamy — zkontrolujte zdroje.' });
+        try { fs.mkdirSync(path.dirname(outFile), { recursive: true }); } catch (e) {}
+        sanctionsImport.writeList(entries, outFile);
+        const loaded = sanctions.loadList({ file: outFile, source: 'import' });
+        logEvent('AML', 'Import sankčního seznamu', 'sanctions.json', { count: entries.length });
+        res.json({ success: true, imported: entries.length, file: outFile, loaded });
+    } catch (err) {
+        res.status(500).json({ error: 'Import sankčního seznamu selhal: ' + err.message });
     }
 });
 
