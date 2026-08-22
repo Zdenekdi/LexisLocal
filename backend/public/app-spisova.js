@@ -31,6 +31,7 @@ Object.assign(LexisLocalApp.prototype, {
         this.loadSkartace();
         this.loadFakturace();
         this.loadUnfiled();
+        this.loadNezarazenoDrafts();
     },
 
     async loadSpisyList() {
@@ -87,6 +88,7 @@ Object.assign(LexisLocalApp.prototype, {
                     <button class="btn btn-secondary" style="font-size:0.8rem;padding:6px 12px;" onclick="window.appInstance.setSpisStav('${s.id}','skartace')">Ke skartaci</button>
                     <button class="btn btn-primary" style="font-size:0.8rem;padding:6px 12px;" onclick="window.appInstance.fakturaZeSpisu('${s.id}')">💶 Vystavit fakturu</button>
                     <button class="btn btn-secondary" style="font-size:0.8rem;padding:6px 12px;" onclick="window.appInstance.openSpisTimeline('${s.id}')">🕒 Časová osa</button>
+                    <button class="btn btn-secondary" style="font-size:0.8rem;padding:6px 12px;" onclick="window.appInstance.openSpisDrafts('${s.id}')">📄 Koncepty</button>
                 </div>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
                     <div><h4 style="margin:0 0 6px;">Dokumenty</h4><ul style="margin:0;padding-left:18px;font-size:0.85rem;">${docs}</ul></div>
@@ -114,6 +116,39 @@ Object.assign(LexisLocalApp.prototype, {
                 <ul style="margin:0;padding-left:18px;list-style:none;">${rows}</ul>`;
         } catch (e) {
             el.innerHTML = `<div style="color:#f87171;padding:12px;">Chyba: ${escapeHtml(e.message)}</div>`;
+        }
+    },
+
+    async openSpisDrafts(id) {
+        const el = document.getElementById('ss-spis-detail');
+        if (!el) return;
+        el.innerHTML = '<div style="opacity:0.6;padding:20px;">Načítám koncepty…</div>';
+        try {
+            const { drafts } = await this.ssGet(`/spisy/${id}/drafts`);
+            const rows = (drafts || []).map(d => `<li style="font-size:0.85rem;margin-bottom:4px;">📄 ${escapeHtml(d.fileName)} <span style="opacity:0.5;">${d.mtime ? escapeHtml(d.mtime.replace('T', ' ').slice(0, 16)) : ''}${d.size != null ? ' · ' + Math.round(d.size / 1024) + ' kB' : ''}</span></li>`).join('') || '<li style="opacity:0.6;">Ve složce spisu (03_Koncepty) zatím nejsou žádné koncepty.</li>';
+            el.innerHTML = `
+                <button class="btn btn-secondary" style="font-size:0.8rem;padding:6px 12px;margin-bottom:12px;" onclick="window.appInstance.openSpis('${id}')">← Zpět na spis</button>
+                <h3 style="margin:0 0 8px;">📄 Koncepty ve spisu</h3>
+                <div style="font-size:0.8rem;opacity:0.7;margin-bottom:10px;">Soubory uložené ve složce <b>03_Koncepty</b> tohoto spisu.</div>
+                <ul style="margin:0;padding-left:18px;list-style:none;">${rows}</ul>`;
+        } catch (e) {
+            el.innerHTML = `<div style="color:#f87171;padding:12px;">Chyba: ${escapeHtml(e.message)}</div>`;
+        }
+    },
+
+    async loadNezarazenoDrafts() {
+        const el = document.getElementById('ss-nezarazeno-drafts');
+        if (!el) return;
+        try {
+            const { files } = await this.ssGet('/spisy/nezarazeno-drafts');
+            if (!files || !files.length) { el.innerHTML = '<div style="opacity:0.6;">Žádné koncepty ve složce _Nezařazeno. 👍</div>'; return; }
+            el.innerHTML = files.map(f => `
+                <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;font-size:0.85rem;">
+                    <span style="flex:1;">📄 ${escapeHtml(f.fileName)}</span>
+                    <span style="opacity:0.5;font-size:0.78rem;">${f.mtime ? escapeHtml(f.mtime.replace('T', ' ').slice(0, 16)) : ''}</span>
+                </div>`).join('');
+        } catch (e) {
+            el.innerHTML = `<div style="color:#f87171;">Chyba: ${escapeHtml(e.message)}</div>`;
         }
     },
 
