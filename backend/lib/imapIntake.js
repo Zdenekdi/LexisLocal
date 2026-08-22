@@ -127,4 +127,24 @@ function startPolling(getSettings, intervalMs) {
     return timer;
 }
 
-module.exports = { pollOnce, startPolling, _requiredImap, _imapflowAdapter };
+// Ověří IMAP připojení (login + otevření INBOX) bez zpracování. _connector (test seam) volitelný.
+async function testConnection(settings, _connector) {
+    const missing = _requiredImap(settings);
+    if (missing.length) return { ok: false, error: 'Chybí IMAP nastavení: ' + missing.join(', '), missing };
+    try {
+        if (_connector) { await _connector(settings); return { ok: true }; }
+        const { ImapFlow } = require('imapflow');
+        const client = new ImapFlow({
+            host: settings.imap_host, port: parseInt(settings.imap_port, 10) || 993,
+            secure: settings.imap_ssl !== false, auth: { user: settings.imap_user, pass: settings.imap_pass }, logger: false
+        });
+        await client.connect();
+        await client.mailboxOpen('INBOX');
+        await client.logout();
+        return { ok: true };
+    } catch (e) {
+        return { ok: false, error: e.message };
+    }
+}
+
+module.exports = { pollOnce, startPolling, testConnection, _requiredImap, _imapflowAdapter };

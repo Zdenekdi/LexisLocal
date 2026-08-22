@@ -20,6 +20,7 @@ const scheduling = require('../lib/schedulingParse');
 const booking = require('../lib/calendarBooking');
 const { processEmailTask } = require('../lib/emailTask');
 const imapIntake = require('../lib/imapIntake');
+const { deriveImapSmtp } = require('../lib/emailProviders');
 
 // GET /api/email/settings - Načíst nastavení IMAP/SMTP a autorizovaného odesílatele
 router.get('/settings', (req, res) => {
@@ -35,7 +36,9 @@ router.get('/settings', (req, res) => {
             smtp_host: 'smtp.advokatnikancelar.cz',
             smtp_port: '465',
             smtp_user: 'dias@advokatnikancelar.cz',
-            smtp_ssl: true
+            smtp_ssl: true,
+            imap_enabled: false,
+            imap_poll_minutes: 5
         };
         res.json({ success: true, settings: currentSettings });
     } catch (err) {
@@ -308,6 +311,31 @@ router.post('/process', async (req, res) => {
         res.json({ success: true, mode: r.mode, task: r.task, replied: r.replied, replyError: r.replyError, steps: r.steps, citationCheck: r.citationCheck, scheduling: r.scheduling });
     } catch (err) {
         res.status(500).json({ error: 'Zpracování e-mailového úkolu selhalo: ' + err.message });
+    }
+});
+
+// POST /api/email/derive — z e-mailu odvodí IMAP/SMTP servery (zjednodušené nastavení).
+// Tělo: { email }. Vrací předvyplněné nastavení, ať uživatel nezadává hosty/porty.
+router.post('/derive', (req, res) => {
+    const email = (req.body && req.body.email) || '';
+    const derived = deriveImapSmtp(email);
+    if (!derived) return res.status(400).json({ error: 'Neplatná e-mailová adresa.' });
+    res.json({ success: true, ...derived });
+});
+
+// POST /api/email/test — otestuje připojení k IMAP i SMTP (login), bez odeslání/čtení.
+// Tělo: volitelně { settings }; jinak vezme uložené nastavení.
+router.post('/test', async (req, res) => {
+    try {
+        const settings = (req.body && req.body.settings) || (db.get('email_settings') || [])[0] || {};
+        const [imapR, smtpR] = await Promise.all([
+            imapIntake.testConnection(settings).catch(e => ({ ok: false, error: e.message })),
+            mailer.verifySmtp(settings).then(() => ({ ok: true })).catch(e => ({ ok: false, error: e.message }))
+        ]);
+        logEvent('E-mail', 'Test připojení', settings.imap_user || settings.smtp_user || '', { imap: imapR.ok, smtp: smtpR.ok });
+        res.json({ success: true, imap: imapR, smtp: smtpR });
+    } catch (err) {
+        res.status(500).json({ error: 'Test připojení selhal: ' + err.message });
     }
 });
 

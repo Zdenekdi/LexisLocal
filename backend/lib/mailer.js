@@ -107,4 +107,13 @@ async function sendMail(settings, message, _transport) {
     return await transport.sendMail(msg);
 }
 
-module.exports = { sendMail, buildMessage, validateSmtp, resolveAttachments, createTransport, buildTransportConfig };
+// Ověří SMTP připojení (login) bez odeslání zprávy. _transport (test seam) volitelný.
+async function verifySmtp(settings, _transport) {
+    const missing = validateSmtp(settings);
+    if (missing.length) { const e = new Error('Chybí SMTP nastavení: ' + missing.join(', ')); e.code = 'SMTP_CONFIG'; throw e; }
+    const transport = _transport || createTransport(settings);
+    await transport.verify();
+    return true;
+}
+
+module.exports = { sendMail, verifySmtp, buildMessage, validateSmtp, resolveAttachments, createTransport, buildTransportConfig };

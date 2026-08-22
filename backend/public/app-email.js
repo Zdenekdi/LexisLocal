@@ -46,7 +46,10 @@ Object.assign(LexisLocalApp.prototype, {
             smtp_port: document.getElementById('em-smtp-port').value.trim(),
             smtp_user: document.getElementById('em-smtp-user').value.trim(),
             smtp_ssl: document.getElementById('em-smtp-ssl').checked,
-            smtp_pass: document.getElementById('em-smtp-pass').value
+            smtp_pass: document.getElementById('em-smtp-pass').value,
+            imap_pass: (document.getElementById('em-imap-pass') || {}).value || '',
+            imap_enabled: !!(document.getElementById('em-imap-enabled') || {}).checked,
+            imap_poll_minutes: parseInt((document.getElementById('em-poll-min') || {}).value, 10) || 5
         };
         
         try {
@@ -248,7 +251,17 @@ Object.assign(LexisLocalApp.prototype, {
                         <span>⚙️</span> E-mailové propojení
                     </h3>
                     <form id="form-email-settings" onsubmit="window.appInstance.saveEmailSettings(event)" style="display: flex; flex-direction: column; gap: 12px; font-size: 0.82rem;">
-                        <div>
+                        <div style="background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.25); border-radius: 8px; padding: 10px 12px;">
+                            <strong style="color: var(--accent-blue); display: block; margin-bottom: 6px; font-size: 0.8rem;">⚡ Rychlé nastavení</strong>
+                            <div style="opacity:0.75; font-size:0.72rem; margin-bottom:8px;">Zadejte svůj e-mail a heslo — servery se doplní automaticky.</div>
+                            <input type="email" id="em-quick-email" placeholder="vas@email.cz" style="width: 100%; padding: 8px; margin-bottom: 6px; background: rgba(0,0,0,0.25); border: 1px solid var(--border-glass); border-radius: 6px; color: white; font-size: 0.8rem;" />
+                            <input type="password" id="em-quick-pass" placeholder="Heslo k e-mailu (u Gmailu/Outlooku heslo aplikace)" autocomplete="new-password" style="width: 100%; padding: 8px; margin-bottom: 8px; background: rgba(0,0,0,0.25); border: 1px solid var(--border-glass); border-radius: 6px; color: white; font-size: 0.8rem;" />
+                            <button type="button" class="btn btn-secondary" onclick="window.appInstance.quickSetupEmail()" style="width:100%; justify-content:center; padding:8px; font-size:0.8rem; border:1px solid rgba(59,130,246,0.4); background:rgba(59,130,246,0.15); color:white;">Vyplnit podle e-mailu ✨</button>
+                            <div id="em-quick-note" style="font-size:0.72rem; margin-top:6px; opacity:0.85;"></div>
+                        </div>
+                        <details style="font-size:0.8rem;">
+                            <summary style="cursor:pointer; opacity:0.8; padding:4px 0;">Ruční nastavení (pokročilé)</summary>
+                        <div style="margin-top:8px;">
                             <label style="opacity: 0.8; display: block; margin-bottom: 4px; font-weight: 500;">Váš autorizovaný e-mail (Advokát)</label>
                             <input type="email" id="em-auth-sender" required style="width: 100%; padding: 8px 12px; background: rgba(0,0,0,0.25); border: 1px solid var(--border-glass); border-radius: 6px; color: white; outline: none;" />
                         </div>
@@ -269,6 +282,7 @@ Object.assign(LexisLocalApp.prototype, {
                                     <input type="checkbox" id="em-imap-ssl" /> SSL/TLS
                                 </div>
                             </div>
+                            <input type="password" id="em-imap-pass" placeholder="Heslo k IMAP (pro příjem pošty)" autocomplete="new-password" style="width: 100%; padding: 8px; background: rgba(0,0,0,0.25); border: 1px solid var(--border-glass); border-radius: 6px; color: white; font-size: 0.8rem;" />
                         </div>
 
                         <div style="border-top: 1px solid rgba(255,255,255,0.06); padding-top: 10px;">
@@ -285,11 +299,25 @@ Object.assign(LexisLocalApp.prototype, {
                             </div>
                             <input type="password" id="em-smtp-pass" placeholder="Heslo k SMTP (pro odesílání)" autocomplete="new-password" style="width: 100%; padding: 8px; background: rgba(0,0,0,0.25); border: 1px solid var(--border-glass); border-radius: 6px; color: white; font-size: 0.8rem;" />
                         </div>
+                        </details>
                         
+                        <label style="display:flex; gap:8px; align-items:center; font-size:0.8rem; margin-top:4px; cursor:pointer;">
+                            <input type="checkbox" id="em-imap-enabled" /> <b>Zapnout automatický příjem</b> (číst schránku a zpracovávat úkoly)
+                        </label>
+                        <div style="display:flex; gap:8px; align-items:center; font-size:0.78rem; opacity:0.85;">
+                            <span>Kontrolovat každých</span>
+                            <input type="number" id="em-poll-min" min="1" value="5" style="width:60px; padding:4px 6px; background:rgba(0,0,0,0.25); border:1px solid var(--border-glass); border-radius:6px; color:white;" />
+                            <span>minut</span>
+                        </div>
                         <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 10px;">
                             <button type="submit" class="btn btn-primary" style="width: 100%; justify-content: center; padding: 10px; font-size: 0.82rem; background: var(--accent-blue); border: none; font-weight: 600; color: white;">
                                 Uložit nastavení 💾
                             </button>
+                            <div style="display:flex; gap:8px;">
+                                <button type="button" class="btn btn-secondary" onclick="window.appInstance.testEmailConnection()" style="flex:1; justify-content:center; padding:8px; font-size:0.78rem; border:1px solid rgba(255,255,255,0.15); background:rgba(255,255,255,0.05); color:white;">Otestovat spojení 🔌</button>
+                                <button type="button" class="btn btn-secondary" onclick="window.appInstance.pollEmailNow()" style="flex:1; justify-content:center; padding:8px; font-size:0.78rem; border:1px solid rgba(255,255,255,0.15); background:rgba(255,255,255,0.05); color:white;">Vyzvednout teď 📥</button>
+                            </div>
+                            <div id="em-test-note" style="font-size:0.75rem; opacity:0.9;"></div>
                             <button type="button" class="btn btn-secondary" onclick="window.appInstance.openEmailSimulationModal()" style="width: 100%; justify-content: center; padding: 10px; font-size: 0.82rem; border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.05); color: white;">
                                 Simulovat zaslání úkolu 🚀
                             </button>
@@ -320,6 +348,73 @@ Object.assign(LexisLocalApp.prototype, {
         document.getElementById('em-smtp-ssl').checked = s.smtp_ssl !== false;
         const smtpPassEl = document.getElementById('em-smtp-pass');
         if (smtpPassEl) smtpPassEl.value = s.smtp_pass || '';
+        const imapPassEl = document.getElementById('em-imap-pass');
+        if (imapPassEl) imapPassEl.value = s.imap_pass || '';
+        const imapEnEl = document.getElementById('em-imap-enabled');
+        if (imapEnEl) imapEnEl.checked = s.imap_enabled === true;
+        const pollEl = document.getElementById('em-poll-min');
+        if (pollEl) pollEl.value = s.imap_poll_minutes || 5;
+    },
+
+    // Rychlé nastavení: z e-mailu odvodí servery a vyplní formulář.
+    async quickSetupEmail() {
+        const email = (document.getElementById('em-quick-email') || {}).value;
+        const pass = (document.getElementById('em-quick-pass') || {}).value || '';
+        const note = document.getElementById('em-quick-note');
+        if (!email || !email.trim()) { if (note) note.textContent = 'Zadejte prosím e-mail.'; return; }
+        try {
+            const res = await fetch(`${this.apiBase}/email/derive`, {
+                method: 'POST', headers: this.getHeaders({ 'Content-Type': 'application/json' }),
+                body: JSON.stringify({ email: email.trim() })
+            });
+            const d = await res.json();
+            if (!d.success) { if (note) note.textContent = '❌ ' + (d.error || 'Nepodařilo se odvodit servery.'); return; }
+            const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+            const check = (id, v) => { const el = document.getElementById(id); if (el) el.checked = v; };
+            set('em-auth-sender', d.authorized_sender); set('em-recip-filter', d.recipient_filter);
+            set('em-imap-host', d.imap_host); set('em-imap-port', d.imap_port); set('em-imap-user', d.imap_user); check('em-imap-ssl', d.imap_ssl !== false);
+            set('em-smtp-host', d.smtp_host); set('em-smtp-port', d.smtp_port); set('em-smtp-user', d.smtp_user); check('em-smtp-ssl', d.smtp_ssl !== false);
+            if (pass) { set('em-imap-pass', pass); set('em-smtp-pass', pass); }
+            if (note) note.innerHTML = '✅ Servery vyplněny (' + escapeHtml(d.provider) + '). ' + (d.note ? '<span style="color:var(--accent-yellow);">' + escapeHtml(d.note) + '</span>' : '');
+        } catch (e) { if (note) note.textContent = '❌ Síťová chyba: ' + e.message; }
+    },
+
+    // Otestuje IMAP i SMTP připojení podle aktuálně vyplněného formuláře.
+    async testEmailConnection() {
+        const note = document.getElementById('em-test-note');
+        if (note) note.textContent = 'Testuji připojení…';
+        const g = (id) => (document.getElementById(id) || {}).value || '';
+        const c = (id) => !!(document.getElementById(id) || {}).checked;
+        const settings = {
+            imap_host: g('em-imap-host'), imap_port: g('em-imap-port'), imap_user: g('em-imap-user'), imap_ssl: c('em-imap-ssl'), imap_pass: g('em-imap-pass'),
+            smtp_host: g('em-smtp-host'), smtp_port: g('em-smtp-port'), smtp_user: g('em-smtp-user'), smtp_ssl: c('em-smtp-ssl'), smtp_pass: g('em-smtp-pass')
+        };
+        try {
+            const res = await fetch(`${this.apiBase}/email/test`, {
+                method: 'POST', headers: this.getHeaders({ 'Content-Type': 'application/json' }),
+                body: JSON.stringify({ settings })
+            });
+            const d = await res.json();
+            const line = (label, r) => (r && r.ok) ? ('✅ ' + label + ' OK') : ('❌ ' + label + ': ' + escapeHtml((r && r.error) || 'chyba'));
+            if (note) note.innerHTML = line('IMAP', d.imap) + '<br>' + line('SMTP', d.smtp);
+        } catch (e) { if (note) note.textContent = '❌ Síťová chyba: ' + e.message; }
+    },
+
+    // Ručně vyzvedne a zpracuje nové e-maily teď.
+    async pollEmailNow() {
+        const note = document.getElementById('em-test-note');
+        if (note) note.textContent = 'Vyzvedávám poštu…';
+        try {
+            const res = await fetch(`${this.apiBase}/email/poll`, { method: 'POST', headers: this.getHeaders() });
+            const d = await res.json();
+            if (d.success) {
+                if (note) note.textContent = `✅ Hotovo: zpracováno ${d.processed}, přeskočeno ${d.skipped}${d.errors ? ', chyby ' + d.errors : ''} (z ${d.total}).`;
+                await this.loadEmailTasks();
+                this.renderInbox();
+            } else {
+                if (note) note.textContent = '⚠️ ' + (d.reason === 'imap-config' ? 'IMAP není nastavené — doplňte přihlašovací údaje.' : (d.error || 'Nepodařilo se vyzvednout poštu.'));
+            }
+        } catch (e) { if (note) note.textContent = '❌ Síťová chyba: ' + e.message; }
     },
 
     async loadGreenMetricsAndTelemetry() {

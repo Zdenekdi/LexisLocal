@@ -115,7 +115,7 @@
     "nodemailer": "^9.0.5",
     "ollama": "^0.5.0",
     "pdf-parse": "^1.1.1",
-    "pdfjs-dist": "^5.7.284",
+    "pdfjs-dist": "^6.2.108",
     "tesseract.js": "^7.0.0",
     "imapflow": "^1.0.164",
     "mailparser": "^3.7.1"

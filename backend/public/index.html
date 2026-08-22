@@ -946,6 +946,23 @@
                         <div style="font-size:0.8rem;opacity:0.7;margin-bottom:10px;">Koncepty, které AI/agent uložil, ale nešly bezpečně přiřadit ke spisu — čekají na ruční kontrolu, nikdy nespadnou do cizí složky.</div>
                         <div id="ss-nezarazeno-drafts">Načítám…</div>
                     </div>
+                    <div class="glass" style="padding:20px;border-radius:16px;border:1px solid var(--border-glass);margin-top:20px;">
+                        <h3 style="margin-top:0;">📅 Rezervace schůzky</h3>
+                        <div style="font-size:0.8rem;opacity:0.7;margin-bottom:12px;">Rezervuje se jen když je volno — včetně rezervy na dopravu. Při kolizi nabídne alternativy.</div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+                            <div><label style="font-size:0.75rem;opacity:0.8;display:block;margin-bottom:3px;">Název</label><input id="mtg-title" placeholder="Schůzka s klientem" style="width:100%;padding:8px;background:#0f172a;color:white;border:1px solid var(--border-glass);border-radius:6px;" /></div>
+                            <div><label style="font-size:0.75rem;opacity:0.8;display:block;margin-bottom:3px;">Místo (volitelné)</label><input id="mtg-loc" placeholder="Kancelář / Brno" style="width:100%;padding:8px;background:#0f172a;color:white;border:1px solid var(--border-glass);border-radius:6px;" /></div>
+                            <div><label style="font-size:0.75rem;opacity:0.8;display:block;margin-bottom:3px;">Datum</label><input id="mtg-date" type="date" style="width:100%;padding:8px;background:#0f172a;color:white;border:1px solid var(--border-glass);border-radius:6px;" /></div>
+                            <div><label style="font-size:0.75rem;opacity:0.8;display:block;margin-bottom:3px;">Čas</label><input id="mtg-time" type="time" style="width:100%;padding:8px;background:#0f172a;color:white;border:1px solid var(--border-glass);border-radius:6px;" /></div>
+                            <div><label style="font-size:0.75rem;opacity:0.8;display:block;margin-bottom:3px;">Délka (min)</label><input id="mtg-dur" type="number" min="15" step="15" value="60" style="width:100%;padding:8px;background:#0f172a;color:white;border:1px solid var(--border-glass);border-radius:6px;" /></div>
+                            <div><label style="font-size:0.75rem;opacity:0.8;display:block;margin-bottom:3px;">Rezerva na dopravu (min)</label><input id="mtg-buffer" type="number" min="0" step="5" value="30" style="width:100%;padding:8px;background:#0f172a;color:white;border:1px solid var(--border-glass);border-radius:6px;" /></div>
+                        </div>
+                        <div style="display:flex;gap:8px;">
+                            <button class="btn btn-secondary" style="flex:1;font-size:0.8rem;padding:8px;" onclick="window.appInstance.checkMeetingAvailability()">Zkontrolovat dostupnost 🔎</button>
+                            <button class="btn btn-primary" style="flex:1;font-size:0.8rem;padding:8px;" onclick="window.appInstance.bookMeeting()">Rezervovat 📅</button>
+                        </div>
+                        <div id="mtg-result" style="font-size:0.82rem;margin-top:10px;"></div>
+                    </div>
                 </section>
 
                 <section class="tab-pane" id="tab-aml">

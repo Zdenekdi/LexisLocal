@@ -100,12 +100,22 @@ async function runTesseractOCR(imagePathOrBuffer) {
  */
 async function pdfToImageBuffers(pdfBuffer, maxPages = 10) {
     try {
-        const pdfjs = require('pdfjs-dist/legacy/build/pdf.js');
+        // pdfjs-dist v6+ je ESM (pdf.mjs) → dynamic import; v5 fallback na CJS (pdf.js).
+        let pdfjs;
+        try { pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs'); }
+        catch (e) { pdfjs = require('pdfjs-dist/legacy/build/pdf.js'); }
         
-        // Disable worker (use sync/legacy mode in Node.js)
-        pdfjs.GlobalWorkerOptions.workerSrc = '';
+        // Worker: v6 vyžaduje cestu k worker souboru (.mjs); v5 fallback (.js).
+        // (Prázdný workerSrc už v6 fake-worker nespustí — proto resolvujeme soubor.)
+        try {
+            pdfjs.GlobalWorkerOptions.workerSrc = require.resolve('pdfjs-dist/legacy/build/pdf.worker.mjs');
+        } catch (e) {
+            try { pdfjs.GlobalWorkerOptions.workerSrc = require.resolve('pdfjs-dist/legacy/build/pdf.worker.js'); }
+            catch (e2) { pdfjs.GlobalWorkerOptions.workerSrc = ''; }
+        }
         
-        const loadingTask = pdfjs.getDocument({ data: new Uint8Array(pdfBuffer) });
+        // isEvalSupported:false — obrana proti spouštění kódu ze škodlivého PDF (CVE pdf.js).
+        const loadingTask = pdfjs.getDocument({ data: new Uint8Array(pdfBuffer), isEvalSupported: false });
         const pdfDoc = await loadingTask.promise;
         
         const numPages = Math.min(pdfDoc.numPages, maxPages);

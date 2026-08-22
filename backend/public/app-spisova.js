@@ -152,6 +152,60 @@ Object.assign(LexisLocalApp.prototype, {
         }
     },
 
+    _mtgPayload() {
+        const g = (id) => (document.getElementById(id) || {}).value || '';
+        return {
+            title: g('mtg-title') || 'Schůzka',
+            location: g('mtg-loc'),
+            date: g('mtg-date'),
+            time: g('mtg-time'),
+            durationMin: parseInt(g('mtg-dur'), 10) || 60,
+            travelBufferMin: parseInt(g('mtg-buffer'), 10)
+        };
+    },
+    async checkMeetingAvailability() {
+        const el = document.getElementById('mtg-result');
+        const p = this._mtgPayload();
+        if (!p.date) { if (el) el.innerHTML = '<span style="color:#eab308;">Vyberte datum.</span>'; return; }
+        if (el) el.textContent = 'Kontroluji…';
+        try {
+            const body = { date: p.date, durationMin: p.durationMin, travelBufferMin: p.travelBufferMin };
+            if (p.time) body.time = p.time;
+            const r = await this.ssSend('/calendar/availability', 'POST', body);
+            if (p.time) {
+                if (r.check && r.check.free) {
+                    el.innerHTML = `<span style="color:#34d399;">✅ ${escapeHtml(r.check.start)}–${escapeHtml(r.check.end)} je volno (i s rezervou na dopravu).</span>`;
+                } else {
+                    const alts = (r.suggestions || []).map(s => escapeHtml(s.start)).slice(0, 8).join(', ');
+                    el.innerHTML = `<span style="color:#f87171;">❌ Termín obsazený/mimo hodiny.</span>` + (alts ? `<div style="margin-top:4px;opacity:0.85;">Volné alternativy: ${alts}</div>` : '');
+                }
+            } else {
+                const slots = (r.freeSlots || []).map(s => escapeHtml(s.start)).slice(0, 16).join(', ');
+                el.innerHTML = slots ? `<div>Volné termíny (${escapeHtml(p.date)}): <b>${slots}</b></div>` : '<span style="opacity:0.7;">Ten den nejsou volné termíny.</span>';
+            }
+        } catch (e) { if (el) el.innerHTML = `<span style="color:#f87171;">Chyba: ${escapeHtml(e.message)}</span>`; }
+    },
+    async bookMeeting() {
+        const el = document.getElementById('mtg-result');
+        const p = this._mtgPayload();
+        if (!p.date || !p.time) { if (el) el.innerHTML = '<span style="color:#eab308;">Vyplňte datum i čas.</span>'; return; }
+        if (el) el.textContent = 'Rezervuji…';
+        try {
+            const res = await fetch(`${this.apiBase}/calendar/book`, {
+                method: 'POST', headers: this.getHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(p)
+            });
+            const d = await res.json();
+            if (res.status === 201 && d.success) {
+                el.innerHTML = `<span style="color:#34d399;">✅ Rezervováno: ${escapeHtml(d.meeting.date)} ${escapeHtml(d.meeting.time)} (${d.meeting.durationMin} min).</span>`;
+            } else if (res.status === 409) {
+                const alts = (d.suggestions || []).map(s => escapeHtml(s.start)).slice(0, 8).join(', ');
+                el.innerHTML = `<span style="color:#f87171;">❌ ${escapeHtml(d.error || 'Kolize.')}</span>` + (alts ? `<div style="margin-top:4px;opacity:0.85;">Volné alternativy: ${alts}</div>` : '');
+            } else {
+                el.innerHTML = `<span style="color:#f87171;">Chyba: ${escapeHtml(d.error || 'nezdařilo se')}</span>`;
+            }
+        } catch (e) { if (el) el.innerHTML = `<span style="color:#f87171;">Chyba: ${escapeHtml(e.message)}</span>`; }
+    },
+
     async syncSpisy() {
         try {
             const r = await this.ssSend('/spisy/sync', 'POST');
