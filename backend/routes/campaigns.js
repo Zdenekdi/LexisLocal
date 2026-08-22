@@ -10,7 +10,7 @@ const router = express.Router();
 const fs = require('fs');
 const path = require('path');
 const { WATCH_DIR } = require('../lib/config');
-const { checkSubject } = require('../lib/registries');
+const { checkSubject, findDataBox } = require('../lib/registries');
 const { logEvent } = require('../lib/audit');
 const db = require('../lib/database');
 const { sanitizeFileName } = require('../lib/pathsafe');
@@ -33,22 +33,21 @@ router.post('/validate-recipients', async (req, res) => {
                 if (checked.error) {
                     return { ico: cleanIco, error: checked.error };
                 }
-                // POZOR: toto NENÍ reálné ISDS ID — je odvozené z IČO jako placeholder.
-                // isdsSimulated:true označuje, že datovou schránku je nutné před
-                // odesláním ověřit v oficiálním registru (nesmí se doručovat naslepo).
-                const cleanName = checked.name.toLowerCase();
-                let isdsId = "";
-                if (cleanName.includes("banka") || cleanName.includes("spořitelna")) {
-                    isdsId = `b${cleanIco.substring(0, 6)}`;
-                } else if (cleanName.includes("exekut")) {
-                    isdsId = `e${cleanIco.substring(0, 6)}`;
-                } else {
-                    isdsId = `d${cleanIco.substring(0, 6)}`;
+                // Reálné vyhledání datové schránky (ISDS FindDataBox). ŽÁDNÉ vymyšlené ID:
+                // když ISDS není nakonfigurováno nebo se schránka nenajde jednoznačně,
+                // vrátíme isdsResolved:false a schránku je nutné doplnit ručně.
+                const box = await findDataBox(cleanIco);
+                if (box && box.available && box.found && box.dataBoxId) {
+                    return { ...checked, isdsId: box.dataBoxId, isdsResolved: true, isdsSimulated: false };
                 }
                 return {
                     ...checked,
-                    isdsId,
-                    isdsSimulated: true
+                    isdsId: null,
+                    isdsResolved: false,
+                    isdsSimulated: false,
+                    isdsCandidates: (box && box.candidates) || null,
+                    isdsNote: (box && (box.reason || box.error)) ||
+                        (box && box.ambiguous ? 'Více datových schránek pro IČO — vyberte ručně.' : 'Datovou schránku se nepodařilo ověřit — doplňte ručně.')
                 };
             } catch (err) {
                 return { ico: cleanIco, error: err.message };

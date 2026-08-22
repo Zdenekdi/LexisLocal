@@ -260,6 +260,61 @@ async function checkKatastr(ico) {
     }
 }
 
+/**
+ * ISDS — vyhledání datové schránky podle IČO (operace FindDataBox).
+ * REÁLNÝ dotaz, když jsou nastaveny přihlašovací údaje do ISDS. Bez nich NEVRACÍ
+ * žádné ID (a NIKDY nefabrikuje) — jen čestné „není k dispozici". Při více shodách
+ * je výsledek NEjednoznačný (fail-closed) a vyžaduje ruční volbu.
+ * ENV/DB: ISDS_WS_URL (volitelné), ISDS_LOGIN, ISDS_PASSWORD.
+ * ⚠ SOAP tělo a parsování jsou izolované a provizorní — finalizovat proti reálnému ISDS WS.
+ */
+const ISDS_DEFAULT_URL = 'https://ws1.mojedatovaschranka.cz/DS/df';
+
+function _isdsCfg() {
+    return {
+        url: _regSetting('registry_isds_url', 'ISDS_WS_URL') || ISDS_DEFAULT_URL,
+        login: _regSetting('registry_isds_login', 'ISDS_LOGIN'),
+        password: _regSetting('registry_isds_password', 'ISDS_PASSWORD')
+    };
+}
+function isIsdsConfigured() { const c = _isdsCfg(); return !!(c.login && c.password); }
+
+async function findDataBox(ico, opts = {}) {
+    const doFetch = (opts && opts.fetchUrl) || fetchUrl;
+    const cleanIco = String(ico || '').replace(/\D/g, '');
+    if (cleanIco.length !== 8) {
+        return { available: false, configured: isIsdsConfigured(), reason: 'IČO musí obsahovat přesně 8 číslic.' };
+    }
+    const c = _isdsCfg();
+    if (!c.login || !c.password) {
+        return { available: false, configured: false,
+            reason: 'Vyhledání datové schránky vyžaduje přihlašovací údaje do ISDS (ISDS_LOGIN/ISDS_PASSWORD).' };
+    }
+    try {
+        const soapBody = '<?xml version="1.0" encoding="utf-8"?>' +
+            '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:p="http://isds.czechpoint.cz/v20">' +
+            '<soapenv:Body><p:FindDataBox><p:dbOwnerInfo><p:ic>' + cleanIco + '</p:ic></p:dbOwnerInfo></p:FindDataBox></soapenv:Body></soapenv:Envelope>';
+        const auth = 'Basic ' + Buffer.from(c.login + ':' + c.password).toString('base64');
+        const xml = await doFetch(c.url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/xml;charset=UTF-8', 'SOAPAction': 'FindDataBox', 'Authorization': auth },
+            body: soapBody
+        });
+        const ids = [...String(xml).matchAll(/<[^>]*dbID>([^<]+)<\/[^>]*dbID>/g)].map(m => m[1].trim()).filter(Boolean);
+        const nameM = String(xml).match(/<[^>]*firmName>([^<]+)<\/[^>]*firmName>/);
+        const subjectName = nameM ? nameM[1].trim() : null;
+        if (ids.length === 1) {
+            return { available: true, configured: true, found: true, dataBoxId: ids[0], subjectName };
+        }
+        if (ids.length > 1) {
+            return { available: true, configured: true, found: false, ambiguous: true, candidates: ids, subjectName };
+        }
+        return { available: true, configured: true, found: false };
+    } catch (e) {
+        return { available: false, configured: true, error: 'Dotaz do ISDS selhal: ' + e.message };
+    }
+}
+
 // Vrátí konfiguraci pro UI — URL ano, KLÍČ nikdy celý (jen hasKey).
 function getRegistryConfig() {
     const mk = (uKey, uEnv, kKey, kEnv) => ({
@@ -268,7 +323,12 @@ function getRegistryConfig() {
     });
     return {
         cee: mk('registry_cee_url', 'CEE_API_URL', 'registry_cee_key', 'CEE_API_KEY'),
-        katastr: mk('registry_katastr_url', 'KATASTR_API_URL', 'registry_katastr_key', 'KATASTR_API_KEY')
+        katastr: mk('registry_katastr_url', 'KATASTR_API_URL', 'registry_katastr_key', 'KATASTR_API_KEY'),
+        isds: {
+            url: _regSetting('registry_isds_url', 'ISDS_WS_URL'),
+            login: _regSetting('registry_isds_login', 'ISDS_LOGIN'),
+            hasPassword: !!_regSetting('registry_isds_password', 'ISDS_PASSWORD')
+        }
     };
 }
 // Uloží konfiguraci. Prázdný klíč = ponech stávající (nemaže); prázdné URL = smaž (fallback).
@@ -281,7 +341,12 @@ function setRegistryConfig(input) {
     };
     set(input.cee, 'registry_cee_url', 'registry_cee_key');
     set(input.katastr, 'registry_katastr_url', 'registry_katastr_key');
+    if (input.isds) {
+        if (typeof input.isds.url === 'string') _saveSetting('registry_isds_url', input.isds.url.trim());
+        if (typeof input.isds.login === 'string') _saveSetting('registry_isds_login', input.isds.login.trim());
+        if (typeof input.isds.password === 'string' && input.isds.password.trim() !== '') _saveSetting('registry_isds_password', input.isds.password.trim());
+    }
     return getRegistryConfig();
 }
 
-module.exports = { checkSubject, checkCee, checkKatastr, getRegistryConfig, setRegistryConfig };
+module.exports = { checkSubject, checkCee, checkKatastr, findDataBox, isIsdsConfigured, getRegistryConfig, setRegistryConfig };
