@@ -23,9 +23,10 @@
 'use strict';
 
 const esbirka = require('./providers/esbirka');
+const justice = require('./providers/justice');
 
 // Pořadí = priorita. Další providery (justice.cz open data, Salvia MCP) sem přibudou.
-let _providers = [esbirka];
+let _providers = [esbirka, justice];
 
 function _enabled(capability) {
     return _providers.filter(p =>
@@ -64,6 +65,6 @@ function listProviders() {
 
 // Test seam: vložení vlastních providerů.
 function _setProvidersForTests(arr) { _providers = Array.isArray(arr) ? arr.slice() : [esbirka]; }
-function _resetProviders() { _providers = [esbirka]; }
+function _resetProviders() { _providers = [esbirka, justice]; }
 
 module.exports = { verifyStatute, verifyCaseLaw, listProviders, _setProvidersForTests, _resetProviders };
