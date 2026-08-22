@@ -17,6 +17,7 @@
 
 const db = require('./database');
 const registries = require('./registries');
+const sanctions = require('./sanctions');
 const spisy = require('./spisy');
 
 function _deaccent(s) {
@@ -101,6 +102,18 @@ async function identify(input) {
         });
     }
 
+    // 3b) Screening proti OFICIÁLNÍMU sankčnímu seznamu (EU/OFAC/UN), je-li načten.
+    // FAIL-CLOSED: když seznam není k dispozici, needsManualScreening zůstává true.
+    let sanctionsScreen = { available: false, matches: [] };
+    try { sanctionsScreen = sanctions.screenName(jmeno); } catch (e) { sanctionsScreen = { available: false, matches: [] }; }
+    if (sanctionsScreen.available && sanctionsScreen.matches.length) {
+        factors.push({
+            code: 'sankcni_shoda_oficialni',
+            severity: 'high',
+            detail: sanctionsScreen.matches.map(m => `${m.name} (${m.list}${m.program ? ': ' + m.program : ''})`).join(', ')
+        });
+    }
+
     const risk = _assessRisk(factors);
 
     const record = db.insert('aml_checks', {
@@ -118,11 +131,16 @@ async function identify(input) {
             verifiedAt: registryData.verifiedAt
         } : null,
         watchlistHits: watchHits.map(w => ({ name: w.name, type: w.type })),
+        sanctionsHits: (sanctionsScreen.matches || []).map(m => ({ name: m.name, list: m.list, program: m.program || null })),
+        sanctionsListAvailable: !!sanctionsScreen.available,
         factors: factors,
         risk: risk,
-        // Lokální screening ≠ oficiální sankční/PEP seznamy — nutná ruční kontrola.
+        // I s oficiálním sankčním seznamem zůstává povinnost ověřit PEP a aktuálnost
+        // zdroje — proto needsManualScreening trvale true (lokální/automat ≠ úřední).
         needsManualScreening: true,
-        note: 'Screening proběhl jen proti lokálnímu seznamu kanceláře. Ověřte klienta i vůči oficiálním PEP/sankčním seznamům (EU/OFAC).'
+        note: sanctionsScreen.available
+            ? 'Screening proběhl proti lokálnímu seznamu i načtenému sankčnímu seznamu. Ověřte ještě aktuálnost seznamu a PEP status u oficiálního zdroje.'
+            : 'Screening proběhl jen proti lokálnímu seznamu kanceláře (oficiální sankční seznam nebyl načten). Ověřte klienta i vůči oficiálním PEP/sankčním seznamům (EU/OFAC).'
     });
 
     if (record.spisId) {
