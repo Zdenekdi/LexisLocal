@@ -308,7 +308,7 @@ router.post('/process', async (req, res) => {
         const r = await processEmailTask({ sender, subject, body, caseNumber });
         if (r.status === 'bad-request') return res.status(400).json({ error: r.error });
         if (r.status === 'unauthorized') return res.status(403).json({ error: r.error });
-        res.json({ success: true, mode: r.mode, task: r.task, replied: r.replied, replyError: r.replyError, steps: r.steps, citationCheck: r.citationCheck, scheduling: r.scheduling });
+        res.json({ success: true, mode: r.mode, task: r.task, replied: r.replied, replyError: r.replyError, steps: r.steps, citationCheck: r.citationCheck, scheduling: r.scheduling, draft: r.draft });
     } catch (err) {
         res.status(500).json({ error: 'Zpracování e-mailového úkolu selhalo: ' + err.message });
     }

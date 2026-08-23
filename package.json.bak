@@ -132,8 +132,5 @@
     "nodemon": "^3.1.0",
     "playwright": "^1.60.0",
     "supertest": "^7.2.2"
-  },
-  "overrides": {
-    "deepmerge-ts": "^8.0.0"
   }
 }

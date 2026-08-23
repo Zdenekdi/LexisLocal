@@ -25,7 +25,6 @@ const scheduling = require('./schedulingParse');
 const booking = require('./calendarBooking');
 const mailer = require('./mailer');
 const spisy = require('./spisy');
-const docTemplates = require('./documentTemplates');
 
 // Timeout kolem volání modelu — ať to při pomalém/zaseklém modelu nevisí dlouho,
 // ale rychle spadne na poctivý fallback. Přepis přes LEXIS_AI_TIMEOUT_MS.
@@ -100,38 +99,22 @@ async function processEmailTask(input) {
     let stepsSummary = [];
     let citationCheck = null;
     let aiOk = true;
-    let templateUsed = false;
-    let templateWarnings = [];
 
     if (explicitAgentId) {
         mode = 'single';
         const agent = agents[explicitAgentId];
-        // ŠABLONOVÝ REŽIM (Spisovatel): u rozpoznaného typu podání se použije
-        // ověřená šablona (fixní právní text + deterministicky doplněné částka/lhůta),
-        // místo aby text vymýšlel model. Odpadá komolená čeština i halucinované §.
-        let templated = null;
-        if (agent.id === 'spisovatel') {
-            try { templated = docTemplates.tryTemplate(String(subject) + ' ' + cleanBody); } catch (e) { templated = null; }
+        try {
+            const r = await withTimeout(ollama.chat({
+                model: agent.preferredModel || CHAT_MODEL,
+                messages: [{ role: 'system', content: agent.systemPrompt }, { role: 'user', content: cleanBody }],
+                options: { temperature: 0.3 }
+            }), AI_TIMEOUT_MS);
+            output = r.message.content;
+        } catch (e) {
+            aiOk = false;
+            output = generateAgentFallback(agent.id, cleanBody);
         }
-        if (templated && templated.matched) {
-            output = templated.markdown;
-            templateUsed = true;
-            templateWarnings = templated.warnings || [];
-            stepsSummary = [`${agent.emoji || ''} ${agent.name} (šablona: ${templated.title})`];
-        } else {
-            try {
-                const r = await withTimeout(ollama.chat({
-                    model: agent.preferredModel || CHAT_MODEL,
-                    messages: [{ role: 'system', content: agent.systemPrompt }, { role: 'user', content: cleanBody }],
-                    options: { temperature: 0.3 }
-                }), AI_TIMEOUT_MS);
-                output = r.message.content;
-            } catch (e) {
-                aiOk = false;
-                output = generateAgentFallback(agent.id, cleanBody);
-            }
-            stepsSummary = [`${agent.emoji || ''} ${agent.name}`];
-        }
+        stepsSummary = [`${agent.emoji || ''} ${agent.name}`];
     } else {
         try {
             const r = await ChiefOrchestrator.orchestrate(cleanBody, '', CHAT_MODEL, null, null);
@@ -148,8 +131,7 @@ async function processEmailTask(input) {
 
     // Ověření citací i pro jednoagentní výstup (orchestrace ho už dělá sama).
     // Vymyšlené paragrafy se tak označí „⚠ NEOVĚŘENO" — kritické pro slabší modely.
-    // U šablony se ověření přeskakuje: její § jsou pevné a ověřené (žádná halucinace).
-    if (!citationCheck && aiOk && !templateUsed && output && output.trim() && !isFallbackText(output)) {
+    if (!citationCheck && aiOk && output && output.trim() && !isFallbackText(output)) {
         try {
             const cc = await verifyCitationsWithSources(output, {});
             citationCheck = cc ? { total: cc.total, unverifiedCount: cc.unverifiedCount, citations: cc.citations, annotatedText: cc.annotatedText, sourcesConsulted: cc.sourcesConsulted } : null;
@@ -222,11 +204,8 @@ async function processEmailTask(input) {
     const citationNote = (citationCheck && citationCheck.unverifiedCount > 0)
         ? `\n\n⚠️ UPOZORNĚNÍ: ${citationCheck.unverifiedCount} citací nebylo možné ověřit — před použitím zkontrolujte ručně.`
         : '';
-    const templateNote = (templateWarnings && templateWarnings.length)
-        ? `\n\n⚠️ UPOZORNĚNÍ K ŠABLONĚ: ${templateWarnings.join(' ')}`
-        : '';
     const stepsBlock = stepsSummary.length ? `\nPrůběh zpracování:\n- ${stepsSummary.join('\n- ')}\n` : '';
-    const fullReply = `Vážený pane doktore,\n\nk Vašemu zadání ze dne ${dateStr} („${subject.replace(/\[[^\]]+\]\s*/g, '')}") zasílám zpracovaný výstup.\n${stepsBlock}\nS úctou,\nVaše AI kancelář (LexisLocal)\n\n${'-'.repeat(80)}\nVÝSTUP:\n${'-'.repeat(80)}\n\n${output}${citationNote}${templateNote}${scheduleNote}${draftNote}`;
+    const fullReply = `Vážený pane doktore,\n\nk Vašemu zadání ze dne ${dateStr} („${subject.replace(/\[[^\]]+\]\s*/g, '')}") zasílám zpracovaný výstup.\n${stepsBlock}\nS úctou,\nVaše AI kancelář (LexisLocal)\n\n${'-'.repeat(80)}\nVÝSTUP:\n${'-'.repeat(80)}\n\n${output}${citationNote}${scheduleNote}${draftNote}`;
 
     const createdTask = db.insert('email_tasks', {
         sender: String(sender).trim(), subject: String(subject).trim(), body: String(body).trim(),
@@ -258,7 +237,7 @@ async function processEmailTask(input) {
         }
     }
 
-    return { status: 'ok', mode, task: createdTask, replied, replyError, steps: stepsSummary, citationCheck, scheduling: scheduleResult, draft, fullReply, templateUsed };
+    return { status: 'ok', mode, task: createdTask, replied, replyError, steps: stepsSummary, citationCheck, scheduling: scheduleResult, draft, fullReply };
 }
 
 module.exports = { processEmailTask };

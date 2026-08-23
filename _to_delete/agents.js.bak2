@@ -127,6 +127,12 @@ function normalizeAgent(agent) {
     }
     // Systémové agenty: systemPrompt/role/emoji/name jsou řízené KÓDEM (DEFAULT_AGENTS),
     // aby vylepšení promptů platila bez ruční úpravy .agents.json.
+    if (agent.isSystem && DEFAULT_AGENTS[id]) {
+        agent.systemPrompt = DEFAULT_AGENTS[id].systemPrompt;
+        agent.role = DEFAULT_AGENTS[id].role;
+        agent.emoji = DEFAULT_AGENTS[id].emoji;
+        agent.name = DEFAULT_AGENTS[id].name;
+    }
     return agent;
 }
 function normalizeAgents(agents) {
