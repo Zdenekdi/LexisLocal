@@ -105,6 +105,16 @@ const SPIS_ACCESS_LEVELS = ['full', 'redacted', 'none'];
 //   FAST_MODEL   — sekretářka (třídění/dispečink)
 //   DRAFT_MODEL  — spisovatel, rešeršník, stylista (tvorba/rešerše/styl)
 //   REVIEW_MODEL — kontrolor (nezávislý oponent; ideálně jiný model než DRAFT)
+// Systemove prompty drzime ODDELENE od kodu v prompts.json (snadna aktualizace bez
+// zasahu do kodu, komunitni prompt engineering, priprava na obfuskaci buildu). Kdyz
+// soubor chybi, ponechaji se prompty zabudovane vyse jako bezpecny fallback.
+try {
+    const _externalPrompts = require('../prompts.json');
+    for (const _id of Object.keys(_externalPrompts || {})) {
+        if (DEFAULT_AGENTS[_id] && _externalPrompts[_id]) DEFAULT_AGENTS[_id].systemPrompt = _externalPrompts[_id];
+    }
+} catch (e) { /* prompts.json neni -> fallback na zabudovane prompty */ }
+
 const ROLE_MODEL = {
     sekretarka: () => process.env.FAST_MODEL || process.env.CHAT_MODEL || 'llama3',
     resersnik:  () => process.env.DRAFT_MODEL || process.env.CHAT_MODEL || 'llama3',

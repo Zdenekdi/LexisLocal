@@ -102,6 +102,7 @@ async function processEmailTask(input) {
     let aiOk = true;
     let templateUsed = false;
     let templateWarnings = [];
+    let draftTitle = null;
 
     if (explicitAgentId) {
         mode = 'single';
@@ -117,6 +118,7 @@ async function processEmailTask(input) {
             output = templated.markdown;
             templateUsed = true;
             templateWarnings = templated.warnings || [];
+            draftTitle = templated.title;
             stepsSummary = [`${agent.emoji || ''} ${agent.name} (šablona: ${templated.title})`];
         } else {
             try {
@@ -164,8 +166,8 @@ async function processEmailTask(input) {
         try {
             let draftSpisId = null;
             if (caseNumber) { try { const sp = spisy.findByCase(caseNumber); if (sp) draftSpisId = sp.id; } catch (e) {} }
-            const base = String(subject).replace(/\[[^\]]+\]\s*/g, '').trim().slice(0, 60) || 'koncept';
-            const safe = base.replace(/[^\w\-. ]+/g, '_').trim() || 'koncept';
+            const base = (draftTitle || String(subject).replace(/\[[^\]]+\]\s*/g, '').trim().slice(0, 60)) || 'koncept';
+            const safe = base.replace(/[\/\\:*?"<>|\x00-\x1f]+/g, ' ').replace(/\s+/g, ' ').trim() || 'koncept';
             const htmlDoc = _mdToHtml(output, base);
             // Preferuj .docx (nativní pro LexisEditor, plné formátování). Fallback .html,
             // kdyby html-to-docx nebyl nainstalován (funguje i před `npm install`).
