@@ -14,11 +14,11 @@
     --text-muted: #5f6368;
     
     /* Branding Colors */
-    --accent-blue: #3b82f6;
+    --accent-blue: #d9a441;
     --accent-green: #10b981;
     --accent-yellow: #f59e0b;
     --accent-red: #f43f5e;
-    --accent-purple: #8b5cf6;
+    --accent-purple: #e0b45f;
     
     /* Transitions & Shadows */
     --transition-smooth: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
@@ -96,7 +96,7 @@ body {
 .brand-logo {
     font-size: 1.8rem;
     color: var(--accent-blue);
-    text-shadow: 0 0 12px rgba(59, 130, 246, 0.35);
+    text-shadow: 0 0 12px rgba(154, 91, 34, 0.35);
 }
 
 .brand-text h1 {
@@ -147,7 +147,7 @@ body {
 }
 
 .nav-btn.active {
-    background-color: rgba(59, 130, 246, 0.08);
+    background-color: rgba(154, 91, 34, 0.08);
     color: #60a5fa;
     font-weight: 600;
 }
@@ -374,7 +374,7 @@ body {
     font-family: 'JetBrains Mono', monospace;
     font-size: 0.85rem;
     color: var(--accent-blue);
-    background-color: rgba(37, 99, 235, 0.08);
+    background-color: rgba(138, 83, 32, 0.08);
     padding: 6px 12px;
     border-radius: 8px;
     word-break: break-all;
@@ -420,7 +420,7 @@ body {
 }
 
 .agent-card:hover {
-    border-color: rgba(59, 130, 246, 0.35);
+    border-color: rgba(154, 91, 34, 0.35);
 }
 
 .agent-card-header {
@@ -443,8 +443,8 @@ body {
 }
 
 .agent-card:hover .agent-avatar {
-    background: rgba(59, 130, 246, 0.1);
-    border-color: rgba(59, 130, 246, 0.3);
+    background: rgba(154, 91, 34, 0.1);
+    border-color: rgba(154, 91, 34, 0.3);
 }
 
 .agent-info h4 {
@@ -719,7 +719,7 @@ body {
 
 .search-bar input:focus {
     border-color: var(--accent-blue);
-    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+    box-shadow: 0 0 0 2px rgba(138, 83, 32, 0.15);
 }
 
 .progress-container {
@@ -901,8 +901,8 @@ body {
 }
 
 .chat-message.user .message-content {
-    background-color: rgba(37, 99, 235, 0.12);
-    border-color: rgba(37, 99, 235, 0.2);
+    background-color: rgba(138, 83, 32, 0.12);
+    border-color: rgba(138, 83, 32, 0.2);
     border-top-right-radius: 4px;
 }
 
@@ -1199,8 +1199,8 @@ body {
 }
 
 .rag-status-badge {
-    background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(37, 99, 235, 0.2));
-    border: 1px solid rgba(59, 130, 246, 0.3);
+    background: linear-gradient(135deg, rgba(154, 91, 34, 0.2), rgba(138, 83, 32, 0.2));
+    border: 1px solid rgba(154, 91, 34, 0.3);
     color: #60a5fa;
     padding: 4px 12px;
     border-radius: 20px;
@@ -1235,8 +1235,8 @@ body {
 }
 
 .semantic-search-box input:focus {
-    border-color: rgba(59, 130, 246, 0.5);
-    box-shadow: 0 0 12px rgba(59, 130, 246, 0.2);
+    border-color: rgba(154, 91, 34, 0.5);
+    box-shadow: 0 0 12px rgba(154, 91, 34, 0.2);
 }
 
 .search-loader {
@@ -1256,7 +1256,7 @@ body {
     width: 18px;
     height: 18px;
     border: 2px solid rgba(255, 255, 255, 0.1);
-    border-top-color: #3b82f6;
+    border-top-color: var(--accent-blue);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
 }
@@ -1299,7 +1299,7 @@ body {
 .search-result-card:hover {
     transform: translateY(-2px);
     background: var(--sunken-5);
-    border-color: rgba(59, 130, 246, 0.3);
+    border-color: rgba(154, 91, 34, 0.3);
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
 }
 
@@ -1338,8 +1338,8 @@ body {
 }
 
 .match-badge.high {
-    background: rgba(59, 130, 246, 0.1);
-    border: 1px solid rgba(59, 130, 246, 0.2);
+    background: rgba(154, 91, 34, 0.1);
+    border: 1px solid rgba(154, 91, 34, 0.2);
     color: #60a5fa;
 }
 
@@ -1584,15 +1584,15 @@ body {
 }
 
 .badge-ai {
-    background-color: rgba(139, 92, 246, 0.12);
+    background-color: rgba(154, 91, 34, 0.12);
     color: #c084fc;
-    border: 1px solid rgba(139, 92, 246, 0.25);
+    border: 1px solid rgba(154, 91, 34, 0.25);
 }
 
 .badge-watcher {
-    background-color: rgba(59, 130, 246, 0.12);
+    background-color: rgba(154, 91, 34, 0.12);
     color: #60a5fa;
-    border: 1px solid rgba(59, 130, 246, 0.25);
+    border: 1px solid rgba(154, 91, 34, 0.25);
 }
 
 /* ==========================================================================
@@ -1617,9 +1617,9 @@ body {
 }
 
 .agents-list-item.active {
-    background: rgba(37, 99, 235, 0.15);
+    background: rgba(138, 83, 32, 0.15);
     border-color: var(--accent-blue);
-    box-shadow: 0 0 12px rgba(37, 99, 235, 0.15);
+    box-shadow: 0 0 12px rgba(138, 83, 32, 0.15);
 }
 
 .agent-item-avatar {
@@ -1636,7 +1636,7 @@ body {
 }
 
 .agents-list-item.active .agent-item-avatar {
-    background: rgba(37, 99, 235, 0.2);
+    background: rgba(138, 83, 32, 0.2);
     border-color: var(--accent-blue);
 }
 
@@ -1789,7 +1789,7 @@ body {
 
 .calendar-day.today {
     border-color: var(--accent-blue);
-    background: rgba(59, 130, 246, 0.05);
+    background: rgba(154, 91, 34, 0.05);
 }
 
 .calendar-day.today .day-number {
@@ -1798,9 +1798,9 @@ body {
 }
 
 .calendar-day.active {
-    background: rgba(59, 130, 246, 0.12);
+    background: rgba(154, 91, 34, 0.12);
     border-color: #60a5fa;
-    box-shadow: 0 0 10px rgba(59, 130, 246, 0.2);
+    box-shadow: 0 0 10px rgba(154, 91, 34, 0.2);
 }
 
 .day-number {
@@ -1948,7 +1948,7 @@ body {
 
 .agent-form .form-control:focus {
     border-color: var(--accent-blue) !important;
-    box-shadow: 0 0 8px rgba(37, 99, 235, 0.2) !important;
+    box-shadow: 0 0 8px rgba(138, 83, 32, 0.2) !important;
     background: rgba(0, 0, 0, 0.4) !important;
 }
 
@@ -2072,6 +2072,7 @@ html[data-theme="light"]{
     --sunken-1:rgba(15,23,42,0.045); --sunken-2:rgba(15,23,42,0.06);
     --sunken-3:rgba(15,23,42,0.03); --sunken-4:rgba(15,23,42,0.025); --sunken-5:rgba(15,23,42,0.04);
     --modal-solid:#ffffff;
+    --accent-blue:#9a5b22; --accent-purple:#b8791f;
 }
 html[data-theme="light"] body{ background-color:var(--bg-primary); color:var(--text-primary); }
 html[data-theme="light"] input, html[data-theme="light"] textarea, html[data-theme="light"] select{ color:var(--text-primary); }
