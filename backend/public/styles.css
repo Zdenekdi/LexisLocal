@@ -8,7 +8,7 @@
     --bg-primary: #0b0c0e;
     --bg-secondary: #13151a;
     --bg-glass: rgba(19, 21, 26, 0.75);
-    --border-glass: rgba(255, 255, 255, 0.07);
+    --border-glass: var(--sf-07);
     --text-primary: #f4f5f6;
     --text-secondary: #9aa0a6;
     --text-muted: #5f6368;
@@ -23,6 +23,14 @@
     /* Transitions & Shadows */
     --transition-smooth: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
     --shadow-premium: 0 4px 20px -2px rgba(0, 0, 0, 0.4);
+    /* Surface tints — zvariabilizováno kvůli světlému motivu */
+    --sf-01: rgba(255,255,255,0.01); --sf-02: rgba(255,255,255,0.02);
+    --sf-03: rgba(255,255,255,0.03); --sf-04: rgba(255,255,255,0.04);
+    --sf-05: rgba(255,255,255,0.05); --sf-06: rgba(255,255,255,0.06);
+    --sf-07: rgba(255,255,255,0.07); --sf-08: rgba(255,255,255,0.08);
+    --sunken-1: rgba(15,23,42,0.3); --sunken-2: rgba(15,23,42,0.6);
+    --sunken-3: rgba(30,41,59,0.4); --sunken-4: rgba(30,41,59,0.2); --sunken-5: rgba(30,41,59,0.35);
+    --modal-solid: rgba(19,21,26,0.95);
 }
 
 /* Base resets & scrollbar styling */
@@ -132,7 +140,7 @@ body {
 }
 
 .nav-btn:hover {
-    background-color: rgba(255, 255, 255, 0.04);
+    background-color: var(--sf-04);
     color: var(--text-primary);
 }
 
@@ -284,7 +292,7 @@ body {
 }
 
 .btn-secondary:hover {
-    background-color: rgba(255, 255, 255, 0.03);
+    background-color: var(--sf-03);
 }
 
 .btn-danger {
@@ -421,8 +429,8 @@ body {
 .agent-avatar {
     width: 48px;
     height: 48px;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--sf-03);
+    border: 1px solid var(--sf-08);
     border-radius: 10px;
     display: flex;
     align-items: center;
@@ -513,7 +521,7 @@ body {
 }
 
 .filter-btn.active {
-    background-color: rgba(255, 255, 255, 0.06);
+    background-color: var(--sf-06);
     color: var(--text-primary);
     font-weight: 600;
 }
@@ -553,7 +561,7 @@ body {
 .inbox-avatar {
     width: 60px;
     height: 60px;
-    background-color: rgba(255, 255, 255, 0.03);
+    background-color: var(--sf-03);
     border: 1px solid var(--border-glass);
     border-radius: 14px;
     display: flex;
@@ -625,7 +633,7 @@ body {
     font-size: 0.8rem;
     color: var(--text-muted);
     line-height: 1.4;
-    background-color: rgba(255, 255, 255, 0.01);
+    background-color: var(--sf-01);
     padding: 8px 12px;
     border-radius: 8px;
     border: 1px dashed var(--border-glass);
@@ -760,7 +768,7 @@ body {
 .model-avatar {
     width: 44px;
     height: 44px;
-    background-color: rgba(255, 255, 255, 0.03);
+    background-color: var(--sf-03);
     border: 1px solid var(--border-glass);
     border-radius: 10px;
     display: flex;
@@ -800,7 +808,7 @@ body {
     gap: 20px;
     padding: 15px 25px;
     border-bottom: 1px solid var(--border-glass);
-    background-color: rgba(15, 23, 42, 0.3);
+    background-color: var(--sunken-1);
 }
 
 .config-item {
@@ -861,7 +869,7 @@ body {
 .message-avatar {
     width: 36px;
     height: 36px;
-    background-color: rgba(255, 255, 255, 0.03);
+    background-color: var(--sf-03);
     border: 1px solid var(--border-glass);
     border-radius: 50%;
     display: flex;
@@ -913,7 +921,7 @@ body {
     gap: 15px;
     padding: 20px 25px;
     border-top: 1px solid var(--border-glass);
-    background-color: rgba(15, 23, 42, 0.3);
+    background-color: var(--sunken-1);
     align-items: center;
 }
 
@@ -1006,13 +1014,13 @@ body {
 }
 
 .manual-table th {
-    background-color: rgba(255, 255, 255, 0.02);
+    background-color: var(--sf-02);
     font-weight: 600;
     color: var(--text-primary);
 }
 
 .manual-table tr:hover {
-    background-color: rgba(255, 255, 255, 0.01);
+    background-color: var(--sf-01);
 }
 
 /* Sleek Modern Modal System */
@@ -1074,7 +1082,7 @@ body {
 }
 
 .btn-close:hover {
-    background-color: rgba(255, 255, 255, 0.05);
+    background-color: var(--sf-05);
     color: var(--text-primary);
 }
 
@@ -1127,7 +1135,7 @@ body {
 }
 
 .hamburger-btn:hover {
-    background-color: rgba(255, 255, 255, 0.05);
+    background-color: var(--sf-05);
 }
 
 .sidebar-backdrop {
@@ -1159,7 +1167,7 @@ body {
     margin-top: 30px;
     padding: 25px;
     border-radius: 16px;
-    background: rgba(30, 41, 59, 0.4);
+    background: var(--sunken-3);
     border: 1px solid var(--border-glass);
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
 }
@@ -1213,7 +1221,7 @@ body {
 
 .semantic-search-box input {
     flex-grow: 1;
-    background: rgba(15, 23, 42, 0.6);
+    background: var(--sunken-2);
     border: 1px solid var(--border-glass);
     border-radius: 10px;
     padding: 14px 18px;
@@ -1235,7 +1243,7 @@ body {
     margin-top: 20px;
     color: var(--text-secondary);
     font-size: 0.9rem;
-    background: rgba(255, 255, 255, 0.02);
+    background: var(--sf-02);
     padding: 12px 20px;
     border-radius: 8px;
     border: 1px dashed var(--border-glass);
@@ -1274,7 +1282,7 @@ body {
 }
 
 .search-result-card {
-    background: rgba(30, 41, 59, 0.2);
+    background: var(--sunken-4);
     border: 1px solid var(--border-glass);
     border-left: 4px solid var(--accent-blue);
     border-radius: 12px;
@@ -1287,7 +1295,7 @@ body {
 
 .search-result-card:hover {
     transform: translateY(-2px);
-    background: rgba(30, 41, 59, 0.35);
+    background: var(--sunken-5);
     border-color: rgba(59, 130, 246, 0.3);
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
 }
@@ -1336,10 +1344,10 @@ body {
     font-size: 0.9rem;
     color: #e4e4e7;
     line-height: 1.6;
-    background: rgba(15, 23, 42, 0.3);
+    background: var(--sunken-1);
     padding: 12px 15px;
     border-radius: 8px;
-    border: 1px solid rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--sf-02);
 }
 
 .btn-xs {
@@ -1352,7 +1360,7 @@ body {
     padding: 30px;
     color: var(--text-secondary);
     font-size: 0.9rem;
-    background: rgba(255, 255, 255, 0.01);
+    background: var(--sf-01);
     border-radius: 12px;
     border: 1px dashed var(--border-glass);
 }
@@ -1561,7 +1569,7 @@ body {
 }
 
 .badge-system {
-    background-color: rgba(255, 255, 255, 0.05);
+    background-color: var(--sf-05);
     color: var(--text-secondary);
     border: 1px solid rgba(255, 255, 255, 0.1);
 }
@@ -1592,7 +1600,7 @@ body {
     align-items: center;
     gap: 12px;
     padding: 12px 15px;
-    background: rgba(255, 255, 255, 0.02);
+    background: var(--sf-02);
     border: 1px solid var(--border-glass);
     border-radius: 10px;
     cursor: pointer;
@@ -1601,7 +1609,7 @@ body {
 }
 
 .agents-list-item:hover {
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--sf-05);
     border-color: rgba(255, 255, 255, 0.15);
 }
 
@@ -1614,7 +1622,7 @@ body {
 .agent-item-avatar {
     width: 38px;
     height: 38px;
-    background: rgba(255, 255, 255, 0.03);
+    background: var(--sf-03);
     border: 1px solid var(--border-glass);
     border-radius: 8px;
     display: flex;
@@ -1654,8 +1662,8 @@ body {
     font-size: 0.58rem;
     font-weight: 700;
     text-transform: uppercase;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--sf-04);
+    border: 1px solid var(--sf-08);
     color: var(--text-muted);
     padding: 1px 4px;
     border-radius: 4px;
@@ -1670,7 +1678,7 @@ body {
     left: 105%;
     top: 50%;
     transform: translateY(-50%) scale(0.95);
-    background: rgba(19, 21, 26, 0.95);
+    background: var(--modal-solid);
     border: 1px solid var(--border-glass);
     color: var(--text-primary);
     padding: 8px 12px;
@@ -1747,7 +1755,7 @@ body {
 
 .calendar-day {
     aspect-ratio: 1.2;
-    background: rgba(255, 255, 255, 0.01);
+    background: var(--sf-01);
     border: 1px solid var(--border-glass);
     border-radius: 8px;
     display: flex;
@@ -1760,7 +1768,7 @@ body {
 }
 
 .calendar-day:hover {
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--sf-04);
     border-color: rgba(255, 255, 255, 0.15);
     transform: translateY(-1px);
 }
@@ -1831,7 +1839,7 @@ body {
     padding: 12px;
     border-radius: 8px;
     border: 1px solid var(--border-glass);
-    background: rgba(255, 255, 255, 0.01);
+    background: var(--sf-01);
     transition: var(--transition-smooth);
     display: flex;
     flex-direction: column;
@@ -1839,7 +1847,7 @@ body {
 }
 
 .calendar-event-item:hover {
-    background: rgba(255, 255, 255, 0.03);
+    background: var(--sf-03);
     border-color: rgba(255, 255, 255, 0.1);
 }
 
@@ -1915,7 +1923,7 @@ body {
 
 .agents-editor {
     padding: 10px;
-    background: rgba(255, 255, 255, 0.01);
+    background: var(--sf-01);
     border-radius: 12px;
 }
 
@@ -1994,7 +2002,7 @@ body {
 .floating-timelog-btn .fab-tooltip {
     position: absolute;
     right: 70px;
-    background: rgba(19, 21, 26, 0.95);
+    background: var(--modal-solid);
     border: 1px solid var(--border-glass);
     color: white;
     font-size: 0.78rem;
@@ -2029,7 +2037,7 @@ body {
     align-items: center;
     margin-bottom: 12px;
     padding-bottom: 8px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    border-bottom: 1px solid var(--sf-05);
 }
 
 .inline-timeline-title {
@@ -2044,3 +2052,21 @@ body {
 
 
 
+
+
+/* ===== SVĚTLÝ MOTIV (přepínač) ===== */
+html[data-theme="light"]{
+    --bg-primary:#eef0f3; --bg-secondary:#ffffff; --bg-glass:rgba(255,255,255,0.82);
+    --border-glass:rgba(15,23,42,0.10);
+    --text-primary:#181b21; --text-secondary:#586170; --text-muted:#8b929c;
+    --shadow-premium:0 4px 20px -2px rgba(15,23,42,0.10);
+    --sf-01:rgba(15,23,42,0.015); --sf-02:rgba(15,23,42,0.025);
+    --sf-03:rgba(15,23,42,0.04); --sf-04:rgba(15,23,42,0.05);
+    --sf-05:rgba(15,23,42,0.06); --sf-06:rgba(15,23,42,0.08);
+    --sf-07:rgba(15,23,42,0.10); --sf-08:rgba(15,23,42,0.14);
+    --sunken-1:rgba(15,23,42,0.05); --sunken-2:rgba(15,23,42,0.08);
+    --sunken-3:rgba(15,23,42,0.035); --sunken-4:rgba(15,23,42,0.025); --sunken-5:rgba(15,23,42,0.05);
+    --modal-solid:#ffffff;
+}
+html[data-theme="light"] body{ background-color:var(--bg-primary); color:var(--text-primary); }
+html[data-theme="light"] input, html[data-theme="light"] textarea, html[data-theme="light"] select{ color:var(--text-primary); }

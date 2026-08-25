@@ -9,6 +9,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
+    <script>/* motiv: nastav co nejdřív, ať nebliká */(function(){try{if(localStorage.getItem('lexis-theme')==='light')document.documentElement.setAttribute('data-theme','light');}catch(e){}})();</script>
 </head>
 <body class="dark-theme">
     <!-- Sidebar mobile backdrop -->
@@ -102,6 +103,7 @@
                     <button class="btn btn-secondary" id="btn-pair-phone" title="Zobrazí QR pro spárování telefonu/tabletu s mobilním editorem (/m)" onclick="window.open('/pair','lexislink','width=520,height=760')">
                         📱 Spárovat telefon
                     </button>
+                    <button class="btn btn-secondary" id="btn-theme-toggle" title="Přepnout světlý / tmavý motiv" style="min-width:auto;">🌗</button>
                     <div class="system-time" id="system-time">09:00:00</div>
                 </div>
             </header>
@@ -1204,5 +1206,20 @@
     <script src="app-managerial.js"></script>
     <script src="app-email.js"></script>
     <script src="app-spisova.js"></script>
+    <script>
+    (function(){
+      var btn=document.getElementById('btn-theme-toggle');
+      function cur(){ return document.documentElement.getAttribute('data-theme')==='light'?'light':'dark'; }
+      function paint(){ if(btn) btn.textContent = cur()==='light' ? '☀️' : '🌙'; }
+      if(btn){ btn.addEventListener('click',function(){
+        var light = cur()!=='light';
+        if(light) document.documentElement.setAttribute('data-theme','light');
+        else document.documentElement.removeAttribute('data-theme');
+        try{ localStorage.setItem('lexis-theme', light?'light':'dark'); }catch(e){}
+        paint();
+      }); }
+      paint();
+    })();
+    </script>
 </body>
 </html>
