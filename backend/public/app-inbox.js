@@ -12,44 +12,51 @@ Object.assign(LexisLocalApp.prototype, {
         // Rich definitions matching backend server configuration
         const definitions = {
             resersnik: {
-                name: "Robot „Rešeršník“",
+                name: "Rešeršník",
                 emoji: "📚",
                 role: "Právní analýzy",
                 desc: "Specializovaný koncipient provádějící rešerše nad českou legislativou a vyhledávající relevantní judikáty Nejvyššího soudu ČR."
             },
             stylista: {
-                name: "Robot „Stylista“",
+                name: "Stylista",
                 emoji: "✍️",
                 role: "Style Cloning",
                 desc: "Dokonale klonuje advokátův osobitý tón a styl psaní. Přepisuje text do elegantní a autoritativní advokátní češtiny."
             },
             kontrolor: {
-                name: "Robot „Kontrolor“",
+                name: "Kontrolor",
                 emoji: "⚖️",
                 role: "Audit a rizika",
                 desc: "Působí jako protihráč a oponent. Vyhledává logické trhliny ve smlouvách, neurčitosti a slabá místa v právní argumentaci."
             },
             sekretarka: {
-                name: "Robot „Sekretářka“",
+                name: "Sekretářka",
                 emoji: "⏰",
                 role: "Kancelářská agenda",
                 desc: "Spravuje a organizuje lhůty k vyjádření, sestavuje úkoly ze spisů, připravuje doložky a formátuje odpovědi pro klienty."
             },
             spisovatel: {
-                name: "Robot „Spisovatel“",
+                name: "Spisovatel",
                 emoji: "📝",
                 role: "Draftování dokumentů",
                 desc: "Sestavuje žaloby, smlouvy, odvolání a další právní dokumenty na základě Vašeho zadání a citlivě zapracovává Vaše připomínky."
             }
         };
 
+        const ICONS = {
+            resersnik:'<svg viewBox="0 0 24 24"><path d="M12 7v14"/><path d="M3 5a2 2 0 0 1 2-2h5v16H5a2 2 0 0 0-2 2z"/><path d="M21 5a2 2 0 0 0-2-2h-5v16h5a2 2 0 0 1 2 2z"/></svg>',
+            stylista:'<svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>',
+            kontrolor:'<svg viewBox="0 0 24 24"><path d="M12 3v18M7 21h10"/><path d="M5 7l14-2"/><path d="M5 7 2 13a3 3 0 0 0 6 0zM19 5l3 6a3 3 0 0 1-6 0z"/></svg>',
+            sekretarka:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+            spisovatel:'<svg viewBox="0 0 24 24"><path d="M6 2h8l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"/><path d="M14 2v5h5M8 13h8M8 17h6"/></svg>'
+        };
         let html = '';
         agentIds.forEach(id => {
             const def = definitions[id] || { name: id, emoji: "🤖", role: "AI Asistent", desc: "Aktivní agent swarmu." };
             html += `
                 <div class="agent-card glass">
                     <div class="agent-card-header">
-                        <div class="agent-avatar">${def.emoji}</div>
+                        <div class="agent-avatar">${ICONS[id] || def.emoji}</div>
                         <div class="agent-info">
                             <h4>${def.name}</h4>
                             <span>${def.role}</span>

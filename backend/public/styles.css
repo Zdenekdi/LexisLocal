@@ -2079,3 +2079,11 @@ html[data-theme="light"] input, html[data-theme="light"] textarea, html[data-the
 /* Line-ikony v bočním menu */
 .nav-btn .icon{ display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; flex:none; }
 .nav-btn .icon svg{ width:19px; height:19px; stroke:currentColor; fill:none; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+
+/* Ikony v tlačítkách headeru */
+.btn .btn-ic{ display:inline-flex; }
+.btn svg{ width:15px; height:15px; stroke:currentColor; fill:none; stroke-width:1.9; stroke-linecap:round; stroke-linejoin:round; vertical-align:-3px; margin-right:6px; }
+
+/* Ikona v avataru asistenta */
+.agent-avatar svg{ width:22px; height:22px; stroke:currentColor; fill:none; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; }
+.agent-avatar{ display:flex; align-items:center; justify-content:center; color:var(--accent-blue); }

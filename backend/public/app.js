@@ -464,7 +464,10 @@ class LexisLocalApp {
             // Set paths and counts
             const pathEl = document.getElementById('watch-dir-path');
             if (pathEl && data.watcherDir) {
-                pathEl.textContent = data.watcherDir;
+                const full = data.watcherDir;
+                const name = full.replace(/[\/\\]+$/, '').split(/[\/\\]/).pop() || full;
+                pathEl.textContent = name;
+                pathEl.title = full; // plná cesta v tooltipu
             }
             
             // Load Swarm info on Overview
