@@ -79,7 +79,7 @@ body {
     border-right: 1px solid var(--border-glass);
     display: flex;
     flex-direction: column;
-    padding: 30px 20px;
+    padding: 14px 16px;
     position: sticky;
     top: 0;
     height: 100vh;
@@ -89,8 +89,8 @@ body {
 .sidebar-brand {
     display: flex;
     align-items: center;
-    gap: 15px;
-    margin-bottom: 40px;
+    gap: 12px;
+    margin-bottom: 16px;
 }
 
 .brand-logo {
@@ -115,8 +115,10 @@ body {
 .sidebar-nav {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 3px;
     flex-grow: 1;
+    overflow-y: auto;
+    min-height: 0;
 }
 
 .nav-btn {
@@ -124,7 +126,7 @@ body {
     border: none;
     outline: none;
     color: var(--text-secondary);
-    padding: 12px 16px;
+    padding: 8px 14px;
     border-radius: 10px;
     cursor: pointer;
     font-family: inherit;
@@ -177,7 +179,8 @@ body {
 
 .sidebar-footer {
     border-top: 1px solid var(--border-glass);
-    padding-top: 20px;
+    padding-top: 12px;
+    margin-top: 8px;
 }
 
 .status-indicator {
@@ -2056,17 +2059,23 @@ body {
 
 /* ===== SVĚTLÝ MOTIV (přepínač) ===== */
 html[data-theme="light"]{
-    --bg-primary:#eef0f3; --bg-secondary:#ffffff; --bg-glass:rgba(255,255,255,0.82);
-    --border-glass:rgba(15,23,42,0.10);
+    --bg-primary:#e7e9ee; --bg-secondary:#ffffff; --bg-glass:rgba(255,255,255,0.92);
+    --border-glass:rgba(15,23,42,0.12);
     --text-primary:#181b21; --text-secondary:#586170; --text-muted:#8b929c;
-    --shadow-premium:0 4px 20px -2px rgba(15,23,42,0.10);
-    --sf-01:rgba(15,23,42,0.015); --sf-02:rgba(15,23,42,0.025);
-    --sf-03:rgba(15,23,42,0.04); --sf-04:rgba(15,23,42,0.05);
-    --sf-05:rgba(15,23,42,0.06); --sf-06:rgba(15,23,42,0.08);
-    --sf-07:rgba(15,23,42,0.10); --sf-08:rgba(15,23,42,0.14);
-    --sunken-1:rgba(15,23,42,0.05); --sunken-2:rgba(15,23,42,0.08);
-    --sunken-3:rgba(15,23,42,0.035); --sunken-4:rgba(15,23,42,0.025); --sunken-5:rgba(15,23,42,0.05);
+    --shadow-premium:0 4px 18px -4px rgba(15,23,42,0.14);
+    /* vyvýšené plochy = SVĚTLEJŠÍ (bílé) než šedá stránka, ať karty vystoupí */
+    --sf-01:rgba(255,255,255,0.55); --sf-02:rgba(255,255,255,0.70);
+    --sf-03:rgba(255,255,255,0.88); --sf-04:#ffffff;
+    --sf-05:#ffffff; --sf-06:#ffffff;
+    --sf-07:rgba(15,23,42,0.12); --sf-08:rgba(15,23,42,0.18);
+    /* zapuštěné plochy (inputy) = jemně šedé */
+    --sunken-1:rgba(15,23,42,0.045); --sunken-2:rgba(15,23,42,0.06);
+    --sunken-3:rgba(15,23,42,0.03); --sunken-4:rgba(15,23,42,0.025); --sunken-5:rgba(15,23,42,0.04);
     --modal-solid:#ffffff;
 }
 html[data-theme="light"] body{ background-color:var(--bg-primary); color:var(--text-primary); }
 html[data-theme="light"] input, html[data-theme="light"] textarea, html[data-theme="light"] select{ color:var(--text-primary); }
+
+/* Line-ikony v bočním menu */
+.nav-btn .icon{ display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; flex:none; }
+.nav-btn .icon svg{ width:19px; height:19px; stroke:currentColor; fill:none; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
