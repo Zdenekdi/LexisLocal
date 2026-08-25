@@ -51,7 +51,7 @@
                 const fn = esc(d.fileName);
                 const noVec = (d.embedded < d.chunks) ? ', bez vektoru' : '';
                 const arg = fn.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-                return `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;background:rgba(255,255,255,0.03);padding:6px 10px;border-radius:6px;font-size:0.8rem;">
+                return `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;background:var(--sf-03);padding:6px 10px;border-radius:6px;font-size:0.8rem;">
                     <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">📄 ${fn} <span style="opacity:0.5;">(${d.chunks} částí${noVec})</span></span>
                     <button type="button" class="btn btn-secondary" onclick="window.appInstance.deleteAgentKnowledge('${arg}')" style="padding:2px 8px;font-size:0.68rem;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);color:#f87171;">Smazat</button>
                 </div>`;

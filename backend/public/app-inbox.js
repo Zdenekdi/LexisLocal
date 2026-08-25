@@ -220,7 +220,7 @@ Object.assign(LexisLocalApp.prototype, {
             files.forEach(doc => {
                 const isUnread = doc.status === 'unread';
                 filesHtml += `
-                    <div class="case-file-row" style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.015); padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border-glass);">
+                    <div class="case-file-row" style="display: flex; justify-content: space-between; align-items: center; background: var(--sf-02); padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border-glass);">
                         <div style="display: flex; align-items: center; gap: 10px; font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 70%;">
                             <span>${doc.wasOcr ? '🔍' : '📄'}</span>
                             <span style="font-weight: 500; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(doc.fileName)}</span>
@@ -253,7 +253,7 @@ Object.assign(LexisLocalApp.prototype, {
 
             html += `
                 <div class="inbox-card glass" style="display: flex; flex-direction: row; gap: 20px; padding: 25px; margin-bottom: 15px;">
-                    <div class="inbox-avatar" style="font-size: 1.5rem; background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); width: 54px; height: 54px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                    <div class="inbox-avatar" style="font-size: 1.5rem; background: var(--sf-03); border: 1px solid var(--border-glass); width: 54px; height: 54px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
                         📂
                     </div>
                     <div class="inbox-info" style="flex-grow: 1;">

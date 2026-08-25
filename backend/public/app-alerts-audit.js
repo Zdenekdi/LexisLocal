@@ -35,7 +35,7 @@ Object.assign(LexisLocalApp.prototype, {
                             DETEKOVÁNA INSOLVENCE: ${alert.name} (IČO: ${alert.ico})
                         </h4>
                         <p style="margin: 4px 0 0 0; color: var(--text-muted); font-size: 0.82rem;">
-                            Sledovaný subjekt vstoupil do úpadku. Spisová značka: <b style="color: white;">${alert.caseNumber}</b> | Stav: <span style="color: #fca5a5;">${alert.insolvencyStatus}</span>
+                            Sledovaný subjekt vstoupil do úpadku. Spisová značka: <b style="color: var(--text-primary);">${alert.caseNumber}</b> | Stav: <span style="color: #fca5a5;">${alert.insolvencyStatus}</span>
                         </p>
                         <p style="margin: 2px 0 0 0; color: var(--text-muted); font-size: 0.75rem;">
                             Související spisy: ${alert.citedFiles.join(', ')}
@@ -43,7 +43,7 @@ Object.assign(LexisLocalApp.prototype, {
                     </div>
                 </div>
                 <div style="display: flex; gap: 10px;">
-                    <button class="btn btn-secondary" onclick="window.appInstance.sendTextToLexisEditor('POZOR: Sledovaný subjekt ${alert.name} (IČO: ${alert.ico}) je v INSOLVENCI! Spisová značka: ${alert.caseNumber}, Stav: ${alert.insolvencyStatus}. Bezodkladně přihlaste pohledávky.', 'Insolvenční varování')" style="font-size: 0.8rem; padding: 6px 12px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.02);">
+                    <button class="btn btn-secondary" onclick="window.appInstance.sendTextToLexisEditor('POZOR: Sledovaný subjekt ${alert.name} (IČO: ${alert.ico}) je v INSOLVENCI! Spisová značka: ${alert.caseNumber}, Stav: ${alert.insolvencyStatus}. Bezodkladně přihlaste pohledávky.', 'Insolvenční varování')" style="font-size: 0.8rem; padding: 6px 12px; border: 1px solid var(--border-glass); background: var(--sf-02);">
                         ✍️ Odeslat do Editoru
                     </button>
                     <button class="btn btn-primary" onclick="window.appInstance.dismissAlert('${alert.id}')" style="font-size: 0.8rem; padding: 6px 12px; background: rgba(239, 68, 68, 0.8); border: none;">
@@ -281,7 +281,7 @@ Object.assign(LexisLocalApp.prototype, {
             if (!detailsHtml) detailsHtml = '<span style="opacity: 0.5;">—</span>';
 
             return `
-                <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.05); hover: background-color: rgba(255,255,255,0.01);">
+                <tr style="border-bottom: 1px solid var(--border-glass); hover: background-color: var(--sf-01);">
                     <td style="padding: 12px; font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; opacity: 0.9;">${formattedDate}</td>
                     <td style="padding: 12px;"><span style="font-weight: 500; opacity: 0.8;">${log.user}</span></td>
                     <td style="padding: 12px;"><span class="audit-badge ${badgeClass}">${log.operation}</span></td>

@@ -44,9 +44,9 @@ Object.assign(LexisLocalApp.prototype, {
         }
 
         listEl.innerHTML = aggregated.map(item => `
-            <div class="glass" style="padding: 10px 15px; border-radius: 8px; background: rgba(255,255,255,0.02); border: 1px solid var(--border-glass); font-size: 0.85rem; display: flex; justify-content: space-between; align-items: center;">
+            <div class="glass" style="padding: 10px 15px; border-radius: 8px; background: var(--sf-02); border: 1px solid var(--border-glass); font-size: 0.85rem; display: flex; justify-content: space-between; align-items: center;">
                 <div>
-                    <strong style="color: white; display: block; margin-bottom: 2px;">${item.documentName}</strong>
+                    <strong style="color: var(--text-primary); display: block; margin-bottom: 2px;">${item.documentName}</strong>
                     <span style="opacity: 0.7; font-size: 0.75rem;">Primární úkon: <code>${item.primaryAction}</code></span>
                 </div>
                 <div style="text-align: right;">
@@ -70,20 +70,20 @@ Object.assign(LexisLocalApp.prototype, {
         const sorted = [...timesheets].sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
 
         listEl.innerHTML = sorted.map(ts => `
-            <div class="glass" style="padding: 18px; border-radius: 12px; background: rgba(255,255,255,0.01); border: 1px solid var(--border-glass);">
+            <div class="glass" style="padding: 18px; border-radius: 12px; background: var(--sf-01); border: 1px solid var(--border-glass);">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
                     <div>
-                        <strong style="color: white; font-size: 1rem; font-family: 'Outfit', sans-serif;">📋 Výkaz práce ze dne ${ts.date}</strong>
+                        <strong style="color: var(--text-primary); font-size: 1rem; font-family: 'Outfit', sans-serif;">📋 Výkaz práce ze dne ${ts.date}</strong>
                         <span style="opacity: 0.6; font-size: 0.75rem; display: block;">Sestaveno: ${new Date(ts.createdAt).toLocaleString('cs-CZ')}</span>
                     </div>
                     <div style="display: flex; gap: 10px; align-items: center;">
                         <span style="color: var(--accent-gold); font-weight: bold; font-size: 0.95rem;">${ts.totalHours.toFixed(1)} hod celkem</span>
-                        <button class="btn btn-secondary" onclick="window.appInstance.copyTimesheetToClipboard('${ts.id}')" style="padding: 4px 8px; font-size: 0.75rem; background: rgba(255,255,255,0.05); border: 1px solid var(--border-glass);">
+                        <button class="btn btn-secondary" onclick="window.appInstance.copyTimesheetToClipboard('${ts.id}')" style="padding: 4px 8px; font-size: 0.75rem; background: var(--sf-05); border: 1px solid var(--border-glass);">
                             Kopírovat 📋
                         </button>
                     </div>
                 </div>
-                <div class="glass" style="padding: 12px 15px; border-radius: 8px; font-family: 'Outfit', sans-serif; font-size: 0.85rem; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.02); white-space: pre-wrap; color: #cbd5e1; max-height: 200px; overflow-y: auto;" id="ts-text-${ts.id}">${ts.synthesizedOutput}</div>
+                <div class="glass" style="padding: 12px 15px; border-radius: 8px; font-family: 'Outfit', sans-serif; font-size: 0.85rem; background: var(--sunken-1); border: 1px solid var(--sf-02); white-space: pre-wrap; color: var(--text-secondary); max-height: 200px; overflow-y: auto;" id="ts-text-${ts.id}">${ts.synthesizedOutput}</div>
             </div>
         `).join('');
     },
@@ -149,10 +149,10 @@ Object.assign(LexisLocalApp.prototype, {
             const badgeText = isHigh ? 'VYSOKÉ RIZIKO' : isMedium ? 'Střední riziko' : 'Bezpečné ✓';
 
             return `
-                <div class="glass" style="padding: 15px; border-radius: 10px; background: rgba(255,255,255,0.01); border: 1px solid var(--border-glass); font-size: 0.85rem;">
+                <div class="glass" style="padding: 15px; border-radius: 10px; background: var(--sf-01); border: 1px solid var(--border-glass); font-size: 0.85rem;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                         <div>
-                            <strong style="color: white; font-size: 0.95rem;">Prověrka střetu zájmů</strong>
+                            <strong style="color: var(--text-primary); font-size: 0.95rem;">Prověrka střetu zájmů</strong>
                             <span style="opacity: 0.6; font-size: 0.75rem; display: block;">Prověřeno: ${new Date(run.timestamp).toLocaleString('cs-CZ')}</span>
                         </div>
                         <span style="font-size: 0.75rem; padding: 3px 8px; border-radius: 4px; font-weight: bold; background: ${badgeColor}20; color: ${badgeColor}; border: 1px solid ${badgeColor}30;">
@@ -164,7 +164,7 @@ Object.assign(LexisLocalApp.prototype, {
                     </div>
                     <p style="margin: 0; font-size: 0.8rem; opacity: 0.9; color: ${isHigh ? '#f87171' : 'white'};">${run.description}</p>
                     ${run.conflictsFound && run.conflictsFound.length > 0 ? `
-                        <div style="margin-top: 10px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 6px; border: 1px solid rgba(255,255,255,0.03);">
+                        <div style="margin-top: 10px; padding: 10px; background: var(--sunken-1); border-radius: 6px; border: 1px solid var(--sf-03);">
                             <span style="font-size: 0.75rem; font-weight: bold; color: var(--accent-gold); display: block; margin-bottom: 5px;">Detaily nalezeného konfliktu:</span>
                             ${run.conflictsFound.map(c => `
                                 <div style="font-size: 0.75rem; margin-bottom: 4px; opacity: 0.9;">
@@ -327,10 +327,10 @@ Object.assign(LexisLocalApp.prototype, {
             const barFill = Math.min(item.spentPercentage, 100);
 
             return `
-                <div class="glass" style="padding: 15px; border-radius: 12px; background: rgba(255,255,255,0.01); border: 1px solid var(--border-glass);">
+                <div class="glass" style="padding: 15px; border-radius: 12px; background: var(--sf-01); border: 1px solid var(--border-glass);">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                         <div>
-                            <strong style="color: white; font-size: 0.95rem; font-family: 'Outfit', sans-serif;">📄 ${item.documentName}</strong>
+                            <strong style="color: var(--text-primary); font-size: 0.95rem; font-family: 'Outfit', sans-serif;">📄 ${item.documentName}</strong>
                             <span style="opacity: 0.6; font-size: 0.75rem; display: block;">Typ: <code>${item.budgetType}</code> | Sazba: ${item.hourlyRate} Kč/hod</span>
                         </div>
                         <div style="text-align: right;">
@@ -340,13 +340,13 @@ Object.assign(LexisLocalApp.prototype, {
                     </div>
                     
                     <!-- Progress Bar -->
-                    <div style="width: 100%; height: 8px; background: rgba(255,255,255,0.05); border-radius: 4px; overflow: hidden; margin-bottom: 10px; border: 1px solid rgba(255,255,255,0.02);">
+                    <div style="width: 100%; height: 8px; background: var(--sf-05); border-radius: 4px; overflow: hidden; margin-bottom: 10px; border: 1px solid var(--sf-02);">
                         <div style="width: ${barFill}%; height: 100%; background: ${statusColor}; border-radius: 4px; transition: width 0.3s ease;"></div>
                     </div>
 
                     <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem;">
                         <span style="opacity: 0.7;">Odhadované náklady na práci:</span>
-                        <strong style="color: white;">${item.estimatedCost.toLocaleString('cs-CZ')} Kč</strong>
+                        <strong style="color: var(--text-primary);">${item.estimatedCost.toLocaleString('cs-CZ')} Kč</strong>
                     </div>
                 </div>
             `;
@@ -364,9 +364,9 @@ Object.assign(LexisLocalApp.prototype, {
             const statusText = isOverloaded ? 'PŘETÍŽENÍ' : isUnderloaded ? 'Volné kapacity' : 'Ideální vytížení';
 
             return `
-                <div class="glass" style="padding: 15px; border-radius: 12px; background: rgba(255,255,255,0.01); border: 1px solid var(--border-glass); display: flex; justify-content: space-between; align-items: center;">
+                <div class="glass" style="padding: 15px; border-radius: 12px; background: var(--sf-01); border: 1px solid var(--border-glass); display: flex; justify-content: space-between; align-items: center;">
                     <div>
-                        <strong style="color: white; font-size: 0.95rem; font-family: 'Outfit', sans-serif; display: block; margin-bottom: 2px;">${member.name}</strong>
+                        <strong style="color: var(--text-primary); font-size: 0.95rem; font-family: 'Outfit', sans-serif; display: block; margin-bottom: 2px;">${member.name}</strong>
                         <span style="opacity: 0.7; font-size: 0.75rem;">Role: ${member.role} | Aktivní úkolová zátěž: <strong>${member.load.toFixed(1)}</strong></span>
                     </div>
                     <div>
@@ -451,9 +451,9 @@ Object.assign(LexisLocalApp.prototype, {
             const typeBadgeColor = isHourly ? 'var(--accent-blue)' : 'var(--accent-purple)';
 
             return `
-                <div class="glass" style="padding: 12px 15px; border-radius: 8px; background: rgba(255,255,255,0.01); border: 1px solid var(--border-glass); display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem;">
+                <div class="glass" style="padding: 12px 15px; border-radius: 8px; background: var(--sf-01); border: 1px solid var(--border-glass); display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem;">
                     <div>
-                        <strong style="color: white; display: block; margin-bottom: 2px;">${fee.name}</strong>
+                        <strong style="color: var(--text-primary); display: block; margin-bottom: 2px;">${fee.name}</strong>
                         <span style="font-size: 0.72rem; padding: 1px 6px; border-radius: 4px; font-weight: bold; background: ${typeBadgeColor}15; color: ${typeBadgeColor}; border: 1px solid ${typeBadgeColor}25;">
                             ${isHourly ? 'Hodinová' : 'Paušální'}
                         </span>
@@ -620,10 +620,10 @@ Object.assign(LexisLocalApp.prototype, {
                             <div class="timeline-icon">${item.icon || '⚫'}</div>
                             <div class="timeline-content">
                                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                                    <strong style="color: white; font-size: 0.82rem;">${item.title}</strong>
+                                    <strong style="color: var(--text-primary); font-size: 0.82rem;">${item.title}</strong>
                                     <span style="font-size: 0.68rem; opacity: 0.6;">${dateStr}</span>
                                 </div>
-                                <span style="font-size: 0.76rem; opacity: 0.85; color: #cbd5e1; display: block; line-height: 1.4;">${item.description}</span>
+                                <span style="font-size: 0.76rem; opacity: 0.85; color: var(--text-secondary); display: block; line-height: 1.4;">${item.description}</span>
                             </div>
                         </div>
                     `;
@@ -668,10 +668,10 @@ Object.assign(LexisLocalApp.prototype, {
                                     <div class="timeline-icon">${item.icon || '⚫'}</div>
                                     <div class="timeline-content">
                                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                                            <strong style="color: white; font-size: 0.85rem;">${item.title}</strong>
+                                            <strong style="color: var(--text-primary); font-size: 0.85rem;">${item.title}</strong>
                                             <span style="font-size: 0.7rem; opacity: 0.6;">${dateStr}</span>
                                         </div>
-                                        <span style="font-size: 0.78rem; opacity: 0.85; color: #cbd5e1; display: block; line-height: 1.4;">${item.description}</span>
+                                        <span style="font-size: 0.78rem; opacity: 0.85; color: var(--text-secondary); display: block; line-height: 1.4;">${item.description}</span>
                                     </div>
                                 </div>
                             `;

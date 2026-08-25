@@ -2076,6 +2076,12 @@ html[data-theme="light"]{
 }
 html[data-theme="light"] body{ background-color:var(--bg-primary); color:var(--text-primary); }
 html[data-theme="light"] input, html[data-theme="light"] textarea, html[data-theme="light"] select{ color:var(--text-primary); }
+/* Světlý motiv — sjednocení prvků se zapsanými inline styly (jen light, dark beze změny) */
+html[data-theme="light"] input:not([type=checkbox]):not([type=radio]):not([type=color]),
+html[data-theme="light"] textarea{ background: var(--sunken-1) !important; border-color: var(--border-glass) !important; color: var(--text-primary) !important; }
+html[data-theme="light"] select{ background: var(--bg-secondary) !important; border-color: var(--border-glass) !important; }
+html[data-theme="light"] .btn-secondary{ background: var(--bg-secondary) !important; color: var(--text-primary) !important; border: 1px solid var(--border-glass) !important; }
+html[data-theme="light"] .btn-secondary:hover{ background: var(--sf-03) !important; }
 
 /* Line-ikony v bočním menu */
 .nav-btn .icon{ display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; flex:none; }

@@ -170,7 +170,7 @@ Object.assign(LexisLocalApp.prototype, {
                     <div style="display: flex; align-items: flex-start; gap: 10px;">
                         <span style="font-size: 1.1rem; line-height: 1;">${icon}</span>
                         <div style="flex-grow: 1; min-width: 0;">
-                            <strong style="color: white; font-size: 0.85rem; display: block; text-decoration: ${isCompleted ? 'line-through' : 'none'}; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;" title="${event.title}">${event.title}</strong>
+                            <strong style="color: var(--text-primary); font-size: 0.85rem; display: block; text-decoration: ${isCompleted ? 'line-through' : 'none'}; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;" title="${event.title}">${event.title}</strong>
                             <span style="font-size: 0.7rem; opacity: 0.6; display: block; margin-top: 2px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${typeLabel} — ${event.description}</span>
                             ${metaHtml}
                             ${actionButtons}

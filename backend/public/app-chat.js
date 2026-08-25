@@ -203,11 +203,11 @@ Object.assign(LexisLocalApp.prototype, {
                     stepsHtml += `
                         <div style="border-left: 2px solid var(--accent-blue); padding-left: 15px; margin-bottom: 20px; position: relative;">
                             <div style="position: absolute; left: -9px; top: 0; background: var(--bg-card); border: 2px solid var(--accent-blue); border-radius: 50%; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; font-size: 0.5rem;"></div>
-                            <div style="font-size: 0.8rem; font-weight: bold; color: white; display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+                            <div style="font-size: 0.8rem; font-weight: bold; color: var(--text-primary); display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
                                 <span>${agentEmoji}</span> Krok ${step.step}: ${step.agentName} <span style="font-size: 0.7rem; color: var(--text-muted); font-weight: normal; margin-left: 5px;">${carbon}</span>
                             </div>
                             <div style="font-size: 0.75rem; font-style: italic; color: var(--text-muted); margin-bottom: 5px;">Instrukce: "${step.instruction}"</div>
-                            <div style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.4; background: rgba(255,255,255,0.01); padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border-glass);">${formattedOutput}</div>
+                            <div style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.4; background: var(--sf-01); padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border-glass);">${formattedOutput}</div>
                         </div>
                     `;
                 });
@@ -233,10 +233,10 @@ Object.assign(LexisLocalApp.prototype, {
                                 👑
                             </div>
                             <div class="message-content" style="flex: 1;">
-                                <span style="font-weight: bold; color: white; font-size: 0.9rem; display: block; margin-bottom: 6px;">
+                                <span style="font-weight: bold; color: var(--text-primary); font-size: 0.9rem; display: block; margin-bottom: 6px;">
                                     Finální syntéza (Chief Orchestrator):
                                 </span>
-                                <p style="margin: 0; font-size: 0.95rem; line-height: 1.5; color: white;">${formattedFinal}</p>
+                                <p style="margin: 0; font-size: 0.95rem; line-height: 1.5; color: var(--text-primary);">${formattedFinal}</p>
                             </div>
                         </div>
                         
@@ -299,11 +299,11 @@ Object.assign(LexisLocalApp.prototype, {
                         
                         <!-- Agent 1 Bubble -->
                         <div style="display: flex; gap: 12px; margin-bottom: 15px;">
-                            <div class="message-avatar" style="background: rgba(255,255,255,0.05); min-width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.1rem;">
+                            <div class="message-avatar" style="background: var(--sf-05); min-width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.1rem;">
                                 ${emoji1}
                             </div>
                             <div class="message-content" style="flex: 1;">
-                                <span style="font-weight: bold; color: white; font-size: 0.85rem; display: block; margin-bottom: 4px;">
+                                <span style="font-weight: bold; color: var(--text-primary); font-size: 0.85rem; display: block; margin-bottom: 4px;">
                                     Prvotní vypracování (${data.agent1.name}):
                                 </span>
                                 <p style="margin: 0; font-size: 0.9rem; line-height: 1.5; color: var(--text-muted);">${formatted1}</p>
@@ -321,7 +321,7 @@ Object.assign(LexisLocalApp.prototype, {
                                 <span style="font-weight: bold; color: #fca5a5; font-size: 0.85rem; display: block; margin-bottom: 4px;">
                                     Oponentní posudek & Revize (${data.agent2.name}):
                                 </span>
-                                <p style="margin: 0; font-size: 0.9rem; line-height: 1.5; color: white; background: rgba(255,255,255,0.02); padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border-glass);">${formatted2}</p>
+                                <p style="margin: 0; font-size: 0.9rem; line-height: 1.5; color: var(--text-primary); background: var(--sf-02); padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border-glass);">${formatted2}</p>
                             </div>
                         </div>
                         
@@ -690,7 +690,7 @@ Generováno systémem LexisLocal. 100% soukromé a šifrované.`;
                     <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 15px; border-bottom: 1px solid var(--border-glass); padding-bottom: 15px;">
                         <div>
                             <span style="font-size: 0.75rem; color: var(--accent-blue); font-weight: 700; text-transform: uppercase;">Výpis z registrů (ARES + ISIR reálné${ceeUnavail || katUnavail ? '; CEE/Katastr bez přístupu' : ''})</span>
-                            <h2 style="margin: 5px 0 0 0; font-size: 1.5rem; color: white;">${data.name}</h2>
+                            <h2 style="margin: 5px 0 0 0; font-size: 1.5rem; color: var(--text-primary);">${data.name}</h2>
                             <p style="margin: 5px 0 0 0; font-size: 0.85rem; color: var(--text-muted);">IČO: ${data.ico} | Sídlo: ${data.seat}</p>
                         </div>
                         <div style="display: flex; gap: 10px;">
@@ -704,17 +704,17 @@ Generováno systémem LexisLocal. 100% soukromé a šifrované.`;
                     </div>
                     
                     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 15px;">
-                        <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-glass); border-radius: 12px; padding: 15px;">
+                        <div style="background: var(--sf-02); border: 1px solid var(--border-glass); border-radius: 12px; padding: 15px;">
                             <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
                                 <span style="font-size: 1.2rem;">🏛️</span>
-                                <h4 style="margin: 0; color: white;">ARES a Sídlo</h4>
+                                <h4 style="margin: 0; color: var(--text-primary);">ARES a Sídlo</h4>
                             </div>
                             <p style="font-size: 0.85rem; margin: 0; color: var(--text-muted);">
                                 Subjekt je řádně zapsán v obchodním/živnostenském rejstříku.
                             </p>
                         </div>
 
-                        <div style="background: ${data.inInsolvency ? 'rgba(239,68,68,0.08)' : 'rgba(255,255,255,0.02)'}; border: 1px solid ${data.inInsolvency ? 'rgba(239,68,68,0.2)' : 'var(--border-glass)'}; border-radius: 12px; padding: 15px;">
+                        <div style="background: ${data.inInsolvency ? 'rgba(239,68,68,0.08)' : 'var(--sf-02)'}; border: 1px solid ${data.inInsolvency ? 'rgba(239,68,68,0.2)' : 'var(--border-glass)'}; border-radius: 12px; padding: 15px;">
                             <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
                                 <span style="font-size: 1.2rem;">❌</span>
                                 <h4 style="margin: 0; color: ${data.inInsolvency ? '#f87171' : 'white'};">Insolvence (ISIR)</h4>
@@ -724,7 +724,7 @@ Generováno systémem LexisLocal. 100% soukromé a šifrované.`;
                             </p>
                         </div>
 
-                        <div style="background: ${(!ceeUnavail && data.cee.activeExecutions > 0) ? 'rgba(245,158,11,0.08)' : 'rgba(255,255,255,0.02)'}; border: 1px solid ${(!ceeUnavail && data.cee.activeExecutions > 0) ? 'rgba(245,158,11,0.2)' : 'var(--border-glass)'}; border-radius: 12px; padding: 15px;">
+                        <div style="background: ${(!ceeUnavail && data.cee.activeExecutions > 0) ? 'rgba(245,158,11,0.08)' : 'var(--sf-02)'}; border: 1px solid ${(!ceeUnavail && data.cee.activeExecutions > 0) ? 'rgba(245,158,11,0.2)' : 'var(--border-glass)'}; border-radius: 12px; padding: 15px;">
                             <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap;">
                                 <span style="font-size: 1.2rem;">⚠️</span>
                                 <h4 style="margin: 0; color: ${(!ceeUnavail && data.cee.activeExecutions > 0) ? '#fbbf24' : 'white'};">Exekuce (CEE)</h4>
@@ -738,7 +738,7 @@ Generováno systémem LexisLocal. 100% soukromé a šifrované.`;
                             ${data.cee.disclaimer ? `<p style="font-size: 0.72rem; margin: 8px 0 0; color: var(--text-muted); font-style: italic;">${data.cee.disclaimer}</p>` : ''}
                         </div>
 
-                        <div style="background: ${(!katUnavail && data.katastr.hasPlomba) ? 'rgba(239,68,68,0.08)' : 'rgba(255,255,255,0.02)'}; border: 1px solid ${(!katUnavail && data.katastr.hasPlomba) ? 'rgba(239,68,68,0.2)' : 'var(--border-glass)'}; border-radius: 12px; padding: 15px;">
+                        <div style="background: ${(!katUnavail && data.katastr.hasPlomba) ? 'rgba(239,68,68,0.08)' : 'var(--sf-02)'}; border: 1px solid ${(!katUnavail && data.katastr.hasPlomba) ? 'rgba(239,68,68,0.2)' : 'var(--border-glass)'}; border-radius: 12px; padding: 15px;">
                             <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap;">
                                 <span style="font-size: 1.2rem;">🏡</span>
                                 <h4 style="margin: 0; color: ${(!katUnavail && data.katastr.hasPlomba) ? '#f87171' : 'white'};">Katastr nemovitostí</h4>

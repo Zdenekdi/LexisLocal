@@ -332,9 +332,9 @@ Object.assign(LexisLocalApp.prototype, {
         }
 
         listEl.innerHTML = rules.map(rule => `
-            <div class="glass" style="padding: 10px 12px; border-radius: 8px; background: rgba(255,255,255,0.02); border: 1px solid var(--border-glass); display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; margin-bottom: 6px;">
+            <div class="glass" style="padding: 10px 12px; border-radius: 8px; background: var(--sf-02); border: 1px solid var(--border-glass); display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; margin-bottom: 6px;">
                 <div style="flex-grow: 1; min-width: 0; padding-right: 8px;">
-                    <strong style="color: white; display: block; margin-bottom: 2px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${rule.name}</strong>
+                    <strong style="color: var(--text-primary); display: block; margin-bottom: 2px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${rule.name}</strong>
                     <span style="opacity: 0.6; font-size: 0.7rem; display: block; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">
                         Trigger: <code>${rule.triggerType === 'document_saved' ? 'Uložení' : 'ISDS'}</code> | Kdy: <code>${rule.conditionValue}</code>
                     </span>
