@@ -10,6 +10,7 @@ const { WATCH_DIR } = require('./lib/config');
 const { loadAgents } = require('./lib/agents');
 const HearingsWatcher = require('./lib/hearings');
 const pairing = require('./lib/pairing'); // LexisLink párování (LAN)
+const aiProvider = require('./lib/ai_provider'); // AI backend + pojistka mlčenlivosti (local-only)
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -198,7 +199,8 @@ app.get('/api/status', (req, res) => {
         project: "LexisLocal AI Ecosystem",
         version: "1.2.0",
         watcherDir: WATCH_DIR,
-        activeAgents: Object.keys(agents)
+        activeAgents: Object.keys(agents),
+        aiProvider: aiProvider.providerInfo() // { chat, embed, localOnly, compliant } — indikátor mlčenlivosti v UI
     });
 });
 
@@ -220,6 +222,25 @@ const SSL_KEY_PATH = process.env.SSL_KEY_PATH || 'key.pem';
 const SSL_CERT_PATH = process.env.SSL_CERT_PATH || 'cert.pem';
 
 if (require.main === module) {
+    // Pojistka mlčenlivosti: v lokálním/pilotním režimu (LEXIS_PILOT_LOCAL_ONLY)
+    // NESMÍ běžet cloudový AI provider — jinak by klientská data (vč. RAG chunků)
+    // odešla mimo stroj. Fail-fast: raději nenastartovat než tiše porušit mlčenlivost.
+    const _aiComp = aiProvider.assertLocalCompliance();
+    if (!_aiComp.compliant) {
+        console.error('\n🛑 LOKÁLNÍ REŽIM (LEXIS_PILOT_LOCAL_ONLY) je zapnutý, ale AI je nastavené na CLOUD:');
+        for (const v of _aiComp.violations) {
+            console.error(`   • ${v.kind}: provider „${v.provider}" — klientská data by opustila stroj (mlčenlivost).`);
+        }
+        console.error('   Oprava: AI_CHAT_PROVIDER=ollama a AI_EMBED_PROVIDER=ollama (lokální model), nebo vypni LEXIS_PILOT_LOCAL_ONLY.');
+        console.error('   Server se z bezpečnostních důvodů NESPUSTÍ.\n');
+        process.exit(1);
+    }
+    if (_aiComp.localOnly) {
+        console.log('🔒 Lokální režim mlčenlivosti AKTIVNÍ — AI běží jen lokálně (chat: ' + _aiComp.chat + ', embed: ' + _aiComp.embed + '). Klientská data neopouští stroj.');
+    } else if (_aiComp.chat !== 'ollama' || _aiComp.embed !== 'ollama') {
+        console.warn('⚠️  AI běží přes CLOUD (chat: ' + _aiComp.chat + ', embed: ' + _aiComp.embed + '). Pro advokátní mlčenlivost bez smlouvy o zpracování zapni LEXIS_PILOT_LOCAL_ONLY=1 (vynutí lokální Ollamu).');
+    }
+
     // IMAP příjem e-mailů (jen při přímém spuštění serveru; nikdy pod testy).
     try {
         const db = require('./lib/database');

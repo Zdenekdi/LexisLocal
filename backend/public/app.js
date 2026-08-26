@@ -469,6 +469,27 @@ class LexisLocalApp {
                 pathEl.textContent = name;
                 pathEl.title = full; // plná cesta v tooltipu
             }
+
+            // Indikátor režimu AI (mlčenlivost): lokální vs cloud.
+            const aiBadge = document.getElementById('ai-mode-badge');
+            if (aiBadge && data.aiProvider) {
+                const ap = data.aiProvider;
+                const cloud = (ap.chat && ap.chat !== 'ollama') || (ap.embed && ap.embed !== 'ollama');
+                const base = 'display:inline-flex;align-items:center;gap:5px;white-space:nowrap;padding:4px 10px;border-radius:999px;font-size:0.72rem;font-weight:600;';
+                if (ap.localOnly && ap.compliant) {
+                    aiBadge.textContent = '🔒 Lokální režim';
+                    aiBadge.title = 'Pilotní lokální režim: AI běží jen lokálně (Ollama). Klientská data neopouští stroj.';
+                    aiBadge.style.cssText = base + 'background:rgba(34,197,94,0.15);color:#16a34a;border:1px solid rgba(34,197,94,0.35);';
+                } else if (cloud) {
+                    aiBadge.textContent = '⚠️ Cloud AI';
+                    aiBadge.title = 'AI přes cloud (chat: ' + ap.chat + ', embed: ' + ap.embed + '). Klientská data mohou opustit stroj — nevhodné pro mlčenlivost bez smlouvy o zpracování. Zapni LEXIS_PILOT_LOCAL_ONLY=1.';
+                    aiBadge.style.cssText = base + 'background:rgba(239,68,68,0.15);color:#dc2626;border:1px solid rgba(239,68,68,0.35);';
+                } else {
+                    aiBadge.textContent = '🔒 Lokální AI';
+                    aiBadge.title = 'AI běží lokálně (Ollama). Klientská data neopouští stroj.';
+                    aiBadge.style.cssText = base + 'background:var(--sf-05);color:var(--text-secondary);border:1px solid var(--border-glass);';
+                }
+            }
             
             // Load Swarm info on Overview
             if (data.activeAgents) {
