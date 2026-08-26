@@ -22,9 +22,9 @@ router.get('/', (req, res) => {
 // POST /api/agents/:agentId - Update an agent
 router.post('/:agentId', (req, res) => {
     const { agentId } = req.params;
-    const { name, emoji, role, systemPrompt, preferredModel, permissions } = req.body;
+    const { name, emoji, role, systemPrompt, preferredModel, permissions, spisAccess, useJudikatura } = req.body;
     try {
-        const updated = saveAgent(agentId, { name, emoji, role, systemPrompt, preferredModel, permissions });
+        const updated = saveAgent(agentId, { name, emoji, role, systemPrompt, preferredModel, permissions, spisAccess, useJudikatura });
         logEvent('LexisLocal Dashboard', `Úprava agenta (${updated.name})`, 'AI Konfigurace', { agentId });
         res.json({ success: true, agent: updated });
     } catch (err) {
@@ -34,7 +34,7 @@ router.post('/:agentId', (req, res) => {
 
 // POST /api/agents - Create a new custom agent
 router.post('/', (req, res) => {
-    const { id, name, emoji, role, systemPrompt, preferredModel, permissions } = req.body;
+    const { id, name, emoji, role, systemPrompt, preferredModel, permissions, spisAccess, useJudikatura } = req.body;
     if (!id || !name) {
         return res.status(400).json({ error: "ID a název agenta jsou povinné údaje." });
     }
@@ -44,7 +44,7 @@ router.post('/', (req, res) => {
         if (agents[cleanId]) {
             return res.status(400).json({ error: `Agent s ID "${cleanId}" již existuje.` });
         }
-        const created = saveAgent(cleanId, { name, emoji, role, systemPrompt, preferredModel, permissions });
+        const created = saveAgent(cleanId, { name, emoji, role, systemPrompt, preferredModel, permissions, spisAccess, useJudikatura });
         logEvent('LexisLocal Dashboard', `Vytvoření agenta (${created.name})`, 'AI Konfigurace', { agentId: cleanId });
         res.json({ success: true, agent: created });
     } catch (err) {

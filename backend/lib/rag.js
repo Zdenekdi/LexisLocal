@@ -554,6 +554,11 @@ async function reindexAllKnowledge() {
     return results;
 }
 
+/** Judikaturní scopy pro celoplošné hledání: obory `_kb_obor_*` + volitelná společná `_kb_judikatura`. */
+function listJudikaturaScopes() {
+    return _listKbScopes().filter(sc => sc === '_kb_judikatura' || String(sc).indexOf('_kb_obor_') === 0);
+}
+
 /** Vypíše dokumenty ve znalostní bázi agenta (název + počet chunků). */
 function listKnowledge(scope) {
     const part = loadPartition(scope);
@@ -697,6 +702,7 @@ module.exports = {
     reindexKnowledge,
     reindexAllKnowledge,
     reencryptAllPartitions,
+    listJudikaturaScopes,
     loadPartition,
     savePartition,
     getActiveDirectories

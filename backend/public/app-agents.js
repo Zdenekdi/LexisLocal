@@ -121,6 +121,7 @@ Object.assign(LexisLocalApp.prototype, {
         document.getElementById('agent-form-spis-access').value = agent.spisAccess || ((agent.permissions && agent.permissions.read_files) ? 'full' : 'none');
         document.getElementById('agent-form-perm-registries').checked = !!(agent.permissions && agent.permissions.query_registries);
         document.getElementById('agent-form-perm-desktop').checked = !!(agent.permissions && agent.permissions.write_desktop);
+        document.getElementById('agent-form-perm-judikatura').checked = agent.useJudikatura !== false;
 
         // Toggle buttons based on system status
         const btnReset = document.getElementById('btn-reset-agent');
@@ -170,6 +171,7 @@ Object.assign(LexisLocalApp.prototype, {
         document.getElementById('agent-form-spis-access').value = 'none';
         document.getElementById('agent-form-perm-registries').checked = false;
         document.getElementById('agent-form-perm-desktop').checked = false;
+        document.getElementById('agent-form-perm-judikatura').checked = false;
 
         // Actions
         const btnReset = document.getElementById('btn-reset-agent');
@@ -198,6 +200,7 @@ Object.assign(LexisLocalApp.prototype, {
         const spisAccess = document.getElementById('agent-form-spis-access').value; const readFiles = spisAccess !== 'none';
         const queryRegistries = document.getElementById('agent-form-perm-registries').checked;
         const writeDesktop = document.getElementById('agent-form-perm-desktop').checked;
+        const useJudikatura = document.getElementById('agent-form-perm-judikatura').checked;
 
         try {
             // If it is a new custom agent and disabled = false, we create a new one using POST /api/agents.
@@ -213,6 +216,7 @@ Object.assign(LexisLocalApp.prototype, {
                 systemPrompt,
                 preferredModel,
                 spisAccess,
+                useJudikatura,
                 permissions: {
                     read_files: readFiles,
                     query_registries: queryRegistries,

@@ -131,6 +131,11 @@ function normalizeAgent(agent) {
         const readFiles = !!(agent.permissions && agent.permissions.read_files);
         agent.spisAccess = readFiles ? 'full' : 'none';
     }
+    // Přepínač „používat judikaturu" (společná/oborová báze). Default dle read_files
+    // (rešeršní/koncipientské role z ní čerpají; stylista/sekretářka ne).
+    if (typeof agent.useJudikatura !== 'boolean') {
+        agent.useJudikatura = !!(agent.permissions && agent.permissions.read_files);
+    }
     // Systémové agenty: model dle role z konfigurace (přebije i stará data v .agents.json).
     if (agent.isSystem && ROLE_MODEL[id]) {
         agent.preferredModel = ROLE_MODEL[id]();
@@ -200,7 +205,8 @@ function saveAgent(agentId, agentData) {
         },
         // Per-agent RAG: vlastní znalostní báze + úroveň přístupu ke spisům.
         knowledgeScope: agentData.knowledgeScope || KB_PREFIX + cleanId,
-        spisAccess: SPIS_ACCESS_LEVELS.includes(agentData.spisAccess) ? agentData.spisAccess : undefined
+        spisAccess: SPIS_ACCESS_LEVELS.includes(agentData.spisAccess) ? agentData.spisAccess : undefined,
+        useJudikatura: typeof agentData.useJudikatura === 'boolean' ? agentData.useJudikatura : undefined
     };
 
     normalizeAgent(agents[cleanId]); // doplní/opraví spisAccess (když přišlo undefined)

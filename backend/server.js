@@ -190,6 +190,7 @@ app.use('/api/aml', require('./routes/aml'));
 app.use('/api/agent', require('./routes/agent'));
 app.use('/api/agent-swarm', require('./routes/agentSwarm'));
 app.use('/api/agent-knowledge', require('./routes/agentKnowledge'));
+app.use('/api/knowledge', require('./routes/knowledge')); // oborová báze (dělený RAG)
 
 // Root Status
 app.get('/api/status', (req, res) => {

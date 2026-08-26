@@ -7,6 +7,23 @@
  */
 'use strict';
 
+// --- Oborově dělený RAG -------------------------------------------------------
+// Judikatura se plní do oborových partitionů `_kb_obor_<slug>`; slug se odvozuje
+// z volného pole `agenda` spisu (viz spisy.js). STEJNÁ funkce se použije při
+// plnění (routes/knowledge.js) i při dotazu, aby se scope trefily.
+function oborSlug(agenda) {
+    return String(agenda == null ? '' : agenda)
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // deakcent
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+        .slice(0, 48);
+}
+function oborScope(agenda) {
+    const slug = oborSlug(agenda);
+    return slug ? '_kb_obor_' + slug : null;
+}
+
 // `watcher` (a jeho závislost `ocr`) načítáme LÍNĚ až uvnitř resolveRagFilters —
 // aby se dal modul (a applyAgentScope) použít bez roztažení celého watcher řetězce.
 
@@ -43,6 +60,21 @@ async function resolveRagFilters(reqBody) {
         filters.strict = ragFilters.strict;
     }
 
+    // Oborový scope (dělený RAG): explicitní `obor`, jinak z `agenda` spisu dle caseNumber.
+    let oborAgenda = ragFilters.obor || '';
+    if (!oborAgenda && ragFilters.caseNumber) {
+        try {
+            const spisy = require('./spisy');
+            const spis = spisy.findByCase(ragFilters.caseNumber);
+            if (spis && spis.agenda) oborAgenda = spis.agenda;
+        } catch (e) { /* spisy modul nedostupný → dotaz jede bez oborového scope */ }
+    }
+    const scope = oborScope(oborAgenda);
+    if (scope) {
+        filters.scopes = Array.isArray(filters.scopes) ? filters.scopes : [];
+        if (!filters.scopes.includes(scope)) filters.scopes.push(scope);
+    }
+
     return Object.keys(filters).length > 0 ? filters : null;
 }
 
@@ -68,10 +100,20 @@ function applyAgentScope(filters, agentOrAgents) {
         if (a.spisAccess === 'none') restrictClient = true;
         else if (a.spisAccess === 'redacted') redactClient = true;
     }
+    // Judikatura (společná báze): má-li ji některý účastník zapnutou, přidej VŠECHNY
+    // judikaturní scopy → celoplošné sémantické hledání. Obor jen zpřesňuje (viz oborScope).
+    if (agents.some(a => a && a.useJudikatura)) {
+        try {
+            const rag = require('./rag');
+            if (typeof rag.listJudikaturaScopes === 'function') {
+                for (const sc of rag.listJudikaturaScopes()) scopes.add(sc);
+            }
+        } catch (e) { /* rag nedostupný → bez judikatury */ }
+    }
     if (scopes.size) f.scopes = [...scopes];
     if (restrictClient) f.clientAccess = false;
     else if (redactClient) f.redactClient = true; // klientský kontext se anonymizuje (viz agent.js)
     return Object.keys(f).length > 0 ? f : null;
 }
 
-module.exports = { resolveRagFilters, applyAgentScope };
+module.exports = { resolveRagFilters, applyAgentScope, oborSlug, oborScope };
