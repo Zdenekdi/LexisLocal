@@ -109,7 +109,8 @@
     "publish": {
       "provider": "github",
       "owner": "NexusSync-Systems",
-      "repo": "LexisLocal"
+      "repo": "LexisLocal",
+      "releaseType": "release"
     }
   },
   "dependencies": {
