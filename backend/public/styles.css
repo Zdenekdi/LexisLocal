@@ -4,33 +4,52 @@
  */
 
 :root {
-    /* Sleek Obsidian Dark Palette (Linear-inspired) */
-    --bg-primary: #0b0c0e;
-    --bg-secondary: #13151a;
-    --bg-glass: rgba(19, 21, 26, 0.75);
-    --border-glass: var(--sf-07);
-    --text-primary: #f4f5f6;
-    --text-secondary: #9aa0a6;
-    --text-muted: #5f6368;
-    
-    /* Branding Colors */
-    --accent-blue: #d9a441;
-    --accent-green: #10b981;
-    --accent-yellow: #f59e0b;
-    --accent-red: #f43f5e;
-    --accent-purple: #e0b45f;
-    
-    /* Transitions & Shadows */
-    --transition-smooth: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-    --shadow-premium: 0 4px 20px -2px rgba(0, 0, 0, 0.4);
-    /* Surface tints — zvariabilizováno kvůli světlému motivu */
-    --sf-01: rgba(255,255,255,0.01); --sf-02: rgba(255,255,255,0.02);
-    --sf-03: rgba(255,255,255,0.03); --sf-04: rgba(255,255,255,0.04);
-    --sf-05: rgba(255,255,255,0.05); --sf-06: rgba(255,255,255,0.06);
-    --sf-07: rgba(255,255,255,0.07); --sf-08: rgba(255,255,255,0.08);
-    --sunken-1: rgba(15,23,42,0.3); --sunken-2: rgba(15,23,42,0.6);
-    --sunken-3: rgba(30,41,59,0.4); --sunken-4: rgba(30,41,59,0.2); --sunken-5: rgba(30,41,59,0.35);
-    --modal-solid: rgba(19,21,26,0.95);
+    /* ═══ MODERNIST — světlý výchozí motiv ═══
+       Plochý, architektonický: krémová zem, inkoustové 2px linky, nulový radius,
+       červený akcent jen na akci. Archivo. Odvozeno z _ds/modernist styles.css. */
+
+    /* Modernist tokeny (zdroj pravdy pro override vrstvu na konci souboru) */
+    --m-ground: #f3f2f2;      /* zem stránky */
+    --m-surface: #eae9e9;     /* vyvýšená plocha */
+    --m-surface-2: #ffffff;   /* nejsvětlejší buňka / input */
+    --m-ink: #201e1d;         /* inkoust — text a silné linky */
+    --m-muted: #605d5d;       /* sekundární text */
+    --m-faint: #7d7979;       /* popisky, kickery */
+    --m-hair: #d7d3d3;        /* jemný 1px předěl */
+    --m-rule: #201e1d;        /* silný 2px předěl (inkoust) */
+    --m-accent: #ec3013;      /* červená — jen akce */
+    --m-accent-hover: #dd2b0f;
+    --m-accent-deep: #ae1800; /* červená na světlé ploše pro text */
+    --m-accent-tint: #ffe0d9; /* jemná červená výplň / hover */
+
+    /* Legacy proměnné namapované na Modernist (aby vše ostatní zdědilo vzhled) */
+    --bg-primary: var(--m-ground);
+    --bg-secondary: var(--m-surface);
+    --bg-glass: var(--m-surface);
+    --border-glass: var(--m-hair);
+    --text-primary: var(--m-ink);
+    --text-secondary: var(--m-muted);
+    --text-muted: var(--m-faint);
+
+    /* Branding — mono schéma: „accent" = červená; status zeleň ztlumená */
+    --accent-blue: #ec3013;
+    --accent-green: #5a8a4a;
+    --accent-yellow: #c8860a;
+    --accent-red: #dd2b0f;
+    --accent-purple: #9e3526;
+
+    /* Transitions & Shadows — plocho, minimální stín */
+    --transition-smooth: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+    --shadow-premium: 0 2px 8px rgba(45,43,43,0.10);
+    /* Surface tints — na světlé ploše = jemné ztmavení (hovery) */
+    --sf-01: rgba(32,30,29,0.02); --sf-02: rgba(32,30,29,0.03);
+    --sf-03: rgba(32,30,29,0.05); --sf-04: rgba(32,30,29,0.07);
+    --sf-05: rgba(32,30,29,0.09); --sf-06: rgba(32,30,29,0.12);
+    --sf-07: rgba(32,30,29,0.14); --sf-08: rgba(32,30,29,0.18);
+    /* Zapuštěné plochy (inputy) = bílé */
+    --sunken-1: #ffffff; --sunken-2: #f7f5f1;
+    --sunken-3: #ffffff; --sunken-4: #faf9f7; --sunken-5: #f3f2f2;
+    --modal-solid: var(--m-surface);
 }
 
 /* Base resets & scrollbar styling */
@@ -2057,31 +2076,33 @@ body {
 
 
 
-/* ===== SVĚTLÝ MOTIV (přepínač) ===== */
-html[data-theme="light"]{
-    --bg-primary:#e7e9ee; --bg-secondary:#ffffff; --bg-glass:rgba(255,255,255,0.92);
-    --border-glass:rgba(15,23,42,0.12);
-    --text-primary:#181b21; --text-secondary:#586170; --text-muted:#8b929c;
-    --shadow-premium:0 4px 18px -4px rgba(15,23,42,0.14);
-    /* vyvýšené plochy = SVĚTLEJŠÍ (bílé) než šedá stránka, ať karty vystoupí */
-    --sf-01:rgba(255,255,255,0.55); --sf-02:rgba(255,255,255,0.70);
-    --sf-03:rgba(255,255,255,0.88); --sf-04:#ffffff;
-    --sf-05:#ffffff; --sf-06:#ffffff;
-    --sf-07:rgba(15,23,42,0.12); --sf-08:rgba(15,23,42,0.18);
-    /* zapuštěné plochy (inputy) = jemně šedé */
-    --sunken-1:rgba(15,23,42,0.045); --sunken-2:rgba(15,23,42,0.06);
-    --sunken-3:rgba(15,23,42,0.03); --sunken-4:rgba(15,23,42,0.025); --sunken-5:rgba(15,23,42,0.04);
-    --modal-solid:#ffffff;
-    --accent-blue:#9a5b22; --accent-purple:#b8791f;
+/* ===== TMAVÝ MOTIV (přepínač) — Modernist inkoustová varianta ===== */
+html[data-theme="dark"]{
+    --m-ground:#201e1d; --m-surface:#2d2b2b; --m-surface-2:#33302c;
+    --m-ink:#f3f2f2; --m-muted:#bab6b6; --m-faint:#9b9797;
+    --m-hair:#444141; --m-rule:#605d5d;
+    --m-accent:#ff563c; --m-accent-hover:#ff9783; --m-accent-deep:#ffc4b8; --m-accent-tint:#4d170e;
+
+    --bg-primary:var(--m-ground); --bg-secondary:var(--m-surface); --bg-glass:var(--m-surface);
+    --border-glass:var(--m-hair);
+    --text-primary:var(--m-ink); --text-secondary:var(--m-muted); --text-muted:var(--m-faint);
+    --shadow-premium:0 4px 18px -4px rgba(0,0,0,0.5);
+    --accent-blue:#ff563c; --accent-red:#ff7a66; --accent-purple:#ef6853;
+    /* vyvýšené plochy = jemné zesvětlení */
+    --sf-01:rgba(255,255,255,0.02); --sf-02:rgba(255,255,255,0.03);
+    --sf-03:rgba(255,255,255,0.05); --sf-04:rgba(255,255,255,0.07);
+    --sf-05:rgba(255,255,255,0.09); --sf-06:rgba(255,255,255,0.12);
+    --sf-07:rgba(255,255,255,0.14); --sf-08:rgba(255,255,255,0.18);
+    /* zapuštěné plochy (inputy) = tmavší než plocha */
+    --sunken-1:#1a1817; --sunken-2:#242220;
+    --sunken-3:#1a1817; --sunken-4:#201e1d; --sunken-5:#2d2b2b;
+    --modal-solid:var(--m-surface);
 }
-html[data-theme="light"] body{ background-color:var(--bg-primary); color:var(--text-primary); }
-html[data-theme="light"] input, html[data-theme="light"] textarea, html[data-theme="light"] select{ color:var(--text-primary); }
-/* Světlý motiv — sjednocení prvků se zapsanými inline styly (jen light, dark beze změny) */
-html[data-theme="light"] input:not([type=checkbox]):not([type=radio]):not([type=color]),
-html[data-theme="light"] textarea{ background: var(--sunken-1) !important; border-color: var(--border-glass) !important; color: var(--text-primary) !important; }
-html[data-theme="light"] select{ background: var(--bg-secondary) !important; border-color: var(--border-glass) !important; }
-html[data-theme="light"] .btn-secondary{ background: var(--bg-secondary) !important; color: var(--text-primary) !important; border: 1px solid var(--border-glass) !important; }
-html[data-theme="light"] .btn-secondary:hover{ background: var(--sf-03) !important; }
+html[data-theme="dark"] body{ background-color:var(--bg-primary); color:var(--text-primary); }
+html[data-theme="dark"] input, html[data-theme="dark"] textarea, html[data-theme="dark"] select{ color:var(--text-primary); }
+html[data-theme="dark"] input:not([type=checkbox]):not([type=radio]):not([type=color]),
+html[data-theme="dark"] textarea{ background: var(--sunken-1) !important; border-color: var(--border-glass) !important; color: var(--text-primary) !important; }
+html[data-theme="dark"] select{ background: var(--bg-secondary) !important; border-color: var(--border-glass) !important; }
 
 /* Line-ikony v bočním menu */
 .nav-btn .icon{ display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; flex:none; }
@@ -2094,3 +2115,193 @@ html[data-theme="light"] .btn-secondary:hover{ background: var(--sf-03) !importa
 /* Ikona v avataru asistenta */
 .agent-avatar svg{ width:22px; height:22px; stroke:currentColor; fill:none; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; }
 .agent-avatar{ display:flex; align-items:center; justify-content:center; color:var(--accent-blue); }
+
+/* ===== Modální dialog editoru asistenta ===== */
+.agent-dialog{
+    width:min(780px,94vw); max-height:90vh; padding:0;
+    /* Vycentrování — obnovuje margin:auto zrušené globálním resetem `* { margin:0 }` */
+    margin:auto; inset:0;
+    border:1px solid var(--border-glass); border-radius:16px;
+    background:var(--modal-solid); color:var(--text-primary);
+    box-shadow:0 24px 70px rgba(0,0,0,0.55); overflow:hidden;
+}
+.agent-dialog[open]{ display:flex; flex-direction:column; }
+.agent-dialog::backdrop{ background:rgba(6,7,9,0.62); backdrop-filter:blur(2px); }
+.agent-dialog-header{
+    display:flex; align-items:center; gap:14px; padding:18px 22px;
+    border-bottom:1px solid var(--border-glass); flex:0 0 auto;
+}
+.agent-dialog-title{ display:flex; align-items:center; gap:13px; flex:1; min-width:0; }
+.agent-dialog-icon{
+    width:44px; height:44px; flex:0 0 auto;
+    display:flex; align-items:center; justify-content:center; font-size:1.4rem;
+    border-radius:12px; background:rgba(217,164,65,0.12); border:1px solid rgba(217,164,65,0.30);
+}
+.agent-dialog-close{
+    width:34px; height:34px; flex:0 0 auto;
+    display:flex; align-items:center; justify-content:center;
+    background:transparent; border:1px solid var(--border-glass); border-radius:9px;
+    color:var(--text-secondary); font-size:1rem; cursor:pointer;
+    transition:background .15s, color .15s;
+}
+.agent-dialog-close:hover{ background:var(--sunken-1); color:var(--text-primary); }
+.agent-dialog-body{ padding:20px 22px 22px; overflow-y:auto; flex:1 1 auto; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   MODERNIST OVERRIDE — plochý architektonický reskin (layout 1a „Rejstřík").
+   Přebíjí „glass" vzhled na inkoust + krémovou zem + 2px linky + nulový radius
+   + Archivo. Vše přes --m-* tokeny → platí pro světlý i tmavý motiv.
+   Zdroj: LexisLocal Redesign.dc.html (sekce 1a) + _ds/modernist.
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* — nulový radius všude (kromě funkčně kulatých prvků) — */
+*, *::before, *::after { border-radius: 0 !important; }
+.spinner, .status-dot, .dot, .online-dot, .pulse, [class*="avatar"],
+.toggle-track, .toggle-thumb, input[type="checkbox"], input[type="radio"] { border-radius: 999px !important; }
+
+/* — plochý povrch: pryč s glass blur — */
+.glass, .stat-card, .search-section, .card, .modal, [class*="glass"] {
+  -webkit-backdrop-filter: none !important; backdrop-filter: none !important;
+}
+
+/* — typografie — */
+body, button, input, textarea, select { font-family: 'Archivo', system-ui, -apple-system, sans-serif; }
+h1,h2,h3,h4,h5,h6, .section-title, .stat-header h3, .card-title, .dialog-title {
+  font-family: 'Archivo', system-ui, sans-serif; font-weight: 800; letter-spacing: -0.015em;
+}
+.large-number, .system-time, code, #watch-dir-path { font-family: 'Archivo Narrow', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+
+/* — zem — */
+html, body { background: var(--m-ground); color: var(--m-ink); }
+.app-container { background: var(--m-ground); }
+
+/* ── SIDEBAR (rejstřík) ── */
+.sidebar { background: var(--m-ground); border-right: 2px solid var(--m-rule) !important; }
+.sidebar-brand { border-bottom: 2px solid var(--m-rule); }
+.sidebar-brand .brand-text h1 { font-weight: 900; letter-spacing: -0.02em; font-size: 20px; color: var(--m-ink); }
+.sidebar-brand .brand-text span { font-weight: 700; letter-spacing: 0.18em; color: var(--m-faint); font-size: 11px; }
+.sidebar-nav { gap: 0 !important; padding: 0 !important; }
+.nav-btn {
+  margin: 0 !important; padding: 11px 20px !important;
+  border-top: 1px solid var(--m-hair);
+  color: var(--m-ink); font-weight: 600; font-size: 14px;
+  justify-content: flex-start; text-align: left; background: transparent;
+}
+.nav-btn:first-child { border-top: none; }
+.nav-btn:hover { background: color-mix(in srgb, var(--m-ink) 7%, transparent); color: var(--m-ink); }
+.nav-btn.active { background: var(--m-ink) !important; color: var(--m-ground) !important; font-weight: 700; }
+.nav-btn.active::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0;
+  width: 3px !important; background: var(--m-accent) !important;
+}
+.nav-btn .icon { filter: grayscale(1); opacity: .7; }
+.nav-btn.active .icon { opacity: 1; }
+.nav-btn.active .icon svg { stroke: var(--m-ground); }
+.nav-btn .badge, .badge {
+  background: var(--m-accent) !important; color: #fff !important;
+  font-weight: 800; font-size: 11px; padding: 1px 6px;
+}
+.sidebar-footer { border-top: 2px solid var(--m-rule); }
+
+/* ── HLAVIČKA ── */
+.main-content { background: var(--m-ground); }
+.main-header { border-bottom: 2px solid var(--m-rule) !important; background: var(--m-ground); backdrop-filter: none !important; }
+.header-title h2, #page-title { font-size: 30px; font-weight: 900; letter-spacing: -0.02em; color: var(--m-ink); }
+.header-title p, #page-subtitle { color: var(--m-muted); font-size: 13px; }
+.system-time { border-left: 2px solid var(--m-rule); padding-left: 10px; font-weight: 700; color: var(--m-ink); }
+.hamburger-btn { color: var(--m-ink); }
+
+/* ── TLAČÍTKA (flush-left) ── */
+.btn { font-family: 'Archivo', sans-serif; font-weight: 700; text-align: left; box-shadow: none !important; transition: background .12s, border-color .12s; }
+.btn-primary { background: var(--m-accent) !important; color: #fff !important; border: 2px solid var(--m-accent) !important; }
+.btn-primary:hover { background: var(--m-accent-hover) !important; border-color: var(--m-accent-hover) !important; }
+.btn-secondary { background: transparent !important; color: var(--m-ink) !important; border: 2px solid var(--m-ink) !important; }
+.btn-secondary:hover { background: var(--m-accent-tint) !important; color: var(--m-ink) !important; }
+.btn-danger { background: var(--m-accent-deep) !important; border: 2px solid var(--m-accent-deep) !important; color: #fff !important; }
+
+/* ── STAT BUŇKY (mřížka) ── */
+.stats-grid { gap: 0 !important; border: 2px solid var(--m-rule); background: var(--m-hair); }
+.stat-card {
+  background: var(--m-surface-2) !important; border: none !important;
+  border-right: 1px solid var(--m-hair) !important; box-shadow: none !important; padding: 20px 24px;
+}
+.stats-grid .stat-card:last-child { border-right: none !important; }
+.stat-card:hover { transform: none !important; box-shadow: none !important; }
+.stat-header h3 { font-size: 11px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: var(--m-faint); }
+.stat-icon { filter: grayscale(1); opacity: .5; }
+.large-number { font-size: 44px; font-weight: 900; letter-spacing: -0.04em; color: var(--m-ink); }
+.status-badge { font-weight: 800; letter-spacing: 0.08em; }
+.status-badge.secure { background: var(--m-ink) !important; color: var(--m-ground) !important; }
+.subtext, .section-desc { color: var(--m-muted); }
+#watch-dir-path, code { background: transparent; color: var(--m-ink); border-bottom: 2px solid var(--m-accent); padding-bottom: 2px; }
+
+/* ── SÉMANTICKÉ VYHLEDÁVÁNÍ ── */
+.search-section { background: var(--m-ground) !important; border: none !important; border-bottom: 2px solid var(--m-rule) !important; box-shadow: none !important; }
+.rag-status-badge { background: var(--m-accent-tint) !important; color: var(--m-accent-deep) !important; font-weight: 800; letter-spacing: 0.1em; }
+.semantic-search-box { gap: 0 !important; }
+.semantic-search-box input { border: 2px solid var(--m-ink) !important; border-right: none !important; background: var(--m-surface-2) !important; }
+.semantic-search-box .btn-primary { border-left: none !important; }
+
+/* ── SEKCE / KARTY OBECNĚ ── */
+.glass { background: var(--m-surface) !important; border: 1px solid var(--m-hair) !important; box-shadow: none !important; }
+.section-title { font-size: 12px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: var(--m-faint); border-top: 2px solid var(--m-rule); padding-top: 12px; margin-top: 8px; }
+.agents-grid > * { border: 1px solid var(--m-hair) !important; box-shadow: none !important; background: var(--m-surface-2) !important; }
+.agents-grid > *:hover { transform: none !important; box-shadow: none !important; }
+
+/* ── TABULKY ── */
+table { border-collapse: collapse; }
+th { text-transform: uppercase; letter-spacing: 0.08em; font-size: 11px; color: var(--m-muted); border-bottom: 2px solid var(--m-rule); }
+td { border-bottom: 1px solid var(--m-hair); }
+
+/* ── INPUTY / FORMULÁŘE ── */
+input:not([type=checkbox]):not([type=radio]):not([type=color]), textarea, select, .glass-select {
+  border: 2px solid var(--m-ink) !important; background: var(--m-surface-2) !important; color: var(--m-ink);
+}
+input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 2px solid var(--m-accent); outline-offset: 0; border-color: var(--m-accent) !important; }
+::selection { background: color-mix(in srgb, var(--m-accent) 30%, transparent); }
+:focus-visible { outline: 2px solid var(--m-accent); outline-offset: 2px; }
+
+/* ── DIALOG / MODAL ── */
+.modal, .agent-dialog { border: 2px solid var(--m-rule) !important; box-shadow: var(--shadow-premium) !important; background: var(--m-surface) !important; }
+.agent-dialog-close { border: 1px solid var(--m-ink) !important; color: var(--m-ink) !important; }
+
+/* ── TAB PANE ── */
+.tab-pane { color: var(--m-ink); }
+
+/* ── PLOVOUCÍ TLAČÍTKO (time-tracking FAB) → plochý inkoustový čtverec ── */
+.floating-timelog-btn {
+  border-radius: 0 !important;
+  background: var(--m-ink) !important;
+  border: 2px solid var(--m-ink) !important;
+  box-shadow: var(--shadow-premium) !important;
+  color: var(--m-ground) !important;
+}
+.floating-timelog-btn:hover {
+  transform: none !important;
+  background: var(--m-accent) !important; border-color: var(--m-accent) !important;
+  box-shadow: var(--shadow-premium) !important;
+}
+.floating-timelog-btn .fab-tooltip {
+  font-family: 'Archivo', sans-serif; background: var(--m-ink) !important;
+  color: var(--m-ground) !important; border: none !important;
+}
+
+/* ── drobné akcenty s napevno zapsanou zlatou → Modernist ── */
+.agent-dialog-icon { background: var(--m-accent-tint) !important; border-color: var(--m-accent) !important; color: var(--m-accent-deep) !important; }
+
+/* ── LUCIDE-STYLE ČÁROVÉ IKONY (app-icons.js nahrazuje emoji) ── */
+.licon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 1.05em; height: 1.05em; flex: none; vertical-align: -0.16em;
+  line-height: 0;
+}
+.licon svg { width: 100%; height: 100%; stroke: currentColor; fill: none;
+  stroke-width: 1.85; stroke-linecap: round; stroke-linejoin: round; }
+.licon-fill svg { fill: currentColor; stroke: none; }
+/* v tlačítkách/nadpisech drobná mezera za ikonou, když následuje text */
+.licon + * { margin-left: 0; }
+/* ve stat kartách je ikona větší (dědí font-size .stat-icon) — bez šedého filtru */
+.stat-icon { filter: none; opacity: 1; }
+.stat-icon .licon { width: 1em; height: 1em; }
+/* v boční navigaci sjednocená velikost s původními ikonami */
+.nav-btn .licon { width: 19px; height: 19px; }

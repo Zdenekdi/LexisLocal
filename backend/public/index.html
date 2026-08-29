@@ -7,11 +7,11 @@
     <!-- Premium Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Archivo+Narrow:wght@400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
-    <script>/* motiv: nastav co nejdřív, ať nebliká */(function(){try{if(localStorage.getItem('lexis-theme')==='light')document.documentElement.setAttribute('data-theme','light');}catch(e){}})();</script>
+    <script>/* motiv: světlý výchozí (Modernist), tmavý jen na přání — nastav co nejdřív, ať nebliká */(function(){try{if(localStorage.getItem('lexis-theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();</script>
 </head>
-<body class="dark-theme">
+<body>
     <!-- Sidebar mobile backdrop -->
     <div class="sidebar-backdrop" id="sidebar-backdrop" onclick="window.appInstance.toggleMobileSidebar(false)"></div>
 
@@ -116,6 +116,20 @@
                 <section class="tab-pane active" id="tab-overview">
                     <!-- Insolvency Alerts Banner (Flashing red warning, populated via JS) -->
                     <div id="insolvency-alerts-container" style="display: none; margin-bottom: 25px;"></div>
+
+                    <!-- PŘIPRAVENOST SYSTÉMU — checklist pro laika (naplněno přes /api/readiness) -->
+                    <div class="glass" id="readiness-panel" style="margin-bottom: 25px; padding: 18px 20px;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px;">
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <h3 style="margin: 0; font-size: 1.05rem;">✅ Připravenost systému</h3>
+                                <span id="readiness-summary" style="font-size: 0.75rem; color: var(--text-secondary);"></span>
+                            </div>
+                            <button class="btn btn-secondary btn-xs" id="btn-refresh-readiness" title="Zkontrolovat znovu" style="font-size: 0.72rem; padding: 5px 10px;">🔄 Zkontrolovat</button>
+                        </div>
+                        <div id="readiness-list" style="display: flex; flex-direction: column; gap: 8px;">
+                            <div style="opacity: 0.6; font-size: 0.85rem;">Kontroluji stav…</div>
+                        </div>
+                    </div>
 
                     <div class="stats-grid">
                         <div class="stat-card glass">
@@ -449,7 +463,7 @@
                 <section class="tab-pane" id="tab-agents">
                     <div class="glass agents-container" style="display: flex; gap: 20px; height: calc(100vh - 200px); min-height: 550px;">
                         <!-- Left pane: Assistants List -->
-                        <div class="agents-sidebar" style="flex: 0 0 280px; display: flex; flex-direction: column; border-right: 1px solid rgba(255, 255, 255, 0.1); padding-right: 20px;">
+                        <div class="agents-sidebar" style="flex: 1; display: flex; flex-direction: column;">
                             <div class="sidebar-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                                 <h3 style="margin: 0; font-size: 1.1rem;">🤖 AI Asistenti</h3>
                                 <button class="btn btn-primary btn-sm" id="btn-add-agent" style="font-size: 0.8rem; padding: 5px 10px;">➕ Nová role</button>
@@ -458,16 +472,37 @@
                                 <!-- Dynamically loaded list of agents -->
                             </div>
                         </div>
-                        
-                        <!-- Right pane: Assistant Editor Form -->
-                        <div class="agents-editor" style="flex: 1; display: flex; flex-direction: column; justify-content: center; position: relative;">
-                            <div class="editor-placeholder" id="agent-editor-placeholder" style="text-align: center; opacity: 0.6; padding: 40px;">
-                                <span class="placeholder-icon" style="font-size: 3rem; display: block; margin-bottom: 15px;">🕵️‍♂️</span>
-                                <h4 style="margin: 0 0 10px 0;">Vyberte roli ze seznamu</h4>
-                                <p style="margin: 0; font-size: 0.9rem;">Zvolte stávajícího asistenta nebo přidejte novou specializaci pro Váš lokální právní tým.</p>
+
+                        <!-- Pravý sloupec: pokrytí judikatury po oborech -->
+                        <div class="obor-coverage-pane" style="flex: 0 0 320px; display: flex; flex-direction: column; border-left: 1px solid var(--border-glass); padding-left: 20px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                                <h3 style="margin:0; font-size:1.0rem;">⚖️ Pokrytí judikatury</h3>
+                                <button class="btn btn-secondary btn-sm" id="btn-refresh-obor-coverage" title="Načíst znovu" style="font-size:0.72rem; padding:4px 9px;">🔄</button>
                             </div>
-                            
-                            <form class="agent-form" id="agent-editor-form" style="display: none; flex-direction: column; gap: 15px; text-align: left; overflow-y: auto; padding-right: 5px;">
+                            <div id="obor-coverage-summary" style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:10px;"></div>
+                            <div id="obor-coverage-list" style="flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:6px; padding-right:4px;">
+                                <div style="opacity:.6; font-size:0.8rem;">Načítám…</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Skrytý placeholder — zachován kvůli referencím v JS -->
+                    <div id="agent-editor-placeholder" style="display: none;"></div>
+
+                    <!-- Editor asistenta — modální dialog -->
+                    <dialog id="dialog-agent-editor" class="agent-dialog">
+                        <div class="agent-dialog-header">
+                            <div class="agent-dialog-title">
+                                <span id="agent-dialog-icon" class="agent-dialog-icon">👤</span>
+                                <div>
+                                    <div id="agent-dialog-heading" style="font-size: 1.05rem; font-weight: 600;">Úprava profilu asistenta</div>
+                                    <div style="font-size: 0.78rem; opacity: 0.65;">Konfigurace chování a oprávnění lokálního asistenta</div>
+                                </div>
+                            </div>
+                            <button type="button" id="btn-close-agent-dialog" class="agent-dialog-close" aria-label="Zavřít">✕</button>
+                        </div>
+                        <div class="agent-dialog-body">
+                            <form class="agent-form" id="agent-editor-form" style="display: none; flex-direction: column; gap: 15px; text-align: left;">
                                 <input type="hidden" id="agent-form-is-system" value="false">
                                 
                                 <div class="form-group" id="agent-form-id-group" style="display: none;">
@@ -560,7 +595,7 @@
                                 </div>
                             </form>
                         </div>
-                    </div>
+                    </dialog>
                 </section>
 
                 <!-- TAB: AUDIT LOG -->
@@ -1210,16 +1245,19 @@
     <script src="app-managerial.js"></script>
     <script src="app-email.js"></script>
     <script src="app-spisova.js"></script>
+    <!-- Sjednocení emoji → Lucide-style čárové ikony (i pro dynamický obsah) -->
+    <script src="app-icons.js"></script>
     <script>
     (function(){
       var btn=document.getElementById('btn-theme-toggle');
-      function cur(){ return document.documentElement.getAttribute('data-theme')==='light'?'light':'dark'; }
-      function paint(){ if(btn) btn.textContent = cur()==='light' ? '☀️' : '🌙'; }
+      /* Modernist: světlý = výchozí (bez atributu), tmavý = data-theme="dark" */
+      function cur(){ return document.documentElement.getAttribute('data-theme')==='dark'?'dark':'light'; }
+      function paint(){ if(btn) btn.textContent = cur()==='dark' ? '🌙' : '☀️'; }
       if(btn){ btn.addEventListener('click',function(){
-        var light = cur()!=='light';
-        if(light) document.documentElement.setAttribute('data-theme','light');
+        var dark = cur()!=='dark';
+        if(dark) document.documentElement.setAttribute('data-theme','dark');
         else document.documentElement.removeAttribute('data-theme');
-        try{ localStorage.setItem('lexis-theme', light?'light':'dark'); }catch(e){}
+        try{ localStorage.setItem('lexis-theme', dark?'dark':'light'); }catch(e){}
         paint();
       }); }
       paint();

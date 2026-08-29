@@ -34,7 +34,14 @@ const ALLOWED_EXT = new Set(['.pdf', '.docx', '.txt', '.html', '.htm', '.png', '
 const MAX_BYTES = 40 * 1024 * 1024;
 
 function parseArgs(argv) {
-    const a = { api: 'http://127.0.0.1:4000', delay: 250, reindex: true, dryRun: false };
+    // reindex VYPNUTÝ ve výchozím stavu: upload embedduje chunky rovnou, takže
+    // celopartitionový re-embed je většinou zbytečný a jen zdvojnásobuje zátěž na
+    // server/Ollamu (typická příčina „fetch failed" u velkých oborů). Zapni ho
+    // explicitně přes --reindex (nebo když upload běžel bez modelu → vektory chybí).
+    const a = {
+        api: 'http://127.0.0.1:4000', delay: 250, reindex: false, dryRun: false,
+        retries: 5, retryWait: 1500, serverWait: 180000
+    };
     for (let i = 2; i < argv.length; i++) {
         const k = argv[i];
         const next = () => argv[++i];
@@ -46,7 +53,11 @@ function parseArgs(argv) {
         else if (k === '--token') a.token = next();
         else if (k === '--token-file') a.tokenFile = next();
         else if (k === '--delay') a.delay = Math.max(0, parseInt(next(), 10) || 0);
+        else if (k === '--reindex') a.reindex = true;
         else if (k === '--no-reindex') a.reindex = false;
+        else if (k === '--retries') a.retries = Math.max(0, parseInt(next(), 10) || 0);
+        else if (k === '--retry-wait') a.retryWait = Math.max(0, parseInt(next(), 10) || 0);
+        else if (k === '--server-wait') a.serverWait = Math.max(0, parseInt(next(), 10) || 0);
         else if (k === '--dry-run') a.dryRun = true;
         else if (k === '--help' || k === '-h') a.help = true;
         else { console.error(`Neznámý argument: ${k}`); a.help = true; }
@@ -67,9 +78,16 @@ Režimy (jeden z nich):
   --token <hodnota>   API token (nebo --token-file, nebo $LEXIS_API_TOKEN)
   --token-file <c>    soubor s tokenem (přečte se a ořízne)
   --delay <ms>        pauza mezi soubory (výchozí 250)
-  --no-reindex        nespouštět re-embedding na konci
+  --reindex           PO nahrání přepočítat vektory celé báze (těžké; výchozí VYP)
+  --no-reindex        (výchozí) reindex nespouštět — upload embedduje rovnou
+  --retries <N>       kolikrát zopakovat přechodný výpadek spojení (výchozí 5)
+  --retry-wait <ms>   základ backoffu mezi pokusy (výchozí 1500)
+  --server-wait <ms>  max. čekání na návrat spadlého serveru (výchozí 180000)
   --dry-run           jen vypíše, co by nahrál (nic neodešle)
   -h, --help          nápověda
+
+Odolnost: přechodné výpadky (spadlé spojení, HTTP 5xx) se samy opakují; když
+server spadne, běh POČKÁ, až naběhne, a plynule pokračuje (idempotentně).
 
 Přípony: ${[...ALLOWED_EXT].join(', ')}`);
 }
@@ -110,30 +128,81 @@ function headers(token) {
     return h;
 }
 
-async function listExisting(api, base, target, token) {
-    const res = await fetch(`${api}${base}`, { headers: headers(token) });
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// HTTP status, které má smysl zkusit znovu (server se vzpamatuje / restartuje).
+const TRANSIENT_STATUS = new Set([429, 500, 502, 503, 504]);
+
+// Počká, až server znovu odpovídá (jakákoli HTTP odpověď = žije, i 401). Vrací
+// true když naběhl, false po vyčerpání serverWait. Health-ping posílá stejné
+// hlavičky jako reálný request (vč. tokenu), aby server nelogoval „🔒 nepovolený
+// přístup" — auth brána jinak GET /api/status bez tokenu odmítne (a zbytečně straší).
+async function waitForServer(a, authHeaders) {
+    const deadline = Date.now() + (a.serverWait || 0);
+    let announced = false;
+    while (Date.now() <= deadline) {
+        try {
+            await fetch(`${a.api}/api/status`, { method: 'GET', headers: authHeaders || {} });
+            if (announced) console.log('  ✅ server opět odpovídá, pokračuji.');
+            return true;
+        } catch (e) {
+            if (!announced) { console.log(`  ⏳ server neodpovídá — čekám na jeho návrat (až ${Math.round((a.serverWait || 0) / 1000)} s)…`); announced = true; }
+            await sleep(2000);
+        }
+    }
+    return false;
+}
+
+// fetch s odolností: přechodný síťový výpadek nebo HTTP 5xx zopakuje s backoffem;
+// při spadlém spojení navíc počká na návrat serveru (waitForServer). Trvalé chyby
+// (4xx kromě 429) vrací hned. `a` nese retries/retryWait/serverWait/api.
+async function apiFetch(a, url, opts, label) {
+    let lastErr = null;
+    for (let attempt = 0; attempt <= a.retries; attempt++) {
+        try {
+            const res = await fetch(url, opts);
+            if (TRANSIENT_STATUS.has(res.status) && attempt < a.retries) {
+                console.log(`  ⚠️ ${label}: HTTP ${res.status}, pokus ${attempt + 1}/${a.retries}…`);
+                await sleep(a.retryWait * (attempt + 1));
+                continue;
+            }
+            return res;
+        } catch (e) {
+            // Síťová chyba (spadlé spojení / server dole). Počkej na návrat a zopakuj.
+            lastErr = e;
+            if (attempt < a.retries) {
+                console.log(`  ⚠️ ${label}: spojení selhalo (${e.message}), pokus ${attempt + 1}/${a.retries}…`);
+                await waitForServer(a, opts && opts.headers);
+                await sleep(a.retryWait * (attempt + 1));
+                continue;
+            }
+        }
+    }
+    throw lastErr || new Error(`${label}: vyčerpány pokusy`);
+}
+
+async function listExisting(a, base, target, token) {
+    const res = await apiFetch(a, `${a.api}${base}`, { headers: headers(token) }, `výpis „${target}"`);
     if (res.status === 404) throw new Error(`Cíl „${target}" na serveru neexistuje (404). Zkontroluj --agent / --obor.`);
     if (!res.ok) throw new Error(`Výpis báze selhal: HTTP ${res.status} ${(await res.text()).slice(0, 200)}`);
     const data = await res.json();
     return new Set((data.documents || []).map(d => d.fileName));
 }
 
-async function uploadOne(api, base, token, file) {
+async function uploadOne(a, base, token, file) {
     const label = path.basename(file);
     const buf = fs.readFileSync(file);
     if (!buf.length) return { skipped: true, reason: 'prázdný soubor' };
     if (buf.length > MAX_BYTES) return { skipped: true, reason: `> ${Math.round(MAX_BYTES / 1e6)} MB` };
-    const res = await fetch(`${api}${base}/upload`, {
+    const res = await apiFetch(a, `${a.api}${base}/upload`, {
         method: 'POST', headers: headers(token),
         body: JSON.stringify({ fileName: label, base64: buf.toString('base64') })
-    });
+    }, `upload ${label}`);
     const txt = await res.text();
     if (!res.ok) throw new Error(`HTTP ${res.status}: ${txt.slice(0, 300)}`);
     let json = {}; try { json = JSON.parse(txt); } catch (e) {}
     return { ok: true, chunks: json.indexed, embedded: json.embedded, ocr: json.ocr };
 }
-
-const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // Naplní JEDNU bázi (agent/obor). Vrací souhrn a při chybě výpisu ho vyhodí.
 async function ingest(a, token, base, target, dir) {
@@ -143,7 +212,7 @@ async function ingest(a, token, base, target, dir) {
 
     let existing = new Set();
     if (!a.dryRun) {
-        existing = await listExisting(a.api, base, target, token);
+        existing = await listExisting(a, base, target, token);
         if (existing.size) console.log(`  ℹ️  v bázi už je ${existing.size} dok. — shodné názvy přeskočím`);
     }
 
@@ -154,7 +223,7 @@ async function ingest(a, token, base, target, dir) {
         if (existing.has(label)) { console.log(`  ⏭  ${tag} (už v bázi)`); skip++; continue; }
         if (a.dryRun) { console.log(`  · ${tag}`); continue; }
         try {
-            const r = await uploadOne(a.api, base, token, files[i]);
+            const r = await uploadOne(a, base, token, files[i]);
             if (r.skipped) { console.log(`  ⏭  ${tag} — ${r.reason}`); skip++; }
             else { chunks += (r.chunks || 0); console.log(`  ✅ ${tag} — ${r.chunks} chunků${r.embedded != null ? `, ${r.embedded} s vektorem` : ''}${r.ocr ? ', OCR' : ''}`); ok++; }
         } catch (e) { console.log(`  ❌ ${tag} — ${e.message}`); fail++; }
@@ -162,7 +231,7 @@ async function ingest(a, token, base, target, dir) {
     }
     if (!a.dryRun && a.reindex && ok > 0) {
         try {
-            const res = await fetch(`${a.api}${base}/reindex`, { method: 'POST', headers: headers(token) });
+            const res = await apiFetch(a, `${a.api}${base}/reindex`, { method: 'POST', headers: headers(token) }, 'reindex');
             const j = await res.json().catch(() => ({}));
             console.log(`  🔁 reindex: ${res.ok ? `${j.embedded ?? '?'}/${j.chunks ?? '?'} s vektorem` : `HTTP ${res.status}`}`);
             if (res.ok && j.embedded === 0) console.log('     ⚠️ 0 vektorů — embedding model nejspíš neběží; po spuštění spusť reindex znovu.');

@@ -15,7 +15,7 @@ const { logEvent } = require('../lib/audit');
 const { anonymizeText } = require('../lib/anonymizer');
 const ollama = require('../lib/ai_provider'); // Ollama | OpenAI | Anthropic (stejné rozhraní)
 const { generateAgentFallback } = require('../lib/agent_fallback');
-const { resolveRagFilters, applyAgentScope } = require('../lib/rag_request');
+const { resolveRagFilters, buildRagScope } = require('../lib/rag_request');
 const ChiefOrchestrator = require('../lib/orchestrator');
 const spisFolders = require('../lib/spisFolders');
 const spisy = require('../lib/spisy');
@@ -38,13 +38,19 @@ router.post('/debate', async (req, res) => {
 
     // Retrieve RAG context
     let ragContext = "";
+    let oborDetection = null; // pro UI („detekován obor…"); viditelné i ve fallbacku
     try {
-        let resolvedFilters = await resolveRagFilters(req.body);
         // Debata dvou agentů: sjednotit jejich znalostní báze; přístup ke klientským
-        // spisům omezit, jakmile ho nemá kterýkoli z nich (konzervativně).
-        resolvedFilters = applyAgentScope(resolvedFilters, [agent1, agent2]);
+        // spisům omezit, jakmile ho nemá kterýkoli z nich (konzervativně). Judikaturní
+        // politika vč. auto-detekce oboru z promptu (buildRagScope).
+        const built = await buildRagScope(req.body, [agent1, agent2], prompt);
+        let resolvedFilters = built.filters;
+        oborDetection = built.detection;
         if (resolvedFilters) {
             console.log(`🧠 Swarm RAG: Aktivní filtry pro debatu: ${JSON.stringify(resolvedFilters)}`);
+        }
+        if (oborDetection) {
+            console.log(`🧭 Swarm obor: ${oborDetection.label} (${oborDetection.source}${oborDetection.confident ? '' : ', nejistě → celoplošně'})`);
         }
         const matches = await searchSimilar(prompt, 3, resolvedFilters);
         const highConfidenceMatches = matches.filter(m => m.score >= 0.70);
@@ -138,6 +144,7 @@ router.post('/debate', async (req, res) => {
             model: selectedModel,
             agent1: { id: agentId1, name: agent1.name, response: answer1 },
             agent2: { id: agentId2, name: agent2.name, response: answer2 },
+            oborDetected: oborDetection,
             timestamp: new Date().toISOString()
         });
 
@@ -163,6 +170,7 @@ router.post('/debate', async (req, res) => {
             model: `${selectedModel} (Simulovaný Swarm)`,
             agent1: { id: agentId1, name: agent1.name, response: answer1 },
             agent2: { id: agentId2, name: agent2.name, response: answer2 },
+            oborDetected: oborDetection,
             timestamp: new Date().toISOString()
         });
     }

@@ -44,7 +44,9 @@ function fetchUrl(url, options = {}) {
             path: urlObj.pathname + urlObj.search,
             method: options.method || 'GET',
             headers: options.headers || {},
-            timeout: 5000 // 5 seconds timeout to keep it responsive
+            // 5 s výchozí (svižná odezva UI); pomalejší SOAP služby (ISDS) si mohou
+            // vyžádat delší limit přes options.timeout.
+            timeout: options.timeout || 5000
         };
 
         const req = https.request(requestOptions, (res) => {
@@ -334,9 +336,15 @@ async function checkAresStatutory(ico, opts = {}) {
  * žádné ID (a NIKDY nefabrikuje) — jen čestné „není k dispozici". Při více shodách
  * je výsledek NEjednoznačný (fail-closed) a vyžaduje ruční volbu.
  * ENV/DB: ISDS_WS_URL (volitelné), ISDS_LOGIN, ISDS_PASSWORD.
+ *
+ * PŘÍSTUPOVÝ BOD (dle provozní dokumentace ISDS): přihlášení JMÉNEM+HESLEM (basic
+ * auth) má dvě cesty — `/DS/dz` pro operace se zprávami a `/DS/dx` pro INFORMAČNÍ
+ * a VYHLEDÁVACÍ služby. FindDataBox je vyhledávací služba → patří na `/DS/dx`.
+ * (Cesta `/DS/df` vyžaduje navíc klientský certifikát — s pouhým heslem selže.)
+ * Testovací prostředí: zaměň bázi za `https://ws1.czebox.cz/DS/dx`.
  * ⚠ SOAP tělo a parsování jsou izolované a provizorní — finalizovat proti reálnému ISDS WS.
  */
-const ISDS_DEFAULT_URL = 'https://ws1.mojedatovaschranka.cz/DS/df';
+const ISDS_DEFAULT_URL = 'https://ws1.mojedatovaschranka.cz/DS/dx';
 
 function _isdsCfg() {
     return {
@@ -363,21 +371,35 @@ async function findDataBox(ico, opts = {}) {
             '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:p="http://isds.czechpoint.cz/v20">' +
             '<soapenv:Body><p:FindDataBox><p:dbOwnerInfo><p:ic>' + cleanIco + '</p:ic></p:dbOwnerInfo></p:FindDataBox></soapenv:Body></soapenv:Envelope>';
         const auth = 'Basic ' + Buffer.from(c.login + ':' + c.password).toString('base64');
+        // SOAPAction je dle WSDL PRÁZDNÝ řetězec (document/literal) — ne název operace.
+        // ISDS SOAP bývá pomalejší než REST registry → delší timeout (15 s).
         const xml = await doFetch(c.url, {
             method: 'POST',
-            headers: { 'Content-Type': 'text/xml;charset=UTF-8', 'SOAPAction': 'FindDataBox', 'Authorization': auth },
-            body: soapBody
+            headers: { 'Content-Type': 'text/xml;charset=UTF-8', 'SOAPAction': '', 'Authorization': auth },
+            body: soapBody,
+            timeout: 15000
         });
-        const ids = [...String(xml).matchAll(/<[^>]*dbID>([^<]+)<\/[^>]*dbID>/g)].map(m => m[1].trim()).filter(Boolean);
-        const nameM = String(xml).match(/<[^>]*firmName>([^<]+)<\/[^>]*firmName>/);
+        const sx = String(xml);
+        // Stavový kód ISDS (0000 = OK). Užitečné pro diagnostiku, i když dbID chybí.
+        const codeM = sx.match(/<[^>]*dbStatusCode>([^<]+)<\/[^>]*dbStatusCode>/);
+        const msgM = sx.match(/<[^>]*dbStatusMessage>([^<]+)<\/[^>]*dbStatusMessage>/);
+        const statusCode = codeM ? codeM[1].trim() : null;
+        const statusMessage = msgM ? msgM[1].trim() : null;
+        const ids = [...sx.matchAll(/<[^>]*dbID>([^<]+)<\/[^>]*dbID>/g)].map(m => m[1].trim()).filter(Boolean);
+        const nameM = sx.match(/<[^>]*firmName>([^<]+)<\/[^>]*firmName>/);
         const subjectName = nameM ? nameM[1].trim() : null;
         if (ids.length === 1) {
-            return { available: true, configured: true, found: true, dataBoxId: ids[0], subjectName };
+            return { available: true, configured: true, found: true, dataBoxId: ids[0], subjectName, statusCode, statusMessage };
         }
         if (ids.length > 1) {
-            return { available: true, configured: true, found: false, ambiguous: true, candidates: ids, subjectName };
+            return { available: true, configured: true, found: false, ambiguous: true, candidates: ids, subjectName, statusCode, statusMessage };
         }
-        return { available: true, configured: true, found: false };
+        // Žádná schránka. Když ISDS vrátil chybový stav (jiný než 0000), předej ho výš.
+        if (statusCode && statusCode !== '0000') {
+            return { available: true, configured: true, found: false, statusCode,
+                error: 'ISDS status ' + statusCode + (statusMessage ? ': ' + statusMessage : '') };
+        }
+        return { available: true, configured: true, found: false, statusCode, statusMessage };
     } catch (e) {
         return { available: false, configured: true, error: 'Dotaz do ISDS selhal: ' + e.message };
     }

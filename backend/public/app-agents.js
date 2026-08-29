@@ -2,6 +2,51 @@
 // Načítá se v index.html PO app.js. Metody se přidávají na LexisLocalApp.prototype.
 Object.assign(LexisLocalApp.prototype, {
 
+    // Přehled pokrytí judikatury po oborech (GET /api/rag/obory) — které obory už
+    // mají data a co ještě zbývá naplnit. Zobrazeno v pravém sloupci záložky Asistenti.
+    async loadOborCoverage() {
+        const listEl = document.getElementById('obor-coverage-list');
+        const sumEl = document.getElementById('obor-coverage-summary');
+        if (!listEl) return;
+        const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g,
+            c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+        try {
+            const res = await fetch(`${this.apiBase}/rag/obory`, { headers: this.getHeaders() });
+            const data = await res.json();
+            const obory = data.obory || [];
+            if (sumEl) {
+                sumEl.innerHTML = `Naplněno <strong>${data.filled || 0}/${data.total || obory.length}</strong> oborů`
+                    + (data.empty ? ` · ${data.empty} prázdných` : '');
+            }
+            const filled = obory.filter(o => o.hasData).sort((a, b) => b.chunks - a.chunks);
+            const empty = obory.filter(o => !o.hasData).sort((a, b) => String(a.label).localeCompare(String(b.label), 'cs'));
+
+            const row = (o) => {
+                const dot = o.hasData ? '🟢' : '⚪';
+                const meta = o.hasData
+                    ? `<span style="font-size:0.72rem; color:var(--text-secondary);">${o.documents} dok · ${o.chunks} chunků${o.embedded < o.chunks ? ` · ${o.chunks - o.embedded} bez vektoru` : ''}</span>`
+                    : `<span style="font-size:0.72rem; color:var(--text-muted);">prázdné</span>`;
+                const custom = o.custom ? ` <span title="ruční obor mimo taxonomii" style="opacity:.6;">•</span>` : '';
+                return `<div style="display:flex; align-items:center; gap:8px; padding:7px 10px; border-radius:8px; background:var(--sunken-1); border:1px solid var(--border-glass); ${o.hasData ? '' : 'opacity:.7;'}">
+                    <span style="font-size:0.9rem;">${dot}</span>
+                    <div style="flex:1; min-width:0;">
+                        <div style="font-size:0.8rem; color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(o.label)}${custom}</div>
+                        ${meta}
+                    </div>
+                </div>`;
+            };
+
+            const parts = filled.map(row);
+            if (empty.length) {
+                parts.push(`<div style="font-size:0.68rem; text-transform:uppercase; letter-spacing:.08em; color:var(--text-muted); margin:6px 0 2px;">Zbývá naplnit</div>`);
+                empty.forEach(o => parts.push(row(o)));
+            }
+            listEl.innerHTML = parts.join('') || '<div style="opacity:.6; font-size:0.8rem;">Žádné obory.</div>';
+        } catch (e) {
+            listEl.innerHTML = `<div style="color:var(--accent-red); font-size:0.8rem;">Chyba načtení pokrytí: ${esc(e.message)}</div>`;
+        }
+    },
+
     async loadAgentsList() {
         try {
             console.log("🤖 Načítám AI asistenty ze serveru...");
@@ -95,10 +140,30 @@ Object.assign(LexisLocalApp.prototype, {
         }
     },
 
+    openAgentDialog(icon, heading) {
+        const dlg = document.getElementById('dialog-agent-editor');
+        const ic = document.getElementById('agent-dialog-icon');
+        const hd = document.getElementById('agent-dialog-heading');
+        if (ic && icon) ic.textContent = icon;
+        if (hd && heading) hd.textContent = heading;
+        if (!dlg) return;
+        if (typeof dlg.showModal === 'function') { if (!dlg.open) dlg.showModal(); }
+        else { dlg.setAttribute('open', ''); } // fallback pro prohlížeče bez <dialog>
+    },
+
+    closeAgentDialog() {
+        const dlg = document.getElementById('dialog-agent-editor');
+        if (!dlg) return;
+        if (typeof dlg.close === 'function' && dlg.open) dlg.close();
+        else dlg.removeAttribute('open');
+        const container = document.getElementById('agents-list-container');
+        if (container) container.querySelectorAll('.agents-list-item').forEach(i => i.classList.remove('active'));
+    },
+
     showAgentEditor(agent) {
         // Toggle view
         document.getElementById('agent-editor-placeholder').style.display = 'none';
-        
+
         const form = document.getElementById('agent-editor-form');
         form.style.display = 'flex';
 
@@ -134,6 +199,9 @@ Object.assign(LexisLocalApp.prototype, {
             if (btnReset) btnReset.style.display = 'none';
             if (btnDelete) btnDelete.style.display = 'block';
         }
+
+        // Otevři modální dialog
+        this.openAgentDialog(agent.emoji || '👤', `Úprava: ${agent.name}`);
     },
 
     showNewAgentForm() {
@@ -178,6 +246,9 @@ Object.assign(LexisLocalApp.prototype, {
         const btnDelete = document.getElementById('btn-delete-agent');
         if (btnReset) btnReset.style.display = 'none';
         if (btnDelete) btnDelete.style.display = 'none';
+
+        // Otevři modální dialog
+        this.openAgentDialog('🤖', 'Nová role asistenta');
     },
 
     async submitAgentForm() {
@@ -234,16 +305,8 @@ Object.assign(LexisLocalApp.prototype, {
 
             if (data.success) {
                 alert(`✓ Profil asistenta "${name}" byl úspěšně uložen.`);
+                this.closeAgentDialog();
                 await this.loadAgentsList();
-                
-                // Highlight the updated/created agent
-                setTimeout(() => {
-                    const listContainer = document.getElementById('agents-list-container');
-                    if (listContainer) {
-                        const item = listContainer.querySelector(`[data-id="${agentId}"]`);
-                        if (item) item.click();
-                    }
-                }, 100);
             } else {
                 alert("❌ Nepodařilo se uložit agenta: " + data.error);
             }
@@ -262,11 +325,7 @@ Object.assign(LexisLocalApp.prototype, {
             const data = await res.json();
             if (data.success) {
                 alert("✓ Vlastní agent byl úspěšně smazán.");
-                
-                // Reset editor pane
-                document.getElementById('agent-editor-form').style.display = 'none';
-                document.getElementById('agent-editor-placeholder').style.display = 'flex';
-                
+                this.closeAgentDialog();
                 await this.loadAgentsList();
             } else {
                 alert("❌ Chyba při mazání agenta: " + data.error);

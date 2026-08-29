@@ -2,6 +2,34 @@
 // Načítá se v index.html PO app.js. Metody se přidávají na LexisLocalApp.prototype.
 Object.assign(LexisLocalApp.prototype, {
 
+    // Odznak „detekován obor" pod odpovědí agenta s judikaturou. `det` = objekt
+    // oborDetected z odpovědi API (nebo null → prázdný řetězec).
+    oborBadgeHtml(det) {
+        if (!det) return '';
+        const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g,
+            c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+        const srcLabel = det.source === 'spis' ? 'ze spisu'
+            : det.source === 'explicit' ? 'zvoleno ručně' : 'auto-detekce';
+        let inner, color, bg, border;
+        if (det.confident) {
+            const pct = (det.source === 'auto' && typeof det.score === 'number')
+                ? ` · shoda ${Math.round(det.score * 100)} %` : '';
+            inner = `🧭 Judikatura – obor: <strong>${esc(det.label)}</strong>`
+                + `<span style="opacity:.7;"> (${srcLabel}${pct})</span>`;
+            color = 'var(--accent-blue)';
+            bg = 'rgba(217,164,65,0.10)';
+            border = 'rgba(217,164,65,0.30)';
+        } else {
+            inner = `🧭 Obor neurčen jednoznačně → hledám napříč všemi obory judikatury`;
+            color = 'var(--text-muted)';
+            bg = 'var(--sunken-1)';
+            border = 'var(--border-glass)';
+        }
+        return `<div class="obor-badge" style="display:inline-flex;align-items:center;gap:6px;`
+            + `margin:2px 0 8px;padding:4px 11px;border-radius:999px;background:${bg};`
+            + `border:1px solid ${border};font-size:0.72rem;line-height:1.3;color:${color};">${inner}</div>`;
+    },
+
     async loadModels() {
         try {
             const res = await fetch(`${this.apiBase}/models`, {
@@ -296,7 +324,8 @@ Object.assign(LexisLocalApp.prototype, {
                         <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--accent-blue); font-weight: bold; margin-bottom: 10px; display: flex; align-items: center; gap: 6px;">
                             <span>👥</span> Spuštěna oponentní diskuse asistentů (Model: ${data.model})
                         </div>
-                        
+                        ${this.oborBadgeHtml(data.oborDetected)}
+
                         <!-- Agent 1 Bubble -->
                         <div style="display: flex; gap: 12px; margin-bottom: 15px;">
                             <div class="message-avatar" style="background: var(--sf-05); min-width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.1rem;">
@@ -370,6 +399,7 @@ Object.assign(LexisLocalApp.prototype, {
                 <div class="chat-message agent">
                     <div class="message-avatar">${emoji}</div>
                     <div class="message-content">
+                        ${this.oborBadgeHtml(data.oborDetected)}
                         <p>${formatted}</p>
                         <span class="subtext" style="display:block; margin-top:5px; font-size:0.7rem; color:var(--text-muted);">
                             Model: ${data.model} | ${new Date(data.timestamp).toLocaleTimeString('cs-CZ')}

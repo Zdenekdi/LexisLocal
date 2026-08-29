@@ -12,6 +12,10 @@ const HearingsWatcher = require('./lib/hearings');
 const pairing = require('./lib/pairing'); // LexisLink párování (LAN)
 const aiProvider = require('./lib/ai_provider'); // AI backend + pojistka mlčenlivosti (local-only)
 
+// Preflight: varuj na nepodporovanou verzi Node.js (25+ opakovaně nativně padal).
+// Jen varování, nikdy neblokuje běh.
+require('./lib/node_check').warnIfUnsupported();
+
 const app = express();
 const PORT = process.env.PORT || 4000;
 // Vazba na rozhraní: VÝCHOZÍ loopback (127.0.0.1) — bezpečné pro solo režim,
@@ -169,6 +173,7 @@ app.use('/api/judikatura', require('./routes/judikatura'));
 app.use('/api/managerial', require('./routes/managerial'));
 app.use('/api/alerts', require('./routes/alerts'));
 app.use('/api/rag', require('./routes/rag'));
+app.use('/api/readiness', require('./routes/readiness'));
 app.use('/api/watcher', require('./routes/watcher'));
 app.use('/api/calendar', require('./routes/calendar'));
 app.use('/api/models', require('./routes/models'));

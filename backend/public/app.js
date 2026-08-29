@@ -61,7 +61,8 @@ class LexisLocalApp {
         await this.loadInbox();
         await this.loadAlerts();
         await this.loadAgentsList();
-        
+        await this.loadReadiness();
+
         // Periodically refresh stats and inbox
         setInterval(() => this.checkSystemStatus(), 10000);
         setInterval(() => this.checkRagStatus(), 10000);
@@ -310,6 +311,36 @@ class LexisLocalApp {
             });
         }
 
+        // --- Modální dialog editoru asistenta: zavírání ---
+        const agentDialog = document.getElementById('dialog-agent-editor');
+        const btnCloseAgentDialog = document.getElementById('btn-close-agent-dialog');
+        if (btnCloseAgentDialog) {
+            btnCloseAgentDialog.addEventListener('click', () => this.closeAgentDialog());
+        }
+        const btnRefreshOborCoverage = document.getElementById('btn-refresh-obor-coverage');
+        if (btnRefreshOborCoverage) {
+            btnRefreshOborCoverage.addEventListener('click', () => {
+                if (typeof this.loadOborCoverage === 'function') this.loadOborCoverage();
+            });
+        }
+        const btnRefreshReadiness = document.getElementById('btn-refresh-readiness');
+        if (btnRefreshReadiness) {
+            btnRefreshReadiness.addEventListener('click', () => {
+                if (typeof this.loadReadiness === 'function') this.loadReadiness();
+            });
+        }
+        if (agentDialog) {
+            // Klik mimo obsah (na ::backdrop) zavře dialog
+            agentDialog.addEventListener('click', (e) => {
+                if (e.target === agentDialog) this.closeAgentDialog();
+            });
+            // Zavření přes Esc (nativní 'cancel'/'close') → odznač položku v seznamu
+            agentDialog.addEventListener('close', () => {
+                const container = document.getElementById('agents-list-container');
+                if (container) container.querySelectorAll('.agents-list-item').forEach(i => i.classList.remove('active'));
+            });
+        }
+
         // Global Keyboard Shortcuts
         window.addEventListener('keydown', (e) => {
             // Alt+T (or Option+T on macOS)
@@ -337,6 +368,43 @@ class LexisLocalApp {
         };
         updateClock();
         setInterval(updateClock, 1000);
+    }
+
+    async loadReadiness() {
+        const listEl = document.getElementById('readiness-list');
+        const sumEl = document.getElementById('readiness-summary');
+        if (!listEl) return;
+        const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g,
+            c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+        const ICON = { ok: '🟢', warn: '🟡', fail: '🔴' };
+        try {
+            const res = await fetch(`${this.apiBase}/readiness`, { headers: this.getHeaders() });
+            const data = await res.json();
+            const checks = data.checks || [];
+            const s = data.summary || {};
+            if (sumEl) {
+                sumEl.textContent = s.ready
+                    ? `vše připraveno (${s.ok}/${checks.length})`
+                    : `${s.ok}/${checks.length} v pořádku${s.warn ? `, ${s.warn} varování` : ''}${s.fail ? `, ${s.fail} kritických` : ''}`;
+                sumEl.style.color = s.fail ? 'var(--accent-red)' : (s.warn ? '#d9a441' : 'var(--accent-green, #10b981)');
+            }
+            listEl.innerHTML = checks.map(c => {
+                const fix = (c.status !== 'ok' && c.fix)
+                    ? `<div style="font-size:0.74rem; color:var(--text-secondary); margin-top:2px;">→ ${esc(c.fix)}</div>` : '';
+                return `<div style="display:flex; gap:10px; align-items:flex-start; padding:8px 10px; border-radius:8px; background:var(--sunken-1); border:1px solid var(--border-glass);">
+                    <span style="font-size:0.85rem; line-height:1.4;">${ICON[c.status] || '⚪'}</span>
+                    <div style="flex:1; min-width:0;">
+                        <div style="font-size:0.85rem; color:var(--text-primary);">${esc(c.label)}
+                            <span style="color:var(--text-secondary); font-weight:400;">— ${esc(c.detail)}</span>
+                        </div>
+                        ${fix}
+                    </div>
+                </div>`;
+            }).join('') || '<div style="opacity:.6; font-size:0.85rem;">Žádné kontroly.</div>';
+        } catch (e) {
+            listEl.innerHTML = `<div style="color:var(--accent-red); font-size:0.85rem;">Kontrolu se nepodařilo načíst: ${esc(e.message)}</div>`;
+            if (sumEl) sumEl.textContent = '';
+        }
     }
 
     switchTab(tabName) {
@@ -417,7 +485,9 @@ class LexisLocalApp {
         }
 
         // Action triggers on tab switch
-        if (tabName === 'models') {
+        if (tabName === 'overview') {
+            if (typeof this.loadReadiness === 'function') this.loadReadiness();
+        } else if (tabName === 'models') {
             this.loadModels();
         } else if (tabName === 'inbox') {
             this.loadInbox();
@@ -425,6 +495,7 @@ class LexisLocalApp {
             this.loadAuditLogs();
         } else if (tabName === 'agents') {
             this.loadAgentsList();
+            if (typeof this.loadOborCoverage === 'function') this.loadOborCoverage();
         } else if (tabName === 'workflow') {
             this.loadWorkflowTab();
         } else if (tabName === 'timetracking') {

@@ -15,6 +15,7 @@
     "test": "jest",
     "eval:rag": "node backend/scripts/rag_eval.js",
     "readiness": "node backend/scripts/readiness.js",
+    "isds-test": "node backend/scripts/isds-test.js",
     "test:e2e": "playwright test",
     "smoke": "bash scripts/smoke-all.sh",
     "smoke:ocr": "node scripts/smoke-ocr.js",
@@ -29,6 +30,9 @@
   ],
   "author": "Zdeněk Dias",
   "license": "Proprietary",
+  "engines": {
+    "node": ">=20.0.0 <25.0.0"
+  },
   "build": {
     "appId": "cz.lexislocal.app",
     "productName": "LexisLocal",
@@ -49,9 +53,12 @@
       }
     ],
     "mac": {
-      "identity": null,
-      "notarize": false,
       "category": "public.app-category.productivity",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "notarize": true,
       "target": [
         {
           "target": "dmg",
@@ -105,7 +112,7 @@
     },
     "publish": {
       "provider": "github",
-      "owner": "Zdenekdi",
+      "owner": "NexusSync-Systems",
       "repo": "LexisLocal"
     }
   },

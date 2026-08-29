@@ -78,6 +78,22 @@ function savePartition(directoryName, index) {
 }
 
 /**
+ * Levné metadata partition souboru (mtime + velikost) BEZ dešifrování — slouží
+ * jako podpis pro invalidaci cache (např. centroidy oborů v obor_detect.js).
+ * Vrací { mtimeMs, size } nebo null, když partition ještě neexistuje.
+ */
+function partitionStat(directoryName) {
+    const partitionId = crypto.createHash('sha256').update(directoryName).digest('hex').substring(0, 16);
+    const partitionPath = dataPath(`.rag_${partitionId}.json`);
+    try {
+        const st = fs.statSync(partitionPath);
+        return { mtimeMs: st.mtimeMs, size: st.size };
+    } catch (e) {
+        return null;
+    }
+}
+
+/**
  * Loads and decrypts a partition index file.
  */
 function loadPartition(directoryName) {
@@ -704,6 +720,7 @@ module.exports = {
     reencryptAllPartitions,
     listJudikaturaScopes,
     loadPartition,
+    partitionStat,
     savePartition,
     getActiveDirectories
 };

@@ -17,7 +17,7 @@ const { calculateInferenceMetrics } = require('../lib/green_monitor');
 const db = require('../lib/database');
 const ollama = require('../lib/ai_provider'); // Ollama | OpenAI | Anthropic (stejné rozhraní)
 const { generateAgentFallback } = require('../lib/agent_fallback');
-const { resolveRagFilters, applyAgentScope } = require('../lib/rag_request');
+const { buildRagScope } = require('../lib/rag_request');
 
 // POST /api/agent/:agentId - Volání agenta s modelem dle výběru
 router.post('/:agentId', async (req, res) => {
@@ -37,17 +37,23 @@ router.post('/:agentId', async (req, res) => {
 
     // systemPromptText musí být viditelný i ve větvi catch (fallback loguje jeho hash).
     let systemPromptText = agent.systemPrompt;
+    // Detekce oboru (pro UI „detekován obor…") — viditelná i ve fallbacku.
+    let oborDetection = null;
 
     try {
         let resolvedFilters = null;
         try {
-            resolvedFilters = await resolveRagFilters(req.body);
+            // Per-agent RAG (vlastní báze + úroveň přístupu ke spisům) + judikaturní
+            // politika VČETNĚ auto-detekce oboru z promptu (viz lib/rag_request.buildRagScope).
+            const built = await buildRagScope(req.body, agent, prompt);
+            resolvedFilters = built.filters;
+            oborDetection = built.detection;
+            if (oborDetection) {
+                console.log(`🧭 RAG obor: ${oborDetection.label} (${oborDetection.source}${oborDetection.confident ? '' : ', nejistě → celoplošně'})`);
+            }
         } catch (fErr) {
             console.warn("⚠️ RAG: Selhalo rozlišení filtrů:", fErr.message);
         }
-        // Per-agent RAG: přidat vlastní znalostní bázi agenta a respektovat jeho úroveň
-        // přístupu ke klientským spisům (spisAccess 'none' → jen vlastní báze).
-        resolvedFilters = applyAgentScope(resolvedFilters, agent);
 
         const strictMode = resolvedFilters && (resolvedFilters.strict === true || resolvedFilters.strict === 'true');
         if (strictMode) {
@@ -152,6 +158,7 @@ router.post('/:agentId', async (req, res) => {
             response: response.message.content,
             transparencyId: transparencyRecord.id,
             greenMetrics,
+            oborDetected: oborDetection,
             timestamp: new Date().toISOString()
         });
 
@@ -199,6 +206,7 @@ router.post('/:agentId', async (req, res) => {
             response: fallbackResponse,
             transparencyId: transparencyRecord.id,
             greenMetrics,
+            oborDetected: oborDetection,
             timestamp: new Date().toISOString()
         });
      }
